@@ -1,0 +1,8 @@
+build/
+.clangd
+.vscode/
+.opencode/
+*.o
+*.a
+core.*
+compile_commands.json
