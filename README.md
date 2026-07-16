@@ -40,6 +40,19 @@ obs = jax.dlpack.from_dlpack(
 )
 ```
 
+### Environment properties
+
+| Property | Type | Set | Description |
+|----------|------|-----|-------------|
+| n_sim | int | constructor | Number of parallel simulations |
+| n_blue | int | constructor | Blue team size per simulation |
+| n_orange | int | constructor | Orange team size per simulation |
+| seed | int | constructor | Random seed |
+| max_ticks | int | constructor | Ticks before episode ends |
+| n_cars | int | readonly | Total cars per simulation (n_blue + n_orange) |
+| obs_dim | int | readonly | Observation vector length |
+| act_dim | int | readonly | Action vector length |
+
 ### Observation space
 
 Shape: `[n_sim, obs_dim]` float32, where `obs_dim = 9 + n_cars * 18`
