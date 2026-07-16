@@ -12,10 +12,6 @@ file(GLOB CORE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu"
 )
 
-list(REMOVE_ITEM CORE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cu"
-)
-
 add_library(carl STATIC ${CORE_SOURCES})
 
 set_target_properties(carl PROPERTIES
@@ -41,25 +37,6 @@ target_compile_options(carl PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets>
-    $<$<COMPILE_LANGUAGE:CUDA>:-allow-unsupported-compiler>
-)
-
-# --- Benchmark ---
-
-add_executable(main src/main.cu)
-
-set_target_properties(main PROPERTIES
-    CXX_STANDARD 20
-    CXX_STANDARD_REQUIRED YES
-    CUDA_STANDARD 20
-    CUDA_STANDARD_REQUIRED YES
-)
-
-target_link_libraries(main PRIVATE carl)
-
-target_compile_options(main PRIVATE
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-attributes>
-    $<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=174,20044>
     $<$<COMPILE_LANGUAGE:CUDA>:-allow-unsupported-compiler>
 )
 
