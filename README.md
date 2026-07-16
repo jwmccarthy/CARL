@@ -117,3 +117,7 @@ action_space = gym.spaces.MultiDiscrete(
     dtype=np.int32,
 )
 ```
+
+### Performance
+
+Running `python/test.py` will display the ticks/s given a random action vector. Depending on the GPU and environment config, CARL simulates between 5-50M ticks/s. By executing end-to-end on device, we also sidestep host-device transfer latency inherent to CPU-based vectorized simulators.
