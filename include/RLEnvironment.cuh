@@ -30,7 +30,7 @@ private:
 
     void beginStep();
     void stepBroadSusp();
-    void stepControls();
+    void stepControls(const DiscreteControls* actions);
     void stepNarrow();
     void stepCarManifoldSolve();
     void stepCarCarSolve();
@@ -44,7 +44,7 @@ public:
         const int nOrange, const int seed);
     ~RLEnvironment();
 
-    void step();
+    void step(const DiscreteControls* actions);
     void reset();
 
     GameState* getDeviceState() { return d_state; }

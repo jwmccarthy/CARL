@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "State/Controls.cuh"
+
 // --- DLPack types (minimal, no external dependency) ---
 
 enum DLDeviceType   { kDLCUDA = 2 };
@@ -36,6 +38,3 @@ struct DLManagedTensor
 // + isOnGround + isDemoed + hasFlipped + hasDoubleJumped + isBoosting(5)
 constexpr int OBS_PER_CAR = 18;
 constexpr int OBS_BALL = 9;  // pos + vel + ang
-
-// Per car: throttle, steer, pitch, yaw, roll, jump, boost, handbrake
-constexpr int ACT_PER_CAR = 8;

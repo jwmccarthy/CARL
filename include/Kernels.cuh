@@ -12,7 +12,8 @@ __global__ void beginStepKernel(
 
 __global__ void carControlsKernel(
     GameState* __restrict__ state,
-    Workspace* __restrict__ space);
+    Workspace* __restrict__ space,
+    const DiscreteControls* __restrict__ actions);
 
 __global__ void carArenaBroadPhaseKernel(
     GameState* __restrict__ state,

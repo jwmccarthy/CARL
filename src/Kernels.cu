@@ -8,10 +8,8 @@
 #include "Physics/BallArena/Solve.cuh"
 #include "Physics/BoostPads.cuh"
 #include "Physics/CarCar/Solve.cuh"
-#include "Physics/CarBall/Solve.cuh"
 #include "Physics/Controls.cuh"
 #include "Physics/FinishTick.cuh"
-#include "Physics/Goals.cuh"
 #include "Physics/SuspensionRaycast.cuh"
 
 __global__ void resetKernel(GameState* __restrict__ state)
@@ -47,11 +45,13 @@ __global__ void carArenaBroadPhaseKernel(
 
 __global__ void carControlsKernel(
     GameState* __restrict__ state,
-    Workspace* __restrict__ space)
+    Workspace* __restrict__ space,
+    const DiscreteControls* __restrict__ actions)
 {
     const int carIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (carIdx >= state->nTotalCars) return;
 
+    state->cars.controls[carIdx] = actions[carIdx].decode();
     processCarControls(state, space, carIdx);
 }
 

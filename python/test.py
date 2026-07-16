@@ -7,16 +7,15 @@ env = carl.Env(n_sim=sims, n_blue=3, n_orange=3, seed=123)
 
 ticks = 10000
 
-act = torch.rand((sims, env.act_dim), device="cuda")
-act_dl = torch.utils.dlpack.to_dlpack(act)
+act = torch.zeros((sims, env.n_cars, 7), dtype=torch.int32, device="cuda")
 
-env.step(act_dl)
+env.step(act)
 torch.cuda.synchronize()
 
 start = time.time()
 
 for i in range(ticks):
-    env.step(act_dl)
+    env.step(act)
 
 torch.cuda.synchronize()
 dur = time.time() - start

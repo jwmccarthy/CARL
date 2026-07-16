@@ -4,13 +4,7 @@
 #include "../Cuda/Math.cuh"
 #include "../Cuda/Common.cuh"
 #include "../Cuda/DeviceArray.cuh"
-
-struct CarControls
-{
-    float throttle, steer;
-    float yaw, pitch, roll;
-    int jump, boost, slide;
-};
+#include "Controls.cuh"
 
 struct GoalState
 {

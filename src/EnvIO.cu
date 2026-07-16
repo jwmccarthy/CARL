@@ -21,7 +21,16 @@ DLManagedTensor* makeFloatTensor(
     return tensor;
 }
 
-// --- Pack/unpack kernels ---
+DLManagedTensor* makeIntTensor(
+    void* data, int64_t* shape,
+    int ndim, int deviceId)
+{
+    auto* tensor = makeFloatTensor(data, shape, ndim, deviceId);
+    tensor->dl_tensor.dtype = { kDLInt, 32, 1 };
+    return tensor;
+}
+
+// --- Packing kernels ---
 
 __global__ void packObsKernel(
     GameState* __restrict__ state,
@@ -33,17 +42,6 @@ __global__ void packObsKernel(
 
     const int offset = simIdx * (OBS_BALL + nCars * OBS_PER_CAR);
     packObservations(state, simIdx, nCars, obs + offset);
-}
-
-__global__ void unpackActionsKernel(
-    GameState* __restrict__ state,
-    const float* __restrict__ actions,
-    int nSim, int nCars)
-{
-    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (simIdx >= nSim) return;
-
-    unpackActions(state, actions, simIdx, nCars);
 }
 
 __global__ void packRewardsDonesKernel(
@@ -71,12 +69,14 @@ EnvIO::EnvIO(int nSim, int nCars, cudaStream_t stream)
     obsShape[0] = nSim;
     obsShape[1] = obsDim;
     actShape[0] = nSim;
-    actShape[1] = actDim;
+    actShape[1] = nCars;
+    actShape[2] = ACT_PER_CAR;
     rewardShape[0] = nSim;
     doneShape[0] = nSim;
 
     CUDA_CHECK(cudaMalloc(&d_obs, nSim * obsDim * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_actions, nSim * actDim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_actions,
+        nSim * nCars * sizeof(DiscreteControls)));
     CUDA_CHECK(cudaMalloc(&d_rewards, nSim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_dones, nSim * sizeof(bool)));
 
@@ -102,14 +102,6 @@ void EnvIO::packObs(GameState* d_state)
     CUDA_CHECK(cudaGetLastError());
 }
 
-void EnvIO::unpackActions(GameState* d_state)
-{
-    unpackActionsKernel<<<perSimConfig.gridDim,
-        perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_actions, nSim, nCars);
-    CUDA_CHECK(cudaGetLastError());
-}
-
 void EnvIO::packRewardsDones(GameState* d_state)
 {
     packRewardsDonesKernel<<<perSimConfig.gridDim,
@@ -125,7 +117,7 @@ DLManagedTensor* EnvIO::getObsTensor()
 
 DLManagedTensor* EnvIO::getActionsTensor()
 {
-    return makeFloatTensor(d_actions, actShape, 2);
+    return makeIntTensor(d_actions, actShape, 3);
 }
 
 DLManagedTensor* EnvIO::getRewardsTensor()
@@ -139,9 +131,9 @@ DLManagedTensor* EnvIO::getDonesTensor()
 }
 
 // Copy external device action tensor into internal buffer (D2D, same stream)
-void EnvIO::setActions(const float* src)
+void EnvIO::setActions(const int32_t* src)
 {
     CUDA_CHECK(cudaMemcpyAsync(d_actions, src,
-        nSim * actDim * sizeof(float),
+        nSim * actDim * sizeof(int32_t),
         cudaMemcpyDeviceToDevice, stream));
 }

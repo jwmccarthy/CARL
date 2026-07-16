@@ -7,16 +7,14 @@
 namespace py = pybind11;
 
 // Accept a DLPack capsule or any object with __dlpack__ (e.g. torch.Tensor)
-static const DLManagedTensor* capsuleToTensor(py::object obj)
+static py::capsule toCapsule(py::object obj)
 {
     if (py::isinstance<py::capsule>(obj))
     {
-        auto* t = obj.cast<py::capsule>().get_pointer<DLManagedTensor>();
-        if (t) return t;
+        return obj.cast<py::capsule>();
     }
 
-    auto dlpack = obj.attr("__dlpack__")();
-    return dlpack.cast<py::capsule>().get_pointer<DLManagedTensor>();
+    return obj.attr("__dlpack__")().cast<py::capsule>();
 }
 
 // Only delete if still named 'dltensor' - consumers rename to prevent double-free
@@ -48,6 +46,33 @@ class EnvWrapper
     RLEnvironment env;
     EnvIO io;
 
+    const int32_t* actionData(const DLManagedTensor* tensor) const
+    {
+        if (!tensor) throw py::value_error("invalid DLPack tensor");
+
+        const DLTensor& t = tensor->dl_tensor;
+        const bool validType = t.dtype.code == kDLInt
+            && t.dtype.bits == 32 && t.dtype.lanes == 1;
+        if (!validType) throw py::type_error("actions must have dtype int32");
+        if (t.device.device_type != kDLCUDA)
+            throw py::value_error("actions must be on a CUDA device");
+        if (t.ndim != 3 || t.shape[0] != env.getNSim()
+            || t.shape[1] != env.getNCars() || t.shape[2] != ACT_PER_CAR)
+        {
+            throw py::value_error("actions must have shape [n_sim, n_cars, 7]");
+        }
+
+        if (t.strides && (t.strides[2] != 1
+            || t.strides[1] != ACT_PER_CAR
+            || t.strides[0] != env.getNCars() * ACT_PER_CAR))
+        {
+            throw py::value_error("actions must be contiguous");
+        }
+
+        return reinterpret_cast<const int32_t*>(
+            static_cast<const char*>(t.data) + t.byte_offset);
+    }
+
 public:
     EnvWrapper(int nSim, int nBlue, int nOrange, int seed)
         : env(nSim, nBlue, nOrange, seed)
@@ -60,12 +85,11 @@ public:
 
     py::object step(py::object actions)
     {
-        const DLManagedTensor* actTensor = capsuleToTensor(actions);
-        io.setActions((const float*)actTensor->dl_tensor.data);
+        py::capsule capsule = toCapsule(actions);
+        const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
+        io.setActions(actionData(actTensor));
 
-        io.unpackActions(env.getDeviceState());
-
-        env.step();
+        env.step(io.getActions());
         
         io.packObs(env.getDeviceState());
         io.packRewardsDones(env.getDeviceState());
@@ -88,6 +112,17 @@ public:
     int getActDim() const { return io.getActDim(); }
     int getNSim()   const { return env.getNSim();  }
     int getNCars()  const { return env.getNCars(); }
+    py::list getActionNvec() const
+    {
+        py::list cars;
+        for (int c = 0; c < env.getNCars(); c++)
+        {
+            py::list nvec;
+            for (int n : ACTION_NVECS) nvec.append(n);
+            cars.append(nvec);
+        }
+        return cars;
+    }
     void setMaxTicks(int ticks) { io.setMaxTicks(ticks); }
 };
 
@@ -109,6 +144,7 @@ PYBIND11_MODULE(carl, m)
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
         .def_property_readonly("obs_dim",   &EnvWrapper::getObsDim)
         .def_property_readonly("act_dim",   &EnvWrapper::getActDim)
+        .def_property_readonly("action_nvec", &EnvWrapper::getActionNvec)
         .def_property_readonly("n_sim",     &EnvWrapper::getNSim)
         .def_property_readonly("n_cars",    &EnvWrapper::getNCars);
 }

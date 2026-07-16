@@ -4,32 +4,6 @@
 #include "../State/GameState.cuh"
 #include "../State/Workspace.cuh"
 
-// --- Action unpacking ---
-
-// Map flat action buffer (ACT_PER_CAR per car) into per-car CarControls
-CARL_D CARL_FI void unpackActions(
-    GameState* __restrict__ state,
-    const float* __restrict__ actions,
-    int simIdx, int nCars)
-{
-    const int carBase = simIdx * nCars;
-
-    for (int c = 0; c < nCars; c++)
-    {
-        const int offset = simIdx * nCars * ACT_PER_CAR + c * ACT_PER_CAR;
-        CarControls& controls = state->cars.controls[carBase + c];
-
-        controls.throttle = actions[offset + 0];
-        controls.steer    = actions[offset + 1];
-        controls.pitch    = actions[offset + 2];
-        controls.yaw      = actions[offset + 3];
-        controls.roll     = actions[offset + 4];
-        controls.jump     = actions[offset + 5] > 0.5f ? 1 : 0;
-        controls.boost    = actions[offset + 6] > 0.5f ? 1 : 0;
-        controls.slide    = actions[offset + 7] > 0.5f ? 1 : 0;
-    }
-}
-
 // --- Observation packing ---
 
 // Serialize state into obs buffer (layout: OBS_BALL + nCars * OBS_PER_CAR)

@@ -74,10 +74,10 @@ void RLEnvironment::stepBroadSusp()
         carSuspensionRaycastKernel, d_state, d_space, d_arena);
 }
 
-void RLEnvironment::stepControls()
+void RLEnvironment::stepControls(const DiscreteControls* actions)
 {
     threadPerCarKernelConfig.launch(
-        carControlsKernel, d_state, d_space);
+        carControlsKernel, d_state, d_space, actions);
 }
 
 void RLEnvironment::stepNarrow()
@@ -119,11 +119,11 @@ void RLEnvironment::stepBoostPad()
         boostPadKernel, d_state);
 }
 
-void RLEnvironment::step()
+void RLEnvironment::step(const DiscreteControls* actions)
 {
     PROFILE("init step",      beginStep());
     PROFILE("broad+susp",     stepBroadSusp());
-    PROFILE("controls",       stepControls());
+    PROFILE("controls",       stepControls(actions));
     PROFILE("narrow",         stepNarrow());
     PROFILE("manifold+solve", stepCarManifoldSolve());
     PROFILE("car-car+ball",   stepCarCarSolve());
