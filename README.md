@@ -46,27 +46,27 @@ Shape: `[n_sim, obs_dim]` float32, where `obs_dim = 9 + n_cars * 18`
 
 | Field | Dims | Description |
 |-------|------|-------------|
-| Ball pos | 3 | xyz position |
-| Ball vel | 3 | xyz linear velocity |
-| Ball ang | 3 | xyz angular velocity |
-| Car pos | 3 | xyz position (per car) |
-| Car vel | 3 | xyz linear velocity (per car) |
-| Car ang | 3 | xyz angular velocity (per car) |
-| Car quat | 4 | rotation as quaternion (per car) |
-| Car boost | 1 | boost amount 0-100 (per car) |
-| Car flags | 5 | isOnGround, isDemoed, hasFlipped, hasDoubleJumped, isBoosting (per car) |
+| Ball position | [3] | xyz position |
+| Ball velocity | [3] | xyz linear velocity |
+| Ball angular velocity | [3] | xyz angular velocity |
+| Car position | [3, n_cars] | xyz position |
+| Car velocity | [3, n_cars] | xyz linear velocity |
+| Car angular velocity | [3, n_cars] | xyz angular velocity |
+| Car rotation | [4, n_cars] | quaternion |
+| Car boost | [1, n_cars] | boost amount 0-100 |
+| Car flags | [5, n_cars] | on ground, demoed, has flip, has double jump, is boosting |
 
 ### Action space
 
 Shape: `[n_sim, act_dim]` float32, where `act_dim = n_cars * 8`
 
-| Field | Range | Description |
-|-------|-------|-------------|
-| throttle | [-1, 1] | forward/reverse (per car) |
-| steer | [-1, 1] | left/right (per car) |
-| pitch | [-1, 1] | nose up/down in air (per car) |
-| yaw | [-1, 1] | nose left/right in air (per car) |
-| roll | [-1, 1] | barrel roll in air (per car) |
-| jump | {0, 1} | jump button (per car) |
-| boost | {0, 1} | boost button (per car) |
-| handbrake | {0, 1} | powerslide button (per car) |
+| Field | Dims | Description |
+|-------|------|-------------|
+| Throttle | [1, n_cars] | forward/reverse, [-1, 1] |
+| Steer | [1, n_cars] | left/right, [-1, 1] |
+| Pitch | [1, n_cars] | nose up/down in air, [-1, 1] |
+| Yaw | [1, n_cars] | nose left/right in air, [-1, 1] |
+| Roll | [1, n_cars] | barrel roll in air, [-1, 1] |
+| Jump | [1, n_cars] | jump button, {0, 1} |
+| Boost | [1, n_cars] | boost button, {0, 1} |
+| Handbrake | [1, n_cars] | powerslide button, {0, 1} |
