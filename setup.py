@@ -1,4 +1,3 @@
-import os
 import shutil
 import subprocess
 import sys
@@ -8,22 +7,33 @@ from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
 
+def run(cmd, **kwargs):
+    print(f"[carl] {' '.join(cmd)}")
+    subprocess.check_call(cmd, **kwargs)
+
+
 class CMakeBuild(build_ext):
     def run(self):
         build_dir = Path(self.build_temp)
-        build_dir.mkdir(parents=True, exist_ok=True)
 
+        print("[carl] Locating pybind11...")
         pybind_dir = subprocess.check_output(
             [sys.executable, "-c",
              "import pybind11; print(pybind11.get_cmake_dir())"],
             text=True).strip()
+        print(f"[carl] pybind11: {pybind_dir}")
 
-        subprocess.check_call([
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        print("[carl] Configuring CMake...")
+        run([
             "cmake", "-S", ".", "-B", str(build_dir),
             f"-Dpybind11_DIR={pybind_dir}",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ])
 
-        subprocess.check_call([
+        print("[carl] Building carl_module...")
+        run([
             "cmake", "--build", str(build_dir),
             "--target", "carl_module", "--parallel",
         ])
@@ -34,7 +44,10 @@ class CMakeBuild(build_ext):
 
         dest = Path(self.build_lib) / "carl"
         dest.mkdir(parents=True, exist_ok=True)
+
+        print(f"[carl] Installing {so_files[0].name}")
         shutil.copy(so_files[0], dest / so_files[0].name)
+        print("[carl] Done")
 
 
 setup(

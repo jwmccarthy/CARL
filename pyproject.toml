@@ -3,8 +3,6 @@ requires = [
     "setuptools>=64",
     "pybind11>=2.10",
     "cmake>=3.20",
-    "nvidia-cuda-runtime-cu12",
-    "nvidia-cuda-nvcc-cu12",
 ]
 build-backend = "setuptools.build_meta"
 
