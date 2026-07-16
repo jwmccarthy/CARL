@@ -83,3 +83,7 @@ Shape: `[n_sim, act_dim]` float32, where `act_dim = n_cars * 8`
 | Jump | [1, n_cars] | {0, 1} | jump button |
 | Boost | [1, n_cars] | {0, 1} | boost button |
 | Handbrake | [1, n_cars] | {0, 1} | powerslide button |
+
+### Performance
+
+Running `python/test.py` will display the ticks/s given a random action vector. Depending on the GPU and environment config, CARL performs between 5-50M ticks/s. By executing end-to-end on device, we further sidestep host-device transfers typical with CPU-based vectorized simulators.
