@@ -42,7 +42,7 @@ class CMakeBuild(build_ext):
         if not so_files:
             raise RuntimeError("carl module .so not found")
 
-        dest = Path(self.build_lib) / "carl"
+        dest = Path(self.build_lib)
         dest.mkdir(parents=True, exist_ok=True)
 
         print(f"[carl] Installing {so_files[0].name}")
