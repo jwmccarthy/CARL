@@ -44,29 +44,29 @@ obs = jax.dlpack.from_dlpack(
 
 Shape: `[n_sim, obs_dim]` float32, where `obs_dim = 9 + n_cars * 18`
 
-| Field | Dims | Description |
-|-------|------|-------------|
-| Ball position | [3] | xyz position |
-| Ball velocity | [3] | xyz linear velocity |
-| Ball angular velocity | [3] | xyz angular velocity |
-| Car position | [3, n_cars] | xyz position |
-| Car velocity | [3, n_cars] | xyz linear velocity |
-| Car angular velocity | [3, n_cars] | xyz angular velocity |
-| Car rotation | [4, n_cars] | quaternion |
-| Car boost | [1, n_cars] | boost amount 0-100 |
-| Car flags | [5, n_cars] | on ground, demoed, has flip, has double jump, is boosting |
+| Field | Dims | Range | Description |
+|-------|------|-------|-------------|
+| Ball position | [3] | | xyz position |
+| Ball velocity | [3] | | xyz linear velocity |
+| Ball angular velocity | [3] | | xyz angular velocity |
+| Car position | [3, n_cars] | | xyz position |
+| Car velocity | [3, n_cars] | | xyz linear velocity |
+| Car angular velocity | [3, n_cars] | | xyz angular velocity |
+| Car rotation | [4, n_cars] | | quaternion |
+| Car boost | [1, n_cars] | [0, 100] | boost amount |
+| Car flags | [5, n_cars] | {0, 1} | on ground, demoed, has flip, has double jump, is boosting |
 
 ### Action space
 
 Shape: `[n_sim, act_dim]` float32, where `act_dim = n_cars * 8`
 
-| Field | Dims | Description |
-|-------|------|-------------|
-| Throttle | [1, n_cars] | forward/reverse, [-1, 1] |
-| Steer | [1, n_cars] | left/right, [-1, 1] |
-| Pitch | [1, n_cars] | nose up/down in air, [-1, 1] |
-| Yaw | [1, n_cars] | nose left/right in air, [-1, 1] |
-| Roll | [1, n_cars] | barrel roll in air, [-1, 1] |
-| Jump | [1, n_cars] | jump button, {0, 1} |
-| Boost | [1, n_cars] | boost button, {0, 1} |
-| Handbrake | [1, n_cars] | powerslide button, {0, 1} |
+| Field | Dims | Range | Description |
+|-------|------|-------|-------------|
+| Throttle | [1, n_cars] | [-1, 1] | forward/reverse |
+| Steer | [1, n_cars] | [-1, 1] | left/right |
+| Pitch | [1, n_cars] | [-1, 1] | nose up/down in air |
+| Yaw | [1, n_cars] | [-1, 1] | nose left/right in air |
+| Roll | [1, n_cars] | [-1, 1] | barrel roll in air |
+| Jump | [1, n_cars] | {0, 1} | jump button |
+| Boost | [1, n_cars] | {0, 1} | boost button |
+| Handbrake | [1, n_cars] | {0, 1} | powerslide button |
