@@ -24,14 +24,15 @@ set_target_properties(carl PROPERTIES
     CUDA_STANDARD 20
     CUDA_STANDARD_REQUIRED YES
     CUDA_SEPARABLE_COMPILATION ON
+    POSITION_INDEPENDENT_CODE ON
 )
 
-target_include_directories(carl PRIVATE
+target_include_directories(carl PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     ${CUDAToolkit_INCLUDE_DIRS}
 )
 
-target_link_libraries(carl PRIVATE
+target_link_libraries(carl PUBLIC
     CUDA::cudart
 )
 
@@ -43,9 +44,9 @@ target_compile_options(carl PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-allow-unsupported-compiler>
 )
 
-add_executable(main
-    src/main.cu
-)
+# --- Benchmark ---
+
+add_executable(main src/main.cu)
 
 set_target_properties(main PROPERTIES
     CXX_STANDARD 20
@@ -54,18 +55,29 @@ set_target_properties(main PROPERTIES
     CUDA_STANDARD_REQUIRED YES
 )
 
-target_include_directories(main PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    ${CUDAToolkit_INCLUDE_DIRS}
-)
-
-target_link_libraries(main PRIVATE
-    carl
-    CUDA::cudart
-)
+target_link_libraries(main PRIVATE carl)
 
 target_compile_options(main PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wno-attributes>
     $<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=174,20044>
     $<$<COMPILE_LANGUAGE:CUDA>:-allow-unsupported-compiler>
 )
+
+# --- Python module ---
+
+option(CARL_BUILD_PYTHON "Build the carl Python module" ON)
+
+if(CARL_BUILD_PYTHON)
+    find_package(pybind11 CONFIG REQUIRED)
+
+    pybind11_add_module(carl_module python/carl.cu)
+
+    set_target_properties(carl_module PROPERTIES
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED YES
+        CUDA_SEPARABLE_COMPILATION ON
+        OUTPUT_NAME carl
+    )
+
+    target_link_libraries(carl_module PRIVATE carl)
+endif()

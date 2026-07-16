@@ -51,14 +51,14 @@ CARL_D CARL_FI void updateJump(ControlCtx& ctx)
     CarInternalState& s = ctx.internal();
     const CarControls& c = ctx.input();
 
-    // Keep a short grace period so the initial jump can leave the ground.
+    // Keep a short grace period so the initial jump can leave the ground
     if (ctx.onGround && !s.isJumping && !jumpGraceActive(s))
     {
         s.hasJumped = false;
         s.jumpTime = 0.f;
     }
 
-    // Holding jump extends acceleration through the configured jump window.
+    // Holding jump extends acceleration through the configured jump window
     if (s.isJumping)
     {
         s.isJumping = shouldContinueJump(s, c);
@@ -108,7 +108,7 @@ CARL_D CARL_FI Vec3 worldDodgeVel(
     const ControlCtx& ctx,
     const Vec3& localVel)
 {
-    // Convert local dodge velocity into the car's horizontal world basis.
+    // Convert local dodge velocity into the car's horizontal world basis
     const Vec3 flatFwd = { ctx.fwd.x, ctx.fwd.y, 0.f };
     const float denom = flatFwd.lenSq();
     const Vec3 flatFwdN = denom > 1e-12f
@@ -170,12 +170,11 @@ CARL_D CARL_FI void tryStartDodge(ControlCtx& ctx)
     const CarControls& c = ctx.input();
 
     // A flip reset (landing on ball while airborne, then leaving) leaves
-    // hasJumped false with a fresh dodge window. A normal jump sets it true.
-    // Either way the car can dodge if it still has a flip available.
+    // hasJumped false with a fresh dodge window. A normal jump sets it true    // Either way the car can dodge if it still has a flip available
     const bool canDodge = hasFlipOrJump(s);
     if (!ctx.jumpPressed || !canDodge) return;
 
-    // A large directional input starts a flip; otherwise this is a double jump.
+    // Large directional input starts a flip, otherwise double jump
     const Vec3 dodge = { -c.pitch, c.yaw + c.roll, 0.f };
     if (dodge.lenSq() >= DODGE_DEADZONE * DODGE_DEADZONE)
     {
@@ -200,7 +199,7 @@ CARL_D CARL_FI void updateFlipMotion(ControlCtx& ctx)
     s.flipTime += PHYS_DT;
     if (s.flipTime > FLIP_TORQUE_TIME) return;
 
-    // Damp vertical velocity only during the active flip landing window.
+    // Damp vertical velocity only during the active flip landing window
     Vec3 vel = Vec3::ldg(ctx.state->cars.vel[ctx.carIdx]);
     const bool dampZ = s.flipTime >= FLIP_Z_DAMP_START
         && (vel.z < 0.f || s.flipTime < FLIP_Z_DAMP_END);
@@ -247,7 +246,7 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
 
     if (!s.isFlipping) return true;
 
-    // Active flip torque temporarily replaces normal aerial input.
+    // Active flip torque temporarily replaces normal aerial input
     const Vec3 rel = s.flipRelTorque;
     if (rel.lenSq() <= 1e-12f) return true;
 
@@ -299,8 +298,7 @@ CARL_D CARL_FI void applyAirTorque(ControlCtx& ctx)
     Vec3 damping = Vec3::zero();
     const bool hasInput = input.lenSq() > 0.f;
 
-    // Resolve torque and damping over the pitch, yaw, and roll axes uniformly.
-    #pragma unroll
+    // Resolve torque and damping over the pitch, yaw, and roll axes uniformly    #pragma unroll
     for (int i = 0; i < AIR_AXIS_COUNT; i++)
     {
         const AirAxis axis = (AirAxis)i;

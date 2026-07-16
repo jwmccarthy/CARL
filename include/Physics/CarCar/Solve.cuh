@@ -41,7 +41,7 @@ CARL_D CARL_FI void applyPairResult(
     bodyB.vel = bodyB.vel + bodyB.deltaVel;
     bodyB.ang = bodyB.ang + bodyB.deltaAng;
 
-    // Split impulse changes position without leaking into reported velocity.
+    // Split impulse changes position without leaking into reported velocity
     bodyA.pos = bodyA.pos + bodyA.pushVel * PHYS_DT;
     bodyB.pos = bodyB.pos + bodyB.pushVel * PHYS_DT;
     bodyA.cen = bodyA.pos + bodyA.rot.toWorld(CAR_OFFSETS);
@@ -49,6 +49,31 @@ CARL_D CARL_FI void applyPairResult(
 
     clampSolverVelocity(bodyA);
     clampSolverVelocity(bodyB);
+}
+
+CARL_D CARL_FI void solveCarCarPair(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    int pairIdx,
+    int carA,
+    int carB);
+
+CARL_D CARL_FI void solveCarCarForSim(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    int simIdx)
+{
+    const int carBase = simIdx * state->nCars;
+    int pairIdx = simIdx * space->ccMan.maxPairsPerSim;
+
+    for (int a = 0; a < state->nCars - 1; a++)
+    {
+        for (int b = a + 1; b < state->nCars; b++)
+        {
+            solveCarCarPair(state, space, pairIdx, carBase + a, carBase + b);
+            pairIdx++;
+        }
+    }
 }
 
 CARL_D CARL_FI void solveCarCarPair(

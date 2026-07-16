@@ -69,7 +69,7 @@ CARL_D CARL_FI bool sphereTriangleContact(
     const float distSq = delta.lenSq();
     if (distSq >= radius * radius) return false;
 
-    // Face normals suppress false contacts along tessellation edges.
+    // Face normals suppress false contacts along tessellation edges
     Vec3 normal = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0);
     const float normalLenSq = normal.lenSq();
     if (normalLenSq < 1e-12f) return false;

@@ -4,5 +4,11 @@ build/
 .opencode/
 *.o
 *.a
+*.so
+*.egg-info/
 core.*
 compile_commands.json
+__pycache__/
+*.pyc
+*.cpython-*.so
+.opencode

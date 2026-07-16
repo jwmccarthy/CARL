@@ -13,7 +13,6 @@
 #include "Physics/FinishTick.cuh"
 #include "Physics/Goals.cuh"
 #include "Physics/SuspensionRaycast.cuh"
-#include "Physics/SuspensionUtils.cuh"
 
 __global__ void resetKernel(GameState* __restrict__ state)
 {
@@ -122,42 +121,8 @@ __global__ void carCarBallSolveKernel(
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim) return;
 
-    const int carBase = simIdx * state->nCars;
-    int pairIdx = simIdx * space->ccMan.maxPairsPerSim;
-
-    for (int a = 0; a < state->nCars - 1; a++)
-    {
-        for (int b = a + 1; b < state->nCars; b++)
-        {
-            solveCarCarPair(
-                state, space, pairIdx, carBase + a, carBase + b);
-            pairIdx++;
-        }
-    }
-
-    const int ballIdx = simIdx;
-    const Vec3 ballVel = Vec3::ldg(state->ball.vel[ballIdx]);
-    const Vec3 ballAng = Vec3::ldg(state->ball.ang[ballIdx]);
-    const bool sleeping = ballVel.lenSq() == 0.f && ballAng.lenSq() == 0.f;
-    const Vec3 preSolveVel = sleeping
-        ? ballVel
-        : ballVel * powf(1.f - BALL_DRAG, PHYS_DT)
-            + WORLD_GRAVITY * PHYS_DT;
-
-    Vec3 pushVel = Vec3::zero();
-    if (!sleeping)
-    {
-        pushVel = solveBallArena(state, arena, ballIdx, preSolveVel);
-    }
-
-    solveBallCarForSim(state, simIdx, preSolveVel);
-
-    Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
-    ballPos = ballPos + pushVel * PHYS_DT;
-    ballPos = ballPos + Vec3::ldg(state->ball.vel[ballIdx]) * PHYS_DT;
-    state->ball.pos[ballIdx] = ballPos;
-
-    detectGoal(state, simIdx, ballPos);
+    solveCarCarForSim(state, space, simIdx);
+    solveBallForSim(state, arena, simIdx);
 }
 
 __global__ void integrateCarsKernel(GameState* __restrict__ state)

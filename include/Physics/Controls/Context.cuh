@@ -68,7 +68,7 @@ CARL_D CARL_FI ControlCtx makeControlCtx(
     ctx.fwdSpeed = Vec3::ldg(state->cars.vel[carIdx]).dot(ctx.fwd);
     ctx.absFwdSpeed = fabsf(ctx.fwdSpeed);
 
-    // RocketSim treats three suspension contacts as fully grounded.
+    // RocketSim treats three suspension contacts as fully grounded
     ctx.wheelConCount = countWheelContacts(ctx);
     ctx.onGround = ctx.wheelConCount >= 3;
 
@@ -89,7 +89,7 @@ CARL_D CARL_FI void addCarVel(ControlCtx& ctx, const Vec3& vel)
 
 CARL_D CARL_FI void addDeferredVel(ControlCtx& ctx, const Vec3& vel)
 {
-    // Deferred velocity is applied with gravity during the arena solve.
+    // Deferred velocity is applied with gravity during the arena solve
     CarSuspension& susp = ctx.susp();
     susp.jumpImpulse[ctx.carIdx] =
         Vec3::ldg(susp.jumpImpulse[ctx.carIdx]) + vel;
@@ -97,7 +97,7 @@ CARL_D CARL_FI void addDeferredVel(ControlCtx& ctx, const Vec3& vel)
 
 CARL_D CARL_FI void stageLagged(float& current, float& previous, float next)
 {
-    // Suspension consumes the previous tick while controls stage the next.
+    // Suspension consumes the previous tick while controls stage the next
     previous = current;
     current = next;
 }

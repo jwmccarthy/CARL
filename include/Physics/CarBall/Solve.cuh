@@ -260,7 +260,7 @@ CARL_D __noinline__ void solveBallCarForSim(
     const Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
     const float maxDist = BALL_RADIUS + CAR_BALL_SOLVER_HALF_EX.len();
 
-    // Pair solves stay serial because each car sees prior pair results.
+    // Pair solves stay serial because each car sees prior pair results
     for (int carOffset = 0; carOffset < state->nCars; carOffset++)
     {
         const int carIdx = carBase + carOffset;

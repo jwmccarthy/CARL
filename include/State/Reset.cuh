@@ -15,7 +15,7 @@ CARL_D CARL_FI void resetCar(CarState* __restrict__ cars, int carIdx, int locIdx
 {
     CarSpawn loc = KICKOFF_LOCATIONS[locIdx % 5];
 
-    // Orange mirrors both horizontal coordinates and rotates by half a turn.
+    // Orange mirrors both horizontal coordinates and rotates by half a turn
     float x   = invert ? -loc.x   : loc.x;
     float y   = invert ? -loc.y   : loc.y;
     float yaw = invert ? loc.yaw + PI : loc.yaw;
@@ -34,7 +34,7 @@ CARL_D CARL_FI void resetToKickoff(GameState* __restrict__ state, int simIdx)
     const int nOrange = state->nOrange;
     const int nCars = state->nCars;
 
-    // Both teams use corresponding entries from one shuffled location order.
+    // Both teams use corresponding entries from one shuffled location order
     const uint32_t seed = hash32((uint32_t)state->seed) ^ (uint32_t)simIdx;
     const int permIdx = randomIndex(seed, 120);
     const int* carLocs = KICKOFF_PERMUTATIONS[permIdx];

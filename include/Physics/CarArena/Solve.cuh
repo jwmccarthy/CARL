@@ -240,7 +240,7 @@ CARL_D __noinline__ void solveCarManifold(
         warmStartRow(body, contacts[i].normal);
     }
 
-    // Split impulses correct penetration without changing reported velocity.
+    // Split impulses correct penetration without changing reported velocity
     for (int iter = 0; iter < CAR_SOLVER_ITERS; iter++)
     {
         #pragma unroll

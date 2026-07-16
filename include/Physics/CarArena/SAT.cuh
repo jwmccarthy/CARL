@@ -99,7 +99,7 @@ CARL_D CARL_FI SATResult carTriSAT(const TriSAT& tri)
 
     testCarTriAxis(tri.e0.cross(tri.e1), tri, 0, true, res);
 
-    if (!res.overlap) return res;  // Early out on likely tri-normal separating axis
+    if (!res.overlap) return res;  // Early out on likely tri-normal axis
 
     testCarTriAxis(WORLD_X, tri, 1, false, res);
     testCarTriAxis(WORLD_Y, tri, 2, false, res);

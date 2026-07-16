@@ -17,13 +17,13 @@ CARL_D CARL_FI void processCarControls(
 
     ControlCtx ctx = makeControlCtx(state, space, carIdx);
 
-    // Stage grounded drive state before suspension consumes it in the solve.
+    // Stage grounded drive state before suspension consumes it in the solve
     updateGroundDrive(ctx);
     updateBoost(ctx);
     updateSteer(ctx);
     updateAutoFlip(ctx);
 
-    // Aerial control depends on how many wheels currently reach the surface.
+    // Aerial control depends on how many wheels currently reach the surface
     if (ctx.wheelConCount < 3)
     {
         updateAirControl(ctx, ctx.wheelConCount == 0);

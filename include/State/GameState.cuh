@@ -88,7 +88,7 @@ struct CarState
     DeviceArray<int>   isDemoed;
     DeviceArray<float> demoRespawnTimer;
     DeviceArray<int>   carContactIdx;       // Index of car last bumped
-    DeviceArray<float> carContactCooldown;  // Ticks since ^^ occurred
+    DeviceArray<float> carContactCooldown;  // Ticks since last bump
     DeviceArray<int>   ballHitTick;         // Last extra impulse tick
     DeviceArray<int>   ballContactTick;     // Last live contact tick
 

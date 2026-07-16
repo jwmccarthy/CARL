@@ -114,7 +114,7 @@ CARL_D CARL_FI void adjustInternalEdgeContact(
         }
     }
 
-    // Only adjust contacts close enough to a shared triangle edge.
+    // Only adjust contacts close enough to a shared triangle edge
     if (bestEdge < 0 || bestDistSq >= TRI_EDGE_DIST_MAX_SQ) return;
 
     const Vec3 localNormal = contact.normal.norm();
@@ -141,7 +141,7 @@ CARL_D CARL_FI void adjustInternalEdgeContact(
     const Vec3 normalB = rotateAroundAxis(
         tri.faceNormal, edgeAxis, angle) * side;
 
-    // Normals behind both adjoining faces should use the current face normal.
+    // Normals behind both adjoining faces should use the current face normal
     if (localNormal.dot(normalA) < 0.f && localNormal.dot(normalB) < 0.f)
     {
         snapToFace();
@@ -150,7 +150,7 @@ CARL_D CARL_FI void adjustInternalEdgeContact(
 
     Vec3 clamped;
 
-    // Accept the edge clamp only when the result still points out of the face.
+    // Accept the edge clamp only when the result still points out of the face
     if (clampNormal(edgeAxis, normalA, localNormal, angle, clamped)
         && clamped.dot(tri.faceNormal) > 0.f)
     {

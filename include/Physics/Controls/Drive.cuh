@@ -44,13 +44,13 @@ CARL_D CARL_FI void updateGroundDrive(ControlCtx& ctx)
     const CarControls& c = ctx.input();
     CarSuspension& susp = ctx.susp();
 
-    // Boost promotes effective throttle without changing raw-throttle autoroll state.
+    // Boost promotes effective throttle without changing raw-throttle autoroll state
     const float throttle = effectiveThrottle(ctx);
     const bool opposing = opposingThrottle(throttle, ctx.fwdSpeed, ctx.absFwdSpeed);
     const float brake = brakeFactor(ctx, throttle, opposing);
     const float drive = engineDrive(ctx, throttle, opposing);
 
-    // Brake and drive are staged one tick behind to match wheel friction order.
+    // Brake and drive are staged one tick behind to match wheel friction order
     stageLagged(
         susp.brakeFactor[ctx.carIdx],
         susp.brakeFactorPrev[ctx.carIdx],
@@ -80,7 +80,7 @@ CARL_D CARL_FI void updateBoost(ControlCtx& ctx)
     CarInternalState& s = ctx.internal();
     const CarControls& c = ctx.input();
 
-    // Once activated, boost remains on for its minimum duration.
+    // Once activated, boost remains on for its minimum duration
     s.isBoosting = shouldBoost(s, c);
 
     if (s.isBoosting)
@@ -121,7 +121,7 @@ CARL_D CARL_FI void updateSteer(ControlCtx& ctx)
     s.handbrakeVal = clampf(s.handbrakeVal, 0.f, 1.f);
     susp.handbrakeVal[ctx.carIdx] = s.handbrakeVal;
 
-    // Powerslide blends toward a separate, more permissive steering curve.
+    // Powerslide blends toward a separate, more permissive steering curve
     float angle = steerAngleFromSpeed(ctx.absFwdSpeed);
     if (s.handbrakeVal > 0.f)
     {
@@ -140,7 +140,7 @@ CARL_D CARL_FI void tryStartAutoFlip(ControlCtx& ctx)
     if (!ctx.jumpPressed) return;
     if (__ldg(&ctx.space->ctMan.count[ctx.carIdx]) == 0) return;
 
-    // Autoflip is allowed only against an upward-facing chassis contact.
+    // Autoflip is allowed only against an upward-facing chassis contact
     const int manIdx = ctx.carIdx * MAX_CAR_MANIFOLD_POINTS;
     const Vec3 normal = Vec3::ldg(ctx.space->ctMan.worldNormal[manIdx]);
     if (normal.z <= CAR_AUTOFLIP_NORMZ_THRESH) return;

@@ -90,12 +90,12 @@ CARL_D CARL_FI SuspensionWheelContribution computeSuspWheel(
         ? SUSP_DAMPING_COMPRESSION
         : SUSP_DAMPING_RELAXATION;
 
-    // The damping term receives the suspension clip factor exactly once.
+    // The damping term receives the suspension clip factor exactly once
     float suspForce = ((restLen - suspLen) * SUSP_STIFFNESS - damping * projVel)
                     * clipped * suspForceScale(wheel);
     if (suspForce <= 0.f) suspForce = 0.f;
 
-    // Spring impulse plus Bullet's extra wheel-penetration pushback.
+    // Spring impulse plus Bullet's extra wheel-penetration pushback
     float suspImpulse = 0.f;
 
     if (suspForce != 0.f)
@@ -182,7 +182,7 @@ CARL_D CARL_FI SuspensionWheelContribution computeSuspWheel(
     const float lateralFriction = lateralBase * frictionScale;
     const float longitudinalFriction = longitudinalBase * frictionScale;
 
-    // Friction coefficients are consumed one tick after they are calculated.
+    // Friction coefficients are consumed one tick after they are calculated
     const float lateralFrictionUsed = __ldg(&susp.latFrictionPrev[wheelIdx]);
     const float longitudinalFrictionUsed = __ldg(&susp.lonFrictionPrev[wheelIdx]);
     susp.latFrictionPrev[wheelIdx] = lateralFriction;
@@ -195,14 +195,14 @@ CARL_D CARL_FI SuspensionWheelContribution computeSuspWheel(
     const float latJacInv = 1.f / fmaxf(jacobian, 1e-8f);
     const float lateralVel = axleDir.dot(pointVel);
 
-    // Bullet removes only a fraction of lateral slip per tick.
+    // Bullet removes only a fraction of lateral slip per tick
     constexpr float CONTACT_DAMPING = 0.2f;
     const float sideImpulse =
         -CONTACT_DAMPING * lateralVel * latJacInv;
 
     const float longitudinalVel = forwardDir.dot(pointVel);
 
-    // Scale retained from RocketSim's rolling-friction calculation.
+    // Scale retained from RocketSim's rolling-friction calculation
     constexpr float ROLLING_FRICTION_SCALE_MAGIC = 113.73963f;
     const float engineDrive = __ldg(&susp.engineDrivePrev[frame.carIdx]);
     const float rollingFriction = engineDrive != 0.f
@@ -238,7 +238,7 @@ CARL_D CARL_FI void applySuspAggregate(
     bool applyAutoroll = false;
 
     // Sticky force: applied whenever any wheel has contact (suspension ray hit),
-    // matching RocketSim's wheelsHaveWorldContact gate.
+    // matching RocketSim's wheelsHaveWorldContact gate
     if (contacts.count > 0)
     {
         upwardsDir = contacts.normalSum
@@ -248,7 +248,7 @@ CARL_D CARL_FI void applySuspAggregate(
         const bool fullStick =
             throttle != 0.f || forwardSpeed > CAR_STOPPING_VEL;
 
-        // Base sticky is 0 when fully grounded (3+ wheels), 0.5 otherwise.
+        // Base sticky is 0 when fully grounded (3+ wheels), 0.5 otherwise
         float stickyScale = contacts.count >= 3 ? 0.f : 0.5f;
         if (fullStick) stickyScale += 1.f - fabsf(upwardsDir.z);
 
@@ -271,7 +271,7 @@ CARL_D CARL_FI void applySuspAggregate(
 
     if (!applyAutoroll) return;
 
-    // Align the car's up direction with the aggregate contact normal.
+    // Align the car's up direction with the aggregate contact normal
     const Vec3 groundDownDir = upwardsDir.neg();
     const Vec3 crossRightDir = upwardsDir.cross(frame.forward);
     const Vec3 crossForwardDir = groundDownDir.cross(crossRightDir);

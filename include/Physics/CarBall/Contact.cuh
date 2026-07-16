@@ -30,7 +30,7 @@ CARL_D CARL_FI BallCarContact sphereOBBContact(
     const float intersectDist = BALL_RADIUS + CAR_BALL_SHAPE_MARGIN;
     const float acceptDist = intersectDist + CAR_BALL_CONTACT_BREAK;
 
-    // Bullet clamps against the core box, then pushes out by its margin.
+    // Bullet clamps against the core box, then pushes out by its margin
     if (distSq > 1e-8f)
     {
         if (distSq >= acceptDist * acceptDist) return contact;

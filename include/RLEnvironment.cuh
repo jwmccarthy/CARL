@@ -17,7 +17,7 @@ private:
     GameState* d_state = nullptr;
     Workspace* d_space = nullptr;
     ArenaMesh* d_arena = nullptr;
-    
+
     cudaStream_t stream;
 
     PrefixSum carTriCandPrefix;
@@ -40,10 +40,15 @@ private:
 
 public:
     RLEnvironment(
-        const int nSim, const int nBlue, 
+        const int nSim, const int nBlue,
         const int nOrange, const int seed);
     ~RLEnvironment();
 
     void step();
     void reset();
+
+    GameState* getDeviceState() { return d_state; }
+    cudaStream_t getStream() { return stream; }
+    int getNSim() const { return h_state.nSim; }
+    int getNCars() const { return h_state.nCars; }
 };
