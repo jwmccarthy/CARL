@@ -5,10 +5,10 @@ import torch
 sims = 4096
 env = carl.Env(n_sim=sims, n_blue=3, n_orange=3, seed=123)
 
-act = torch.zeros((sims, env.act_dim), device="cuda")
-act_dl = torch.utils.dlpack.to_dlpack(act)
-
 ticks = 10000
+
+act = torch.rand((sims, env.act_dim), device="cuda")
+act_dl = torch.utils.dlpack.to_dlpack(act)
 
 env.step(act_dl)
 torch.cuda.synchronize()
