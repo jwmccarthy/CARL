@@ -1,30 +1,15 @@
-# CARL
+# CARL: CUDA-Accelerated Rocket League
 
-CUDA-native Rocket League physics simulation for vectorized reinforcement learning
+This is a vectorized Rocket League physics simulator based on [RocketSim](https://github.com/ZealanL/RocketSim) and inspired by [PureJaxRL](https://chrislu.page/blog/meta-disco/). Intended for highly-parallel reinforcement learning.
 
-## Features
-
-- Full car physics: suspension, tire friction, controls, jump/dodge/flip
-- Collision: car-arena (SAT + clip), car-car (OBB SAT), car-ball, ball-arena
-- Game systems: boost pads, demos with respawn selection, goal detection and scoring
-- 1024+ parallel simulations on a single GPU
-- Python bindings via pybind11 with zero-copy DLPack tensor I/O
-- No host-device copies in the simulation loop
-
-## Install
-
-```bash
-pip install .
-```
-
-For development:
-
-```bash
-pip install -e . --no-build-isolation
-cmake --build build --parallel && cp build/carl*.so .
-```
+### Features
+- Full Rocket League physics simulation (car-{car, ball, arena} collision response, boost impulses, ground-suspension interaction, etc.)
+- DLPack I/O for generalized device action & observations (i.e. torch.utils.dlpack, jax.dlpack)
+- Manages game state entirely on device - no host-device transfer overhead required
 
 ## Usage
+
+`PyTorch`:
 
 ```python
 import carl
@@ -34,12 +19,13 @@ env = carl.Env(n_sim=1024, n_blue=4, n_orange=4, seed=0)
 
 actions = torch.zeros((1024, env.act_dim), device="cuda")
 obs = torch.utils.dlpack.from_dlpack(
-    env.step(torch.utils.dlpack.to_dlpack(actions)))
+    env.step(torch.utils.dlpack.to_dlpack(actions))
+)
 
 print(f"obs: {obs.shape} {obs.dtype}")  # torch.Size([1024, 153]) torch.float32
 ```
 
-JAX:
+`JAX`:
 
 ```python
 import carl
@@ -50,13 +36,6 @@ env = carl.Env(n_sim=1024, n_blue=4, n_orange=4, seed=0)
 
 actions = jnp.zeros((1024, env.act_dim), dtype=jnp.float32)
 obs = jax.dlpack.from_dlpack(
-    env.step(jax.dlpack.to_dlpack(actions)))
+    env.step(jax.dlpack.to_dlpack(actions))
+)
 ```
-
-## Observation space
-
-Per simulation: ball (pos, vel, ang) + per car (pos, vel, ang, quat, boost, flags)
-
-## Action space
-
-Per car: throttle, steer, pitch, yaw, roll, jump, boost, handbrake
