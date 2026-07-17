@@ -31,13 +31,16 @@ CARL_D CARL_FI void packObservations(
         const Vec3 vel = Vec3::ldg(state->cars.vel[carIdx]);
         const Vec3 ang = Vec3::ldg(state->cars.ang[carIdx]);
         const Quat rot = Quat::ldg(state->cars.rot[carIdx]);
+        const Vec3 forward = rot.toWorld(WORLD_X);
+        const Vec3 up = rot.toWorld(WORLD_Z);
         const CarInternalState internal =
             state->cars.internal[carIdx];
 
         obs[o++] = pos.x; obs[o++] = pos.y; obs[o++] = pos.z;
         obs[o++] = vel.x; obs[o++] = vel.y; obs[o++] = vel.z;
         obs[o++] = ang.x; obs[o++] = ang.y; obs[o++] = ang.z;
-        obs[o++] = rot.x; obs[o++] = rot.y; obs[o++] = rot.z; obs[o++] = rot.w;
+        obs[o++] = forward.x; obs[o++] = forward.y; obs[o++] = forward.z;
+        obs[o++] = up.x; obs[o++] = up.y; obs[o++] = up.z;
         obs[o++] = internal.boost;
         obs[o++] = (float)internal.isOnGround;
         obs[o++] = (float)(state->cars.isDemoed[carIdx] != 0);

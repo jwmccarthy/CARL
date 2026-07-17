@@ -3,7 +3,10 @@ import carl
 import torch
 
 sims = 4096
-env = carl.Env(n_sim=sims, n_blue=3, n_orange=3, seed=123)
+skip_ticks = 8
+env = carl.Env(
+    n_sim=sims, n_blue=3, n_orange=3, seed=123, skip_ticks=skip_ticks
+)
 
 ticks = 10000
 
@@ -20,4 +23,4 @@ for i in range(ticks):
 torch.cuda.synchronize()
 dur = time.time() - start
 
-print(f"{ticks * sims / dur:,.0f} ticks/s")
+print(f"{ticks * skip_ticks * sims / dur:,.0f} ticks/s")

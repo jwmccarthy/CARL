@@ -15,7 +15,9 @@ CARL is a vectorized Rocket League physics simulator based on [RocketSim](https:
 import carl
 import torch
 
-env = carl.Env(n_sim=1024, n_blue=4, n_orange=4, seed=0)
+env = carl.Env(
+    n_sim=1024, n_blue=4, n_orange=4, seed=0, skip_ticks=8
+)
 
 actions = torch.zeros((1024, env.n_cars, 7), dtype=torch.int32, device="cuda")
 obs = torch.utils.dlpack.from_dlpack(
@@ -48,6 +50,7 @@ obs = jax.dlpack.from_dlpack(
 | n_blue | int | constructor | Blue team size per simulation |
 | n_orange | int | constructor | Orange team size per simulation |
 | seed | int | constructor | Random seed |
+| skip_ticks | int | constructor, read/write | Physics ticks per controller input (default 1) |
 | max_ticks | int | constructor | Ticks before episode ends |
 | n_cars | int | readonly | Total cars per simulation (n_blue + n_orange) |
 | obs_dim | int | readonly | Observation vector length |
@@ -56,7 +59,7 @@ obs = jax.dlpack.from_dlpack(
 
 ### Observation space
 
-Shape: `[n_sim, obs_dim]` float32, where `obs_dim = 9 + n_cars * 18`
+Shape: `[n_sim, obs_dim]` float32, where `obs_dim = 9 + n_cars * 21`
 
 | Field | Dims | Range | Description |
 |-------|------|-------|-------------|
@@ -66,7 +69,8 @@ Shape: `[n_sim, obs_dim]` float32, where `obs_dim = 9 + n_cars * 18`
 | Car position | [3, n_cars] | | xyz position |
 | Car velocity | [3, n_cars] | | xyz linear velocity |
 | Car angular velocity | [3, n_cars] | | xyz angular velocity |
-| Car rotation | [4, n_cars] | | quaternion |
+| Car forward | [3, n_cars] | [-1, 1] | forward unit vector |
+| Car up | [3, n_cars] | [-1, 1] | up unit vector |
 | Car boost | [1, n_cars] | [0, 100] | boost amount |
 | Car flags | [5, n_cars] | {0, 1} | on ground, demoed, has flip, has double jump, is boosting |
 
@@ -100,6 +104,8 @@ actions[:, 0] = torch.tensor(
 
 Horizontal and vertical are separate fields, so diagonal steering and dodges are possible. Opposing inputs within one field, such as left and right, are mutually exclusive.
 
+Each call to `step` applies the supplied controls before the first physics tick and holds them for all `skip_ticks` ticks. The returned observation, rewards, touches, and dones describe the final tick. Set `skip_ticks=1` to request controls every physics tick.
+
 `env.action_nvec` contains the complete cardinality array, repeated for every car:
 
 ```python
@@ -120,4 +126,4 @@ action_space = gym.spaces.MultiDiscrete(
 
 ### Performance
 
-Running `python/test.py` will display the ticks/s given a random action vector. Depending on the GPU and environment config, CARL simulates between 5-50M ticks/s. By executing end-to-end on device, we also sidestep host-device transfer latency inherent to CPU-based vectorized simulators.
+Running `python/test.py` will display the ticks/s given an action vector. Depending on the GPU and environment config, CARL simulates between 5-50M ticks/s. By executing end-to-end on device, we also sidestep host-device transfer latency inherent to CPU-based vectorized simulators.

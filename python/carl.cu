@@ -45,6 +45,7 @@ class EnvWrapper
 {
     RLEnvironment env;
     EnvIO io;
+    int skipTicks;
 
     const int32_t* actionData(const DLManagedTensor* tensor) const
     {
@@ -74,10 +75,14 @@ class EnvWrapper
     }
 
 public:
-    EnvWrapper(int nSim, int nBlue, int nOrange, int seed)
+    EnvWrapper(int nSim, int nBlue, int nOrange, int seed, int skipTicks)
         : env(nSim, nBlue, nOrange, seed)
         , io(nSim, env.getNCars(), env.getStream())
+        , skipTicks(skipTicks)
     {
+        if (skipTicks < 1)
+            throw py::value_error("skip_ticks must be at least 1");
+
         env.reset();
         io.packObs(env.getDeviceState());
         io.packRewardsDones(env.getDeviceState());
@@ -89,7 +94,8 @@ public:
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setActions(actionData(actTensor));
 
-        env.step(io.getActions());
+        for (int tick = 0; tick < skipTicks; tick++)
+            env.step(io.getActions());
         
         io.packObs(env.getDeviceState());
         io.packRewardsDones(env.getDeviceState());
@@ -106,6 +112,7 @@ public:
 
     py::object getObs()     { return tensorToCapsule(io.getObsTensor()); }
     py::object getRewards() { return tensorToCapsule(io.getRewardsTensor()); }
+    py::object getTouches() { return tensorToCapsule(io.getTouchesTensor()); }
     py::object getDones()   { return tensorToCapsule(io.getDonesTensor()); }
 
     int getObsDim() const { return io.getObsDim(); }
@@ -124,6 +131,13 @@ public:
         return cars;
     }
     void setMaxTicks(int ticks) { io.setMaxTicks(ticks); }
+    int getSkipTicks() const { return skipTicks; }
+    void setSkipTicks(int ticks)
+    {
+        if (ticks < 1)
+            throw py::value_error("skip_ticks must be at least 1");
+        skipTicks = ticks;
+    }
 };
 
 PYBIND11_MODULE(carl, m)
@@ -131,17 +145,21 @@ PYBIND11_MODULE(carl, m)
     m.doc() = "CARL: CUDA Rocket League simulation";
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int>(),
+        .def(py::init<int, int, int, int, int>(),
              py::arg("n_sim"), py::arg("n_blue"),
-             py::arg("n_orange"), py::arg("seed"))
+             py::arg("n_orange"), py::arg("seed"),
+             py::arg("skip_ticks") = 1)
 
         .def("step",        &EnvWrapper::step, py::arg("actions"))
         .def("reset",       &EnvWrapper::reset)
         .def("get_obs",     &EnvWrapper::getObs)
         .def("get_rewards", &EnvWrapper::getRewards)
+        .def("get_ball_touches", &EnvWrapper::getTouches)
         .def("get_dones",   &EnvWrapper::getDones)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
+        .def_property("skip_ticks", &EnvWrapper::getSkipTicks,
+                      &EnvWrapper::setSkipTicks)
         .def_property_readonly("obs_dim",   &EnvWrapper::getObsDim)
         .def_property_readonly("act_dim",   &EnvWrapper::getActDim)
         .def_property_readonly("action_nvec", &EnvWrapper::getActionNvec)

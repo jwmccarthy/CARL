@@ -27,11 +27,13 @@ private:
     float* d_obs = nullptr;
     DiscreteControls* d_actions = nullptr;
     float* d_rewards = nullptr;
+    float* d_touches = nullptr;
     bool*  d_dones = nullptr;
 
     int64_t obsShape[2];
     int64_t actShape[3];
     int64_t rewardShape[1];
+    int64_t touchShape[2];
     int64_t doneShape[1];
 
     int nSim;
@@ -57,6 +59,7 @@ public:
     DLManagedTensor* getObsTensor();
     DLManagedTensor* getActionsTensor();
     DLManagedTensor* getRewardsTensor();
+    DLManagedTensor* getTouchesTensor();
     DLManagedTensor* getDonesTensor();
 
     // Copy external actions into internal buffer

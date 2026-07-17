@@ -47,14 +47,21 @@ __global__ void packObsKernel(
 __global__ void packRewardsDonesKernel(
     GameState* __restrict__ state,
     float* __restrict__ rewards,
+    float* __restrict__ touches,
     bool* __restrict__ dones,
-    int nSim, int maxTicks)
+    int nSim, int nCars, int maxTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= nSim) return;
 
     packRewards(state, simIdx, rewards);
     packDones(state, simIdx, maxTicks, dones);
+    const int carBase = simIdx * nCars;
+    for (int c = 0; c < nCars; c++)
+    {
+        touches[carBase + c] =
+            state->cars.ballContactTick[carBase + c] == state->tickCount;
+    }
 }
 
 // --- EnvIO ---
@@ -72,12 +79,15 @@ EnvIO::EnvIO(int nSim, int nCars, cudaStream_t stream)
     actShape[1] = nCars;
     actShape[2] = ACT_PER_CAR;
     rewardShape[0] = nSim;
+    touchShape[0] = nSim;
+    touchShape[1] = nCars;
     doneShape[0] = nSim;
 
     CUDA_CHECK(cudaMalloc(&d_obs, nSim * obsDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_actions,
         nSim * nCars * sizeof(DiscreteControls)));
     CUDA_CHECK(cudaMalloc(&d_rewards, nSim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_touches, nSim * nCars * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_dones, nSim * sizeof(bool)));
 
     perSimConfig
@@ -91,6 +101,7 @@ EnvIO::~EnvIO()
     CUDA_CHECK(cudaFree(d_obs));
     CUDA_CHECK(cudaFree(d_actions));
     CUDA_CHECK(cudaFree(d_rewards));
+    CUDA_CHECK(cudaFree(d_touches));
     CUDA_CHECK(cudaFree(d_dones));
 }
 
@@ -106,7 +117,7 @@ void EnvIO::packRewardsDones(GameState* d_state)
 {
     packRewardsDonesKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_rewards, d_dones, nSim, maxTicks);
+        d_state, d_rewards, d_touches, d_dones, nSim, nCars, maxTicks);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -123,6 +134,11 @@ DLManagedTensor* EnvIO::getActionsTensor()
 DLManagedTensor* EnvIO::getRewardsTensor()
 {
     return makeFloatTensor(d_rewards, rewardShape, 1);
+}
+
+DLManagedTensor* EnvIO::getTouchesTensor()
+{
+    return makeFloatTensor(d_touches, touchShape, 2);
 }
 
 DLManagedTensor* EnvIO::getDonesTensor()

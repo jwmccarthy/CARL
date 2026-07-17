@@ -34,7 +34,7 @@ struct DLManagedTensor
 // --- Observation and action layout ---
 
 // Per car: 
-// pos(3) + vel(3) + ang(3) + quat(4) + boost(1)
+// pos(3) + vel(3) + ang(3) + forward(3) + up(3) + boost(1)
 // + isOnGround + isDemoed + hasFlipped + hasDoubleJumped + isBoosting(5)
-constexpr int OBS_PER_CAR = 18;
+constexpr int OBS_PER_CAR = 21;
 constexpr int OBS_BALL = 9;  // pos + vel + ang
