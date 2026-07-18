@@ -22,8 +22,12 @@ CARL_D CARL_FI Vec3 suspRayStart(const CarPose& pose, int wheel)
 }
 
 CARL_D CARL_FI bool raySphereImpact(
-    const Vec3& rayStart, const Vec3& rayDir,
-    const Vec3& center, float radius, float maxDist, float& dist)
+    const Vec3& rayStart,
+    const Vec3& rayDir,
+    const Vec3& center,
+    float radius,
+    float maxDist,
+    float& dist)
 {
     const Vec3 offset = rayStart - center;
     const float b = offset.dot(rayDir);
@@ -39,9 +43,14 @@ CARL_D CARL_FI bool raySphereImpact(
 }
 
 CARL_D CARL_FI bool rayOBBImpact(
-    const Vec3& rayStart, const Vec3& rayDir,
-    const Vec3& center, const Quat& rot,
-    const Vec3& halfExtents, float maxDist, float& dist, Vec3& normal)
+    const Vec3& rayStart, 
+    const Vec3& rayDir,
+    const Vec3& center, 
+    const Quat& rot,
+    const Vec3& halfExtents, 
+    float maxDist, 
+    float& dist, 
+    Vec3& normal)
 {
     const Vec3 localStart = rot.toLocal(rayStart - center);
     const Vec3 localDir = rot.toLocal(rayDir);
@@ -86,8 +95,11 @@ CARL_D CARL_FI bool rayOBBImpact(
 // --- Per-shape wheel ray tests ---
 
 CARL_D CARL_FI void testTriangleWheels(
-    const CarPose& pose, const Vec3& rayDir,
-    const Vec3& v0, const Vec3& edge1, const Vec3& edge2,
+    const CarPose& pose,
+    const Vec3& rayDir,
+    const Vec3& v0,
+    const Vec3& edge1,
+    const Vec3& edge2,
     RayHit best[NUM_WHEELS])
 {
     const Vec3 pVec = rayDir.cross(edge2);
@@ -124,8 +136,10 @@ CARL_D CARL_FI void testTriangleWheels(
 }
 
 CARL_D CARL_FI void testOBBWheels(
-    const CarPose& pose, const Vec3& rayDir,
-    const Vec3& center, const Quat& rot,
+    const CarPose& pose,
+    const Vec3& rayDir,
+    const Vec3& center,
+    const Quat& rot,
     RayHit best[NUM_WHEELS])
 {
     #pragma unroll
@@ -134,18 +148,20 @@ CARL_D CARL_FI void testOBBWheels(
         float dist;
         Vec3 normal;
 
-        if (rayOBBImpact(suspRayStart(pose, w), rayDir, center, rot,
-                         CAR_HALF_EX, suspRayLength(w), dist, normal)
-            && dist < best[w].dist)
-        {
-            best[w] = { dist, normal };
-        }
+        const bool hit = rayOBBImpact(
+            suspRayStart(pose, w), rayDir, center, rot,
+            CAR_HALF_EX, suspRayLength(w), dist, normal);
+        if (!hit || dist >= best[w].dist) continue;
+
+        best[w] = { dist, normal };
     }
 }
 
 CARL_D CARL_FI void testSphereWheels(
-    const CarPose& pose, const Vec3& rayDir,
-    const Vec3& center, float radius,
+    const CarPose& pose, 
+    const Vec3& rayDir,
+    const Vec3& center, 
+    float radius,
     RayHit best[NUM_WHEELS])
 {
     const float invRadius = 1.f / radius;
@@ -154,22 +170,22 @@ CARL_D CARL_FI void testSphereWheels(
     for (int w = 0; w < NUM_WHEELS; w++)
     {
         float dist;
+        const Vec3 rayStart = suspRayStart(pose, w);
 
-        if (raySphereImpact(suspRayStart(pose, w), rayDir,
-                            center, radius, suspRayLength(w), dist)
-            && dist < best[w].dist)
-        {
-            const Vec3 hitDir =
-                suspRayStart(pose, w) + rayDir * dist - center;
-            best[w] = { dist, hitDir * invRadius };
-        }
+        const bool hit = raySphereImpact(
+            rayStart, rayDir, center, radius, suspRayLength(w), dist);
+        if (!hit || dist >= best[w].dist) continue;
+
+        const Vec3 hitDir = rayStart + rayDir * dist - center;
+        best[w] = { dist, hitDir * invRadius };
     }
 }
 
 // --- Setup and storage ---
 
 CARL_D CARL_FI void initWheelHits(
-    RayHit best[NUM_WHEELS], const Vec3& carUp)
+    RayHit best[NUM_WHEELS],
+    const Vec3& carUp)
 {
     #pragma unroll
     for (int w = 0; w < NUM_WHEELS; w++)
@@ -179,7 +195,9 @@ CARL_D CARL_FI void initWheelHits(
 }
 
 CARL_D CARL_FI void storeWheelHits(
-    CarSuspension& susp, int carIdx, const RayHit best[NUM_WHEELS])
+    CarSuspension& susp,
+    int carIdx,
+    const RayHit best[NUM_WHEELS])
 {
     const int wheelBase = carIdx * NUM_WHEELS;
 
@@ -197,7 +215,9 @@ CARL_D CARL_FI void testArenaWheels(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
     ArenaMesh* __restrict__ arena,
-    const CarPose& pose, const Vec3& rayDir, int carIdx,
+    const CarPose& pose,
+    const Vec3& rayDir,
+    int carIdx,
     RayHit best[NUM_WHEELS])
 {
     const int cellIdx = __ldg(&space->bp.cellIdx[carIdx]);
@@ -219,8 +239,10 @@ CARL_D CARL_FI void testArenaWheels(
 
 CARL_D CARL_FI void testCarWheels(
     GameState* __restrict__ state,
-    const CarPose& pose, const Vec3& rayDir,
-    int carIdx, int simIdx,
+    const CarPose& pose,
+    const Vec3& rayDir,
+    int carIdx,
+    int simIdx,
     RayHit best[NUM_WHEELS])
 {
     const int carBase = simIdx * state->nCars;
@@ -240,7 +262,9 @@ CARL_D CARL_FI void testCarWheels(
 
 CARL_D CARL_FI void testBallWheels(
     GameState* __restrict__ state,
-    const CarPose& pose, const Vec3& rayDir, int simIdx,
+    const CarPose& pose,
+    const Vec3& rayDir,
+    int simIdx,
     RayHit best[NUM_WHEELS])
 {
     const Vec3 ballPos = Vec3::ldg(state->ball.pos[simIdx]);

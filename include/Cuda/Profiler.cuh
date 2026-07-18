@@ -23,8 +23,16 @@ struct ScopedCudaProfiler
         Stage* stage = nullptr;
 
         Scope() = default;
-        Scope(Stage* stage) : stage(stage) {}
-        Scope(Scope&& other) noexcept : stage(other.stage) { other.stage = nullptr; }
+
+        Scope(Stage* stage) 
+            : stage(stage) 
+        {}
+
+        Scope(Scope&& other) noexcept
+            : stage(other.stage)
+        {
+            other.stage = nullptr;
+        }
 
         ~Scope()
         {

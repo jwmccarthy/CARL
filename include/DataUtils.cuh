@@ -19,4 +19,3 @@ CARL_D CARL_FI CarPose loadCarPose(
         Quat::ldg(state->cars.rot[carIdx])
     };
 }
-

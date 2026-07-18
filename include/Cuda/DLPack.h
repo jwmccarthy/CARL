@@ -2,16 +2,30 @@
 
 #include <cstdint>
 
-#include "State/Controls.cuh"
-
 // --- DLPack types (minimal, no external dependency) ---
 
-enum DLDeviceType   { kDLCUDA = 2 };
-enum DLDataTypeCode { kDLFloat = 2, kDLUInt = 1, kDLInt = 0 };
+enum DLDeviceType { kDLCUDA = 2 };
 
-struct DLDevice { int device_type; int device_id; };
+enum DLDataTypeCode
+{
+    kDLInt = 0,
+    kDLUInt = 1,
+    kDLFloat = 2,
+    kDLBool = 6
+};
 
-struct DLDataType { uint8_t code; uint8_t bits; uint16_t lanes; };
+struct DLDevice
+{
+    int device_type;
+    int device_id;
+};
+
+struct DLDataType
+{
+    uint8_t code;
+    uint8_t bits;
+    uint16_t lanes;
+};
 
 struct DLTensor
 {

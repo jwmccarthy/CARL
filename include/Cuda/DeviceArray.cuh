@@ -40,9 +40,17 @@ struct DeviceArray
     int count = 0;
 
     DeviceArray() = default;
-    DeviceArray(int count) : ptr(cudaMallocArray<T>(count)), count(count) {}
+
+    DeviceArray(int count) 
+        : ptr(cudaMallocArray<T>(count)), count(count)
+    {}
+
     DeviceArray(const std::vector<T>& src)
-        : count((int)src.size()) { cudaMallocCopy(ptr, src); }
+        : count((int)src.size())
+    {
+        cudaMallocCopy(ptr, src);
+    }
+
     ~DeviceArray() { cudaFree(ptr); }
 
     DeviceArray(const DeviceArray&) = delete;
@@ -54,9 +62,9 @@ struct DeviceArray
         {
             cudaFree(ptr);
 
-            ptr   = other.ptr;
+            ptr = other.ptr;
             count = other.count;
-            other.ptr   = nullptr;
+            other.ptr = nullptr;
             other.count = 0;
         }
 

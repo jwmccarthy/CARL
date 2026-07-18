@@ -93,7 +93,8 @@ CARL_D CARL_FI void finishCarTick(
     {
         float timer = __ldg(&state->cars.demoRespawnTimer[carIdx]);
 
-        // Selection starts on the tick after demolition, not the impact tick        if (timer <= DEMO_RESPAWN_TIME)
+        // Selection starts on the tick after demolition, not the impact tick.
+        if (timer <= DEMO_RESPAWN_TIME)
         {
             updateRespawnSelection(state, carIdx);
         }

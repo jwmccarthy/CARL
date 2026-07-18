@@ -6,6 +6,11 @@
 
 __global__ void resetKernel(GameState* __restrict__ state);
 
+__global__ void resetDonesKernel(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    int maxTicks);
+
 __global__ void beginStepKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space);

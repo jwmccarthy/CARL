@@ -1,4 +1,6 @@
 #include <cstring>
+#include <initializer_list>
+#include <string>
 #include <pybind11/pybind11.h>
 
 #include "RLEnvironment.cuh"
@@ -74,6 +76,49 @@ class EnvWrapper
             static_cast<const char*>(t.data) + t.byte_offset);
     }
 
+    DLTensor tensorData(
+        py::object obj,
+        const char* name,
+        std::initializer_list<int64_t> shape,
+        uint8_t type,
+        uint8_t bits) const
+    {
+        py::capsule capsule = toCapsule(obj);
+        const DLManagedTensor* tensor = capsule.get_pointer<DLManagedTensor>();
+        if (!tensor) throw py::value_error("invalid DLPack tensor");
+
+        const DLTensor& t = tensor->dl_tensor;
+        if (t.dtype.code != type || t.dtype.bits != bits || t.dtype.lanes != 1)
+            throw py::type_error(std::string(name) + " has an invalid dtype");
+        if (t.device.device_type != kDLCUDA)
+            throw py::value_error(std::string(name) + " must be on a CUDA device");
+        if (t.ndim != static_cast<int32_t>(shape.size()))
+            throw py::value_error(std::string(name) + " has an invalid shape");
+
+        int dim = 0;
+        int64_t stride = 1;
+        for (int64_t expected : shape)
+        {
+            if (t.shape[dim++] != expected)
+                throw py::value_error(std::string(name) + " has an invalid shape");
+        }
+        if (t.strides)
+        {
+            for (int i = t.ndim - 1; i >= 0; i--)
+            {
+                if (t.strides[i] != stride)
+                    throw py::value_error(std::string(name) + " must be contiguous");
+                stride *= t.shape[i];
+            }
+        }
+        return t;
+    }
+
+    static const void* data(const DLTensor& tensor)
+    {
+        return static_cast<const char*>(tensor.data) + tensor.byte_offset;
+    }
+
 public:
     EnvWrapper(int nSim, int nBlue, int nOrange, int seed, int skipTicks)
         : env(nSim, nBlue, nOrange, seed)
@@ -97,8 +142,9 @@ public:
         for (int tick = 0; tick < skipTicks; tick++)
             env.step(io.getActions());
         
+        io.packRewardsDones(env.getDeviceState(), skipTicks);
+        env.resetDones(io.getMaxTicks());
         io.packObs(env.getDeviceState());
-        io.packRewardsDones(env.getDeviceState());
 
         return tensorToCapsule(io.getObsTensor());
     }
@@ -108,6 +154,59 @@ public:
         env.reset();
         io.packObs(env.getDeviceState());
         io.packRewardsDones(env.getDeviceState());
+    }
+
+
+    void setBall(py::object position, py::object velocity, py::object angularVelocity)
+    {
+        const auto pos = tensorData(
+            position, "position", { env.getNSim(), 3 }, kDLFloat, 32);
+        const auto vel = tensorData(
+            velocity, "velocity", { env.getNSim(), 3 }, kDLFloat, 32);
+        const auto ang = tensorData(
+            angularVelocity, "angular_velocity", { env.getNSim(), 3 }, kDLFloat, 32);
+        io.setBall(env.getDeviceState(),
+            static_cast<const float*>(data(pos)),
+            static_cast<const float*>(data(vel)),
+            static_cast<const float*>(data(ang)));
+        io.packObs(env.getDeviceState());
+    }
+
+    void setCar(
+        py::object position,
+        py::object rotation,
+        py::object velocity,
+        py::object angularVelocity,
+        py::object demoed)
+    {
+        const std::initializer_list<int64_t> vecShape = {
+            env.getNSim(), env.getNCars(), 3
+        };
+        const auto pos = tensorData(position, "position", vecShape, kDLFloat, 32);
+        const auto rot = tensorData(rotation, "rotation",
+            { env.getNSim(), env.getNCars(), 4 }, kDLFloat, 32);
+        const auto vel = tensorData(velocity, "velocity", vecShape, kDLFloat, 32);
+        const auto ang = tensorData(
+            angularVelocity, "angular_velocity", vecShape, kDLFloat, 32);
+
+        py::capsule demoCapsule = toCapsule(demoed);
+        const DLManagedTensor* demoTensor =
+            demoCapsule.get_pointer<DLManagedTensor>();
+        if (!demoTensor) throw py::value_error("invalid DLPack tensor");
+        const DLTensor demo = demoTensor->dl_tensor;
+        const bool byteDemoed = demo.dtype.code == kDLBool && demo.dtype.bits == 8;
+        if (!byteDemoed && !(demo.dtype.code == kDLInt && demo.dtype.bits == 32))
+            throw py::type_error("demoed must have dtype bool or int32");
+        tensorData(demoed, "demoed", { env.getNSim(), env.getNCars() },
+            demo.dtype.code, demo.dtype.bits);
+
+        io.setCar(env.getDeviceState(),
+            static_cast<const float*>(data(pos)),
+            static_cast<const float*>(data(rot)),
+            static_cast<const float*>(data(vel)),
+            static_cast<const float*>(data(ang)),
+            data(demo), byteDemoed);
+        io.packObs(env.getDeviceState());
     }
 
     py::object getObs()     { return tensorToCapsule(io.getObsTensor()); }
@@ -152,6 +251,13 @@ PYBIND11_MODULE(carl, m)
 
         .def("step",        &EnvWrapper::step, py::arg("actions"))
         .def("reset",       &EnvWrapper::reset)
+        .def("set_ball",    &EnvWrapper::setBall,
+             py::arg("position"), py::arg("velocity"),
+             py::arg("angular_velocity"))
+        .def("set_car",     &EnvWrapper::setCar,
+             py::arg("position"), py::arg("rotation"),
+             py::arg("velocity"), py::arg("angular_velocity"),
+             py::arg("demoed"))
         .def("get_obs",     &EnvWrapper::getObs)
         .def("get_rewards", &EnvWrapper::getRewards)
         .def("get_ball_touches", &EnvWrapper::getTouches)

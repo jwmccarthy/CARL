@@ -1,17 +1,17 @@
 #pragma once
 
-#include "../Cuda/DLPack.h"
 #include "../State/GameState.cuh"
-#include "../State/Workspace.cuh"
 
 // --- Observation packing ---
 
 // Serialize state into obs buffer (layout: OBS_BALL + nCars * OBS_PER_CAR)
 CARL_D CARL_FI void packObservations(
     GameState* __restrict__ state,
-    int simIdx, int nCars, float* __restrict__ obs)
+    int simIdx, int nCars, 
+    float* __restrict__ obs)
 {
     const int carBase = simIdx * nCars;
+
     int o = 0;
 
     // Ball
@@ -19,9 +19,17 @@ CARL_D CARL_FI void packObservations(
     const Vec3 ballVel = Vec3::ldg(state->ball.vel[simIdx]);
     const Vec3 ballAng = Vec3::ldg(state->ball.ang[simIdx]);
 
-    obs[o++] = ballPos.x; obs[o++] = ballPos.y; obs[o++] = ballPos.z;
-    obs[o++] = ballVel.x; obs[o++] = ballVel.y; obs[o++] = ballVel.z;
-    obs[o++] = ballAng.x; obs[o++] = ballAng.y; obs[o++] = ballAng.z;
+    obs[o++] = ballPos.x;
+    obs[o++] = ballPos.y;
+    obs[o++] = ballPos.z;
+
+    obs[o++] = ballVel.x;
+    obs[o++] = ballVel.y;
+    obs[o++] = ballVel.z;
+    
+    obs[o++] = ballAng.x;
+    obs[o++] = ballAng.y;
+    obs[o++] = ballAng.z;
 
     // Cars
     for (int c = 0; c < nCars; c++)
@@ -33,8 +41,7 @@ CARL_D CARL_FI void packObservations(
         const Quat rot = Quat::ldg(state->cars.rot[carIdx]);
         const Vec3 forward = rot.toWorld(WORLD_X);
         const Vec3 up = rot.toWorld(WORLD_Z);
-        const CarInternalState internal =
-            state->cars.internal[carIdx];
+        const CarInternalState internal = state->cars.internal[carIdx];
 
         obs[o++] = pos.x; obs[o++] = pos.y; obs[o++] = pos.z;
         obs[o++] = vel.x; obs[o++] = vel.y; obs[o++] = vel.z;
@@ -66,5 +73,8 @@ CARL_D CARL_FI void packDones(
     GameState* __restrict__ state,
     int simIdx, int maxTicks, bool* __restrict__ dones)
 {
-    dones[simIdx] = state->tickCount >= maxTicks;
+    const GoalState& goal = state->goals[simIdx];
+    dones[simIdx] = state->episodeTicks[simIdx] >= maxTicks
+                 || goal.blueScore != 0
+                 || goal.orangeScore != 0;
 }

@@ -18,6 +18,12 @@ DLManagedTensor* makeIntTensor(
     int ndim,
     int deviceId = 0);
 
+DLManagedTensor* makeBoolTensor(
+    void* data,
+    int64_t* shape,
+    int ndim,
+    int deviceId = 0);
+
 // --- EnvIO ---
 
 // Owns device I/O buffers - DLPack accessors return non-owning views
@@ -25,10 +31,11 @@ class EnvIO
 {
 private:
     float* d_obs = nullptr;
-    DiscreteControls* d_actions = nullptr;
     float* d_rewards = nullptr;
     float* d_touches = nullptr;
     bool*  d_dones = nullptr;
+
+    DiscreteControls* d_actions = nullptr;
 
     int64_t obsShape[2];
     int64_t actShape[3];
@@ -53,7 +60,7 @@ public:
     void packObs(GameState* d_state);
 
     // Pack rewards and dones
-    void packRewardsDones(GameState* d_state);
+    void packRewardsDones(GameState* d_state, int touchWindow = 1);
 
     // DLPack accessors (caller owns the capsule)
     DLManagedTensor* getObsTensor();
@@ -64,10 +71,29 @@ public:
 
     // Copy external actions into internal buffer
     void setActions(const int32_t* src);
+
     const DiscreteControls* getActions() const { return d_actions; }
+
+    // Set state from contiguous device buffers
+    void setBall(
+        GameState* d_state,
+        const float* pos,
+        const float* vel,
+        const float* ang);
+
+    void setCar(
+        GameState* d_state,
+        const float* pos,
+        const float* rot,
+        const float* vel,
+        const float* ang,
+        const void* demoed,
+        bool byteDemoed);
 
     // Properties
     int getObsDim() const { return obsDim; }
     int getActDim() const { return actDim; }
+
+    int getMaxTicks() const { return maxTicks; }
     void setMaxTicks(int ticks) { maxTicks = ticks; }
 };

@@ -22,6 +22,17 @@ __global__ void resetKernel(GameState* __restrict__ state)
     resetToKickoff(state, simIdx);
 }
 
+__global__ void resetDonesKernel(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    int maxTicks)
+{
+    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (simIdx >= state->nSim) return;
+
+    resetAfterDone(state, space, simIdx, maxTicks);
+}
+
 __global__ void beginStepKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space)
@@ -30,6 +41,10 @@ __global__ void beginStepKernel(
     if (carIdx >= state->nTotalCars) return;
 
     if (carIdx == 0) state->tickCount++;
+    if (carIdx % state->nCars == 0)
+    {
+        state->episodeTicks[carIdx / state->nCars]++;
+    }
 }
 
 __global__ void carArenaBroadPhaseKernel(

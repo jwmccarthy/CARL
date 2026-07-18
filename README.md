@@ -106,6 +106,19 @@ Horizontal and vertical are separate fields, so diagonal steering and dodges are
 
 Each call to `step` applies the supplied controls before the first physics tick and holds them for all `skip_ticks` ticks. The returned observation, rewards, touches, and dones describe the final tick. Set `skip_ticks=1` to request controls every physics tick.
 
+Episodes end when either team scores or `max_ticks` is reached. State can be replaced directly from contiguous CUDA tensors:
+
+```python
+env.set_ball(position, velocity, angular_velocity)  # [n_sim, 3] float32
+env.set_car(
+    position,          # [n_sim, n_cars, 3] float32
+    rotation,          # [n_sim, n_cars, 4] float32 quaternion (x, y, z, w)
+    velocity,          # [n_sim, n_cars, 3] float32
+    angular_velocity,  # [n_sim, n_cars, 3] float32
+    demoed,            # [n_sim, n_cars] bool or int32
+)
+```
+
 `env.action_nvec` contains the complete cardinality array, repeated for every car:
 
 ```python
