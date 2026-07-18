@@ -149,7 +149,8 @@ class CARLTorchVectorEnv(VectorEnv):
         return None
 
     def close(self, **kwargs: Any) -> None:
-        if not self.closed:
-            self._sync()
-            del self._env
-            self.closed = True
+        if self.closed:
+            return
+        self._sync()
+        del self._env
+        self.closed = True

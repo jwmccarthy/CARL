@@ -2,6 +2,24 @@
 
 CARL is a vectorized Rocket League physics simulator based on [RocketSim](https://github.com/ZealanL/RocketSim) and inspired by [PureJaxRL](https://chrislu.page/blog/meta-disco/). Intended for highly-parallel reinforcement learning.
 
+## Installation
+
+The native package has no Python runtime dependencies:
+
+```bash
+uv sync
+```
+
+Install the Torch Gymnasium wrapper with:
+
+```bash
+uv sync --extra gymnasium
+```
+
+Building from source requires the CUDA Toolkit with `nvcc` and a supported
+host C++ compiler. These system tools are not installed by `uv`. Prebuilt
+wheels include the CUDA runtime and require a compatible NVIDIA driver.
+
 ## Features
 - Full Rocket League physics simulation (car-{car, ball, arena} collision response, boost impulses, ground-suspension interaction, etc.)
 - DLPack I/O for generalized device action & observations (i.e. torch.utils.dlpack, jax.dlpack)
@@ -148,3 +166,34 @@ action_space = gym.spaces.MultiDiscrete(
 ### Performance
 
 Running `python/test.py` will display the ticks/s given an action vector. Depending on the GPU and environment config, CARL simulates between 5-50M ticks/s. By executing end-to-end on device, we also sidestep host-device transfer latency inherent to CPU-based vectorized simulators.
+
+## Development
+
+`uv.lock` is the reproducible source of Python dependency versions:
+
+```bash
+uv sync --extra gymnasium
+uv run python python/test.py
+```
+
+## Releases
+
+Linux and Windows wheels must be built natively on their respective systems.
+Each release machine needs `uv`, `gh`, the CUDA Toolkit, and a platform C++
+toolchain. Authenticate GitHub CLI with `gh auth login`, check out the exact
+release tag, and run:
+
+```bash
+python scripts/release.py --tag v0.1.0 --python 3.11 --upload
+```
+
+After both wheels have been uploaded, promote the pre-release from either
+machine:
+
+```bash
+python scripts/release.py --tag v0.1.0 --python 3.11 --upload --publish
+```
+
+The release script refuses dirty or mismatched tagged sources, validates the
+wheel package layout, and will not promote a release until both Linux and
+Windows wheels are attached.

@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.20)
 
 project(CARL LANGUAGES CXX CUDA)
 
-set(CMAKE_CUDA_ARCHITECTURES native)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES native)
+endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(CUDAToolkit REQUIRED)
@@ -29,22 +31,34 @@ target_include_directories(carl PUBLIC
 )
 
 target_link_libraries(carl PUBLIC
-    CUDA::cudart
+    CUDA::cudart_static
 )
 
 target_compile_options(carl PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-w>
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets>
     $<$<COMPILE_LANGUAGE:CUDA>:-allow-unsupported-compiler>
 )
+
+if(MSVC)
+    target_compile_options(carl PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/W0>
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W0>
+    )
+else()
+    target_compile_options(carl PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-w>
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>
+    )
+endif()
 
 # --- Python module ---
 
 option(CARL_BUILD_PYTHON "Build the carl Python module" ON)
 
 if(CARL_BUILD_PYTHON)
+    set(PYBIND11_FINDPYTHON ON)
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     find_package(pybind11 CONFIG REQUIRED)
 
     pybind11_add_module(carl_module python/carl.cu)

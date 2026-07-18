@@ -1,4 +1,6 @@
 build/
+dist/
+.venv/
 .clangd
 .vscode/
 .opencode/
@@ -11,4 +13,5 @@ compile_commands.json
 __pycache__/
 *.pyc
 *.cpython-*.so
+*.pyd
 .opencode
