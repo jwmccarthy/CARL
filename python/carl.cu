@@ -48,7 +48,7 @@ class EnvWrapper
 {
     RLEnvironment env;
     EnvIO io;
-    int skipTicks;
+    int frameskip;
 
     const int32_t* actionData(const DLManagedTensor* tensor) const
     {
@@ -154,15 +154,15 @@ public:
         int nBlue,
         int nOrange,
         int seed,
-        int skipTicks,
+        int frameskip,
         bool invertOrange)
         : env(nSim, nBlue, nOrange, seed)
         , io(nSim, env.getNCars(), env.getStream(), invertOrange)
-        , skipTicks(skipTicks)
+        , frameskip(frameskip)
     {
-        if (skipTicks < 1)
+        if (frameskip < 1)
         {
-            throw py::value_error("skip_ticks must be at least 1");
+            throw py::value_error("frameskip must be at least 1");
         }
 
         env.reset();
@@ -176,12 +176,12 @@ public:
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setActions(actionData(actTensor));
 
-        for (int tick = 0; tick < skipTicks; tick++)
+        for (int tick = 0; tick < frameskip; tick++)
         {
             env.step(io.getActions());
         }
         
-        io.packRewardsDones(env.getDeviceState(), skipTicks);
+        io.packRewardsDones(env.getDeviceState(), frameskip);
         env.resetDones(io.getMaxTicks());
         io.packObs(env.getDeviceState());
 
@@ -290,15 +290,15 @@ public:
     }
 
     void setMaxTicks(int ticks) { io.setMaxTicks(ticks); }
-    int getSkipTicks() const { return skipTicks; }
+    int getFrameskip() const { return frameskip; }
 
-    void setSkipTicks(int ticks)
+    void setFrameskip(int ticks)
     {
         if (ticks < 1)
         {
-            throw py::value_error("skip_ticks must be at least 1");
+            throw py::value_error("frameskip must be at least 1");
         }
-        skipTicks = ticks;
+        frameskip = ticks;
     }
 };
 
@@ -310,7 +310,7 @@ PYBIND11_MODULE(_carl, m)
         .def(py::init<int, int, int, int, int, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
-             py::arg("skip_ticks") = 1,
+             py::arg("frameskip") = 1,
              py::arg("invert_orange") = true)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
@@ -330,8 +330,8 @@ PYBIND11_MODULE(_carl, m)
         .def("get_dones",        &EnvWrapper::getDones)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
-        .def_property("skip_ticks", &EnvWrapper::getSkipTicks,
-                      &EnvWrapper::setSkipTicks)
+        .def_property("frameskip", &EnvWrapper::getFrameskip,
+                      &EnvWrapper::setFrameskip)
 
         .def_property_readonly("obs_dim",     &EnvWrapper::getObsDim)
         .def_property_readonly("act_dim",     &EnvWrapper::getActDim)
