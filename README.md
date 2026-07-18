@@ -2,28 +2,28 @@
 
 CARL is a vectorized Rocket League physics simulator based on [RocketSim](https://github.com/ZealanL/RocketSim) and inspired by [PureJaxRL](https://chrislu.page/blog/meta-disco/). Intended for highly-parallel reinforcement learning.
 
-## Installation
-
-The native package has no Python runtime dependencies:
-
-```bash
-uv sync
-```
-
-Install the Torch Gymnasium wrapper with:
-
-```bash
-uv sync --extra gymnasium
-```
-
-Building from source requires the CUDA Toolkit with `nvcc` and a supported
-host C++ compiler. These system tools are not installed by `uv`. Prebuilt
-wheels include the CUDA runtime and require a compatible NVIDIA driver.
-
 ## Features
+
 - Full Rocket League physics simulation (car-{car, ball, arena} collision response, boost impulses, ground-suspension interaction, etc.)
 - DLPack I/O for generalized device action & observations (i.e. torch.utils.dlpack, jax.dlpack)
 - Manages game state entirely on device - no host-device transfer overhead required
+
+## Installation
+
+Add the prebuilt wheel to an existing uv project:
+
+```bash
+uv add "carl @ https://github.com/jwmccarthy/CARL/releases/download/v0.1.0/carl-0.1.0-cp311-cp311-linux_x86_64.whl"
+```
+
+Install the Torch Gymnasium wrapper and its optional dependencies with:
+
+```bash
+uv add "carl[gymnasium] @ https://github.com/jwmccarthy/CARL/releases/download/v0.1.0/carl-0.1.0-cp311-cp311-linux_x86_64.whl"
+```
+
+The current wheel supports CPython 3.11 on Linux x86-64. It includes the CUDA
+runtime but requires a compatible NVIDIA driver and GPU.
 
 ## Usage
 
