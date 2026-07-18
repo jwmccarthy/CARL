@@ -1,5 +1,7 @@
 from .. import Env
 
+from typing import Any
+
 import numpy as np
 import torch as th
 import gymnasium as gym
@@ -83,5 +85,71 @@ class CARLTorchVectorEnv(VectorEnv):
         self,
         *,
         seed: int | None = None,
-        options: dict[str, Any]
-    )
+        options: dict[str, Any] | None = None
+    ) -> tuple[th.Tensor, dict[str, Any]]:
+        if self.closed:
+            raise RuntimeError("Environment is closed")
+        
+        if seed is not None and seed != self._seed:
+            raise ValueError("CARL's seed is constructor-only")
+
+        if options:
+            raise NotImplementedError("CARL reset options are not supported")
+
+        self._env.reset()
+        self._sync()
+
+        return self._from_carl(self._env.get_obs()), {}
+
+    def step(
+        self,
+        actions: th.Tensor | np.ndarray
+    ) -> tuple[
+        th.Tensor,
+        th.Tensor,
+        th.Tensor,
+        th.Tensor,
+        dict[str, Any]
+    ]:
+        if self.closed:
+            raise RuntimeError("Environment is closed")
+
+        act = th.as_tensor(
+            actions,
+            dtype=th.int32,
+            device=self.device
+        ).contiguous()
+
+        if tuple(act.shape) != self._action_shape:
+            raise ValueError(
+                f"Expected actions shaped {self._action_shape}, "
+                f"got {tuple(act.shape)}"
+            )
+
+        self._sync()
+
+        obs_capsule = self._env.step(act)
+
+        self._sync()
+
+        obs = self._from_carl(obs_capsule)
+        rew = self._from_carl(self._env.get_rewards())
+        don = self._from_carl(self._env.get_dones())
+
+        terms = don & rew.ne(0)
+        trunc = don & ~terms
+
+        info = {
+            "ball_touches": self._from_carl(self._env.get_ball_touches())
+        }
+
+        return obs, rew, terms, trunc, info
+
+    def render(self) -> None:
+        return None
+
+    def close(self, **kwargs: Any) -> None:
+        if not self.closed:
+            self._sync()
+            del self._env
+            self.closed = True
