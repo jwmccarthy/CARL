@@ -10,7 +10,7 @@ CARL is a vectorized Rocket League physics simulator based on [RocketSim](https:
 
 ## Installation
 
-Add the prebuilt wheel to an existing uv project:
+CARL is not currently available on PyPI. Add the prebuilt wheel to an existing uv project:
 
 ```bash
 uv add "carl @ https://github.com/jwmccarthy/CARL/releases/download/v0.1.0/carl-0.1.0-cp311-cp311-linux_x86_64.whl"
