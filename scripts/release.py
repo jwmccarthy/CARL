@@ -32,6 +32,26 @@ def require(command: str) -> None:
         raise SystemExit(f"required command not found: {command}")
 
 
+def require_github_cli() -> None:
+    require("gh")
+    version = subprocess.run(
+        ["gh", "--version"],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout
+    if not version.startswith("gh version "):
+        raise SystemExit("gh on PATH is not the official GitHub CLI")
+
+    authenticated = subprocess.run(
+        ["gh", "auth", "status"],
+        text=True,
+        capture_output=True,
+    )
+    if authenticated.returncode != 0:
+        raise SystemExit("GitHub CLI is not authenticated; run: gh auth login")
+
+
 def verify_source(tag: str) -> None:
     status = run(["git", "status", "--porcelain"], capture=True)
     if status:
@@ -137,14 +157,15 @@ def main() -> None:
 
     require("git")
     if args.upload or args.publish:
-        require("gh")
+        require_github_cli()
         verify_source(args.tag)
 
-    wheel = build_wheel(args.python, args.architectures)
-    print(f"[release] Validated {wheel}")
+    if not args.publish or args.upload:
+        wheel = build_wheel(args.python, args.architectures)
+        print(f"[release] Validated {wheel}")
 
-    if args.upload:
-        run(["gh", "release", "upload", args.tag, str(wheel), "--clobber"])
+        if args.upload:
+            run(["gh", "release", "upload", args.tag, str(wheel), "--clobber"])
     if args.publish:
         publish(args.tag)
 

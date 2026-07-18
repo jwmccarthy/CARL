@@ -191,7 +191,7 @@ After both wheels have been uploaded, promote the pre-release from either
 machine:
 
 ```bash
-python scripts/release.py --tag v0.1.0 --python 3.11 --upload --publish
+python scripts/release.py --tag v0.1.0 --publish
 ```
 
 The release script refuses dirty or mismatched tagged sources, validates the
