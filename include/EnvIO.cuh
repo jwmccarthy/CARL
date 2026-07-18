@@ -30,30 +30,36 @@ DLManagedTensor* makeBoolTensor(
 class EnvIO
 {
 private:
-    float* d_obs = nullptr;
+    float* d_obs     = nullptr;
     float* d_rewards = nullptr;
     float* d_touches = nullptr;
-    bool*  d_dones = nullptr;
+    bool*  d_dones   = nullptr;
 
     DiscreteControls* d_actions = nullptr;
 
-    int64_t obsShape[2];
+    int64_t obsShape[3];
     int64_t actShape[3];
     int64_t rewardShape[1];
     int64_t touchShape[2];
     int64_t doneShape[1];
 
-    int nSim;
-    int nCars;
-    int obsDim;
-    int actDim;
-    int maxTicks = 30000;
+    int  nSim;
+    int  nCars;
+    int  obsDim;
+    int  actDim;
+    int  maxTicks = 30000;
+    bool invertOrange;
 
     cudaStream_t stream;
     KernelConfig perSimConfig;
+    KernelConfig perAgentConfig;
 
 public:
-    EnvIO(int nSim, int nCars, cudaStream_t stream);
+    EnvIO(
+        int nSim,
+        int nCars,
+        cudaStream_t stream,
+        bool invertOrange);
     ~EnvIO();
 
     // Pack state into observation buffer

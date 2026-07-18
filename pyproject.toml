@@ -19,6 +19,3 @@ dependencies = [
 torch = ["torch"]
 jax = ["jax[cuda12]"]
 dev = ["pytest", "black", "ruff"]
-
-[tool.setuptools]
-ext-modules = [{name = "carl", sources = []}]

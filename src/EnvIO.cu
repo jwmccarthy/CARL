@@ -45,13 +45,27 @@ DLManagedTensor* makeBoolTensor(
 __global__ void packObsKernel(
     GameState* __restrict__ state,
     float* __restrict__ obs,
-    int nSim, int nCars)
+    int nSim,
+    int nCars,
+    bool invertOrange)
 {
-    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (simIdx >= nSim) return;
+    const int agentIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (agentIdx >= nSim * nCars)
+    {
+        return;
+    }
 
-    const int offset = simIdx * (OBS_BALL + nCars * OBS_PER_CAR);
-    packObservations(state, simIdx, nCars, obs + offset);
+    const int simIdx      = agentIdx / nCars;
+    const int observerIdx = agentIdx % nCars;
+    const int obsDim      = OBS_BALL + nCars * OBS_PER_CAR;
+
+    packObservations(
+        state,
+        simIdx,
+        observerIdx,
+        nCars,
+        invertOrange,
+        obs + agentIdx * obsDim);
 }
 
 __global__ void packRewardsDonesKernel(
@@ -146,15 +160,21 @@ __global__ void setCarKernel(
 
 // --- EnvIO ---
 
-EnvIO::EnvIO(int nSim, int nCars, cudaStream_t stream)
+EnvIO::EnvIO(
+    int nSim,
+    int nCars,
+    cudaStream_t stream,
+    bool invertOrange)
     : nSim(nSim)
     , nCars(nCars)
     , obsDim(OBS_BALL + nCars * OBS_PER_CAR)
     , actDim(nCars * ACT_PER_CAR)
+    , invertOrange(invertOrange)
     , stream(stream)
 {
     obsShape[0] = nSim;
-    obsShape[1] = obsDim;
+    obsShape[1] = nCars;
+    obsShape[2] = obsDim;
     actShape[0] = nSim;
     actShape[1] = nCars;
     actShape[2] = ACT_PER_CAR;
@@ -163,7 +183,7 @@ EnvIO::EnvIO(int nSim, int nCars, cudaStream_t stream)
     touchShape[1] = nCars;
     doneShape[0] = nSim;
 
-    CUDA_CHECK(cudaMalloc(&d_obs, nSim * obsDim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_obs, nSim * nCars * obsDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_actions, nSim * nCars * sizeof(DiscreteControls)));
     CUDA_CHECK(cudaMalloc(&d_rewards, nSim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_touches, nSim * nCars * sizeof(float)));
@@ -172,6 +192,11 @@ EnvIO::EnvIO(int nSim, int nCars, cudaStream_t stream)
     perSimConfig
         .setBlockDim(32)
         .setGridFromThreads(nSim)
+        .setStream(stream);
+
+    perAgentConfig
+        .setBlockDim(128)
+        .setGridFromThreads(nSim * nCars)
         .setStream(stream);
 }
 
@@ -186,9 +211,9 @@ EnvIO::~EnvIO()
 
 void EnvIO::packObs(GameState* d_state)
 {
-    packObsKernel<<<perSimConfig.gridDim,
-        perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_obs, nSim, nCars);
+    packObsKernel<<<perAgentConfig.gridDim,
+        perAgentConfig.blockDim, 0, stream>>>(
+        d_state, d_obs, nSim, nCars, invertOrange);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -203,7 +228,7 @@ void EnvIO::packRewardsDones(GameState* d_state, int touchWindow)
 
 DLManagedTensor* EnvIO::getObsTensor()
 {
-    return makeFloatTensor(d_obs, obsShape, 2);
+    return makeFloatTensor(d_obs, obsShape, 3);
 }
 
 DLManagedTensor* EnvIO::getActionsTensor()

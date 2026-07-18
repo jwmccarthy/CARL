@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from setuptools import setup, Extension
+from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
 
 
@@ -38,11 +38,11 @@ class CMakeBuild(build_ext):
             "--target", "carl_module", "--parallel",
         ])
 
-        so_files = list(build_dir.glob("carl*.so"))
+        so_files = list(build_dir.glob("_carl*.so"))
         if not so_files:
-            raise RuntimeError("carl module .so not found")
+            raise RuntimeError("_carl module .so not found")
 
-        dest = Path(self.build_lib)
+        dest = Path(self.build_lib) / "carl"
         dest.mkdir(parents=True, exist_ok=True)
 
         print(f"[carl] Installing {so_files[0].name}")
@@ -54,7 +54,9 @@ setup(
     name="carl",
     version="0.1.0",
     description="CUDA Rocket League simulation",
-    ext_modules=[Extension("carl", sources=[])],
+    packages=find_packages(where="python"),
+    package_dir={"": "python"},
+    ext_modules=[Extension("carl._carl", sources=[])],
     cmdclass={"build_ext": CMakeBuild},
     python_requires=">=3.8",
 )

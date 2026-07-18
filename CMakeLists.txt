@@ -53,7 +53,7 @@ if(CARL_BUILD_PYTHON)
         CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED YES
         CUDA_SEPARABLE_COMPILATION ON
-        OUTPUT_NAME carl
+        OUTPUT_NAME _carl
     )
 
     target_link_libraries(carl_module PRIVATE carl)

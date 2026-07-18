@@ -149,9 +149,15 @@ class EnvWrapper
     }
 
 public:
-    EnvWrapper(int nSim, int nBlue, int nOrange, int seed, int skipTicks)
+    EnvWrapper(
+        int nSim,
+        int nBlue,
+        int nOrange,
+        int seed,
+        int skipTicks,
+        bool invertOrange)
         : env(nSim, nBlue, nOrange, seed)
-        , io(nSim, env.getNCars(), env.getStream())
+        , io(nSim, env.getNCars(), env.getStream(), invertOrange)
         , skipTicks(skipTicks)
     {
         if (skipTicks < 1)
@@ -296,15 +302,16 @@ public:
     }
 };
 
-PYBIND11_MODULE(carl, m)
+PYBIND11_MODULE(_carl, m)
 {
     m.doc() = "CARL: CUDA Rocket League simulation";
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int, int>(),
+        .def(py::init<int, int, int, int, int, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
-             py::arg("skip_ticks") = 1)
+             py::arg("skip_ticks") = 1,
+             py::arg("invert_orange") = true)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
         .def("reset", &EnvWrapper::reset)
