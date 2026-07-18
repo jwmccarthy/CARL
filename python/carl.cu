@@ -27,6 +27,7 @@ static void capsuleDeleter(PyObject* o)
     {
         auto* t = static_cast<DLManagedTensor*>(
             PyCapsule_GetPointer(o, "dltensor"));
+
         if (t)
         {
             if (t->deleter) t->deleter(t);
@@ -56,18 +57,34 @@ class EnvWrapper
         const DLTensor& t = tensor->dl_tensor;
         const bool validType = t.dtype.code == kDLInt
             && t.dtype.bits == 32 && t.dtype.lanes == 1;
-        if (!validType) throw py::type_error("actions must have dtype int32");
+
+        if (!validType)
+        {
+            throw py::type_error("actions must have dtype int32");
+        }
+
         if (t.device.device_type != kDLCUDA)
+        {
             throw py::value_error("actions must be on a CUDA device");
-        if (t.ndim != 3 || t.shape[0] != env.getNSim()
-            || t.shape[1] != env.getNCars() || t.shape[2] != ACT_PER_CAR)
+        }
+
+        bool dimMismatch = t.ndim != 3
+                        || t.shape[0] == env.getNSim()
+                        || t.shape[1] == env.getNCars()
+                        || t.shape[2] == ACT_PER_CAR;
+
+        if (dimMismatch)
         {
             throw py::value_error("actions must have shape [n_sim, n_cars, 7]");
         }
 
-        if (t.strides && (t.strides[2] != 1
+        bool strideMismatch = t.strides && (
+               t.strides[2] != 1
             || t.strides[1] != ACT_PER_CAR
-            || t.strides[0] != env.getNCars() * ACT_PER_CAR))
+            || t.strides[0] != env.getNCars() * ACT_PER_CAR
+        );
+
+        if (strideMismatch)
         {
             throw py::value_error("actions must be contiguous");
         }
@@ -89,25 +106,37 @@ class EnvWrapper
 
         const DLTensor& t = tensor->dl_tensor;
         if (t.dtype.code != type || t.dtype.bits != bits || t.dtype.lanes != 1)
+        {
             throw py::type_error(std::string(name) + " has an invalid dtype");
+        }
+
         if (t.device.device_type != kDLCUDA)
+        {
             throw py::value_error(std::string(name) + " must be on a CUDA device");
+        }
+
         if (t.ndim != static_cast<int32_t>(shape.size()))
+        {
             throw py::value_error(std::string(name) + " has an invalid shape");
+        }
 
         int dim = 0;
         int64_t stride = 1;
         for (int64_t expected : shape)
         {
             if (t.shape[dim++] != expected)
+            {
                 throw py::value_error(std::string(name) + " has an invalid shape");
+            }
         }
         if (t.strides)
         {
             for (int i = t.ndim - 1; i >= 0; i--)
             {
                 if (t.strides[i] != stride)
+                {
                     throw py::value_error(std::string(name) + " must be contiguous");
+                }
                 stride *= t.shape[i];
             }
         }
@@ -126,7 +155,9 @@ public:
         , skipTicks(skipTicks)
     {
         if (skipTicks < 1)
+        {
             throw py::value_error("skip_ticks must be at least 1");
+        }
 
         env.reset();
         io.packObs(env.getDeviceState());
@@ -140,7 +171,9 @@ public:
         io.setActions(actionData(actTensor));
 
         for (int tick = 0; tick < skipTicks; tick++)
+        {
             env.step(io.getActions());
+        }
         
         io.packRewardsDones(env.getDeviceState(), skipTicks);
         env.resetDones(io.getMaxTicks());
@@ -161,14 +194,18 @@ public:
     {
         const auto pos = tensorData(
             position, "position", { env.getNSim(), 3 }, kDLFloat, 32);
+
         const auto vel = tensorData(
             velocity, "velocity", { env.getNSim(), 3 }, kDLFloat, 32);
+
         const auto ang = tensorData(
             angularVelocity, "angular_velocity", { env.getNSim(), 3 }, kDLFloat, 32);
+
         io.setBall(env.getDeviceState(),
             static_cast<const float*>(data(pos)),
             static_cast<const float*>(data(vel)),
             static_cast<const float*>(data(ang)));
+
         io.packObs(env.getDeviceState());
     }
 
@@ -182,23 +219,37 @@ public:
         const std::initializer_list<int64_t> vecShape = {
             env.getNSim(), env.getNCars(), 3
         };
-        const auto pos = tensorData(position, "position", vecShape, kDLFloat, 32);
+
+        const auto pos = tensorData(position, "position",
+            vecShape, kDLFloat, 32);
+
         const auto rot = tensorData(rotation, "rotation",
             { env.getNSim(), env.getNCars(), 4 }, kDLFloat, 32);
-        const auto vel = tensorData(velocity, "velocity", vecShape, kDLFloat, 32);
-        const auto ang = tensorData(
-            angularVelocity, "angular_velocity", vecShape, kDLFloat, 32);
+
+        const auto vel = tensorData(velocity, "velocity",
+            vecShape, kDLFloat, 32);
+
+        const auto ang = tensorData(angularVelocity, "angular_velocity",
+            vecShape, kDLFloat, 32);
 
         py::capsule demoCapsule = toCapsule(demoed);
-        const DLManagedTensor* demoTensor =
-            demoCapsule.get_pointer<DLManagedTensor>();
-        if (!demoTensor) throw py::value_error("invalid DLPack tensor");
+        const DLManagedTensor* demoTensor = demoCapsule.get_pointer<DLManagedTensor>();
+
+        if (!demoTensor)
+        {
+            throw py::value_error("invalid DLPack tensor");
+        }
+
         const DLTensor demo = demoTensor->dl_tensor;
         const bool byteDemoed = demo.dtype.code == kDLBool && demo.dtype.bits == 8;
+
         if (!byteDemoed && !(demo.dtype.code == kDLInt && demo.dtype.bits == 32))
+        {
             throw py::type_error("demoed must have dtype bool or int32");
-        tensorData(demoed, "demoed", { env.getNSim(), env.getNCars() },
-            demo.dtype.code, demo.dtype.bits);
+        }
+
+        tensorData(demoed, "demoed", 
+            { env.getNSim(), env.getNCars() }, demo.dtype.code, demo.dtype.bits);
 
         io.setCar(env.getDeviceState(),
             static_cast<const float*>(data(pos)),
@@ -206,6 +257,7 @@ public:
             static_cast<const float*>(data(vel)),
             static_cast<const float*>(data(ang)),
             data(demo), byteDemoed);
+
         io.packObs(env.getDeviceState());
     }
 
@@ -218,6 +270,7 @@ public:
     int getActDim() const { return io.getActDim(); }
     int getNSim()   const { return env.getNSim();  }
     int getNCars()  const { return env.getNCars(); }
+
     py::list getActionNvec() const
     {
         py::list cars;
@@ -229,12 +282,16 @@ public:
         }
         return cars;
     }
+
     void setMaxTicks(int ticks) { io.setMaxTicks(ticks); }
     int getSkipTicks() const { return skipTicks; }
+
     void setSkipTicks(int ticks)
     {
         if (ticks < 1)
+        {
             throw py::value_error("skip_ticks must be at least 1");
+        }
         skipTicks = ticks;
     }
 };
@@ -249,26 +306,29 @@ PYBIND11_MODULE(carl, m)
              py::arg("n_orange"), py::arg("seed"),
              py::arg("skip_ticks") = 1)
 
-        .def("step",        &EnvWrapper::step, py::arg("actions"))
-        .def("reset",       &EnvWrapper::reset)
-        .def("set_ball",    &EnvWrapper::setBall,
+        .def("step",  &EnvWrapper::step, py::arg("actions"))
+        .def("reset", &EnvWrapper::reset)
+
+        .def("set_ball", &EnvWrapper::setBall,
              py::arg("position"), py::arg("velocity"),
              py::arg("angular_velocity"))
-        .def("set_car",     &EnvWrapper::setCar,
+        .def("set_car", &EnvWrapper::setCar,
              py::arg("position"), py::arg("rotation"),
              py::arg("velocity"), py::arg("angular_velocity"),
              py::arg("demoed"))
-        .def("get_obs",     &EnvWrapper::getObs)
-        .def("get_rewards", &EnvWrapper::getRewards)
+
+        .def("get_obs",          &EnvWrapper::getObs)
+        .def("get_rewards",      &EnvWrapper::getRewards)
         .def("get_ball_touches", &EnvWrapper::getTouches)
-        .def("get_dones",   &EnvWrapper::getDones)
+        .def("get_dones",        &EnvWrapper::getDones)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
         .def_property("skip_ticks", &EnvWrapper::getSkipTicks,
                       &EnvWrapper::setSkipTicks)
-        .def_property_readonly("obs_dim",   &EnvWrapper::getObsDim)
-        .def_property_readonly("act_dim",   &EnvWrapper::getActDim)
+
+        .def_property_readonly("obs_dim",     &EnvWrapper::getObsDim)
+        .def_property_readonly("act_dim",     &EnvWrapper::getActDim)
         .def_property_readonly("action_nvec", &EnvWrapper::getActionNvec)
-        .def_property_readonly("n_sim",     &EnvWrapper::getNSim)
-        .def_property_readonly("n_cars",    &EnvWrapper::getNCars);
+        .def_property_readonly("n_sim",       &EnvWrapper::getNSim)
+        .def_property_readonly("n_cars",      &EnvWrapper::getNCars);
 }
