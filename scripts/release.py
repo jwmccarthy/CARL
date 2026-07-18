@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
 import shutil
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -79,14 +79,16 @@ def verify_wheel(wheel: Path) -> None:
     if any("__pycache__" in name or name.endswith(".pyc") for name in names):
         raise SystemExit("wheel contains generated Python bytecode")
 
-    native_suffix = ".pyd" if platform.system() == "Windows" else ".so"
     if not any(
-        name.startswith("carl/_carl") and name.endswith(native_suffix) for name in names
+        name.startswith("carl/_carl") and name.endswith(".so") for name in names
     ):
-        raise SystemExit(f"wheel does not contain a native {native_suffix} extension")
+        raise SystemExit("wheel does not contain a native .so extension")
 
 
 def build_wheel(python: str, architectures: str) -> Path:
+    if sys.platform != "linux":
+        raise SystemExit("release wheels are currently supported only on Linux")
+
     require("uv")
     require("nvcc")
 
@@ -135,11 +137,8 @@ def publish(tag: str) -> None:
     assets = [asset["name"] for asset in release["assets"]]
 
     has_linux = any("linux" in name and name.endswith(".whl") for name in assets)
-    has_windows = any("win_amd64" in name and name.endswith(".whl") for name in assets)
-    if not has_linux or not has_windows:
-        raise SystemExit(
-            "release requires both Linux and Windows wheels before promotion"
-        )
+    if not has_linux:
+        raise SystemExit("release requires a Linux wheel before promotion")
 
     run(["gh", "release", "edit", tag, "--prerelease=false", "--draft=false"])
 

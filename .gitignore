@@ -13,5 +13,4 @@ compile_commands.json
 __pycache__/
 *.pyc
 *.cpython-*.so
-*.pyd
 .opencode

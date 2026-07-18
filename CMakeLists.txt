@@ -35,22 +35,12 @@ target_link_libraries(carl PUBLIC
 )
 
 target_compile_options(carl PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-w>
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets>
     $<$<COMPILE_LANGUAGE:CUDA>:-allow-unsupported-compiler>
 )
-
-if(MSVC)
-    target_compile_options(carl PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:/W0>
-        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W0>
-    )
-else()
-    target_compile_options(carl PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-w>
-        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>
-    )
-endif()
 
 # --- Python module ---
 

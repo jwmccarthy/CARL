@@ -178,8 +178,7 @@ uv run python python/test.py
 
 ## Releases
 
-Linux and Windows wheels must be built natively on their respective systems.
-Each release machine needs `uv`, `gh`, the CUDA Toolkit, and a platform C++
+Linux release builds require `uv`, `gh`, the CUDA Toolkit, and a host C++
 toolchain. Authenticate GitHub CLI with `gh auth login`, check out the exact
 release tag, and run:
 
@@ -187,13 +186,12 @@ release tag, and run:
 python scripts/release.py --tag v0.1.0 --python 3.11 --upload
 ```
 
-After both wheels have been uploaded, promote the pre-release from either
-machine:
+After the wheel has been uploaded, promote the pre-release:
 
 ```bash
 python scripts/release.py --tag v0.1.0 --publish
 ```
 
 The release script refuses dirty or mismatched tagged sources, validates the
-wheel package layout, and will not promote a release until both Linux and
-Windows wheels are attached.
+wheel package layout, and will not promote a release until a Linux wheel is
+attached.
