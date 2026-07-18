@@ -8,7 +8,7 @@
 
 namespace py = pybind11;
 
-// Accept a DLPack capsule or any object with __dlpack__ (e.g. torch.Tensor)
+// Accept a DLPack capsule or any object with __dlpack__
 static py::capsule toCapsule(py::object obj)
 {
     if (py::isinstance<py::capsule>(obj))
@@ -19,7 +19,7 @@ static py::capsule toCapsule(py::object obj)
     return obj.attr("__dlpack__")().cast<py::capsule>();
 }
 
-// Only delete if still named 'dltensor' - consumers rename to prevent double-free
+// Only delete if still named "dltensor" - consumers rename to prevent double-free
 static void capsuleDeleter(PyObject* o)
 {
     const char* name = PyCapsule_GetName(o);
@@ -69,9 +69,9 @@ class EnvWrapper
         }
 
         bool dimMismatch = t.ndim != 3
-                        || t.shape[0] == env.getNSim()
-                        || t.shape[1] == env.getNCars()
-                        || t.shape[2] == ACT_PER_CAR;
+                        || t.shape[0] != env.getNSim()
+                        || t.shape[1] != env.getNCars()
+                        || t.shape[2] != ACT_PER_CAR;
 
         if (dimMismatch)
         {
