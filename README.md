@@ -145,6 +145,52 @@ env.set_car(
 )
 ```
 
+### Torch rewards
+
+The Gymnasium torch wrapper can compose per-car rewards on the GPU from named,
+independently weighted terms:
+
+```python
+from carl.gymnasium import CARLTorchVectorEnv, REWARDS
+
+@REWARDS.register("forward_speed")
+def forward_speed(context):
+    speed = (context.car_forward * context.car_velocity).sum(dim=-1)
+    return speed / 2300.0
+
+env = CARLTorchVectorEnv(
+    n_sim=1024,
+    n_blue=1,
+    n_orange=1,
+    reward_weights={"forward_speed": 0.1},
+)
+```
+
+Configured rewards have shape `[n_sim, n_cars]`. The unweighted values are also
+returned in `info["reward_components"]`. Omitting `reward_weights` preserves the
+native scalar goal reward. CARL does not register or prescribe any reward terms;
+reward functions and their weights belong to the application.
+
+An isolated registry can also be supplied without changing global state:
+
+```python
+from carl.gymnasium import RewardRegistry
+
+rewards = RewardRegistry()
+
+@rewards.register("my_reward")
+def my_reward(context):
+    return context.car_velocity[..., 2] / 2300.0
+
+env = CARLTorchVectorEnv(
+    n_sim=1024,
+    n_blue=1,
+    n_orange=1,
+    reward_weights={"my_reward": 0.25},
+    reward_registry=rewards,
+)
+```
+
 `env.action_nvec` contains the complete cardinality array, repeated for every car:
 
 ```python

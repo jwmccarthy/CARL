@@ -1,5 +1,4 @@
-from .. import Env
-
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -11,25 +10,29 @@ from gymnasium.vector.utils import batch_space
 
 import carl
 
+from .rewards import Reward, TorchReward
+
+
 class CARLTorchVectorEnv(VectorEnv):
 
-    metadata = {
-        "render_modes":   [],
-        "autoreset_mode": AutoresetMode.SAME_STEP
-    }
+    metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
 
     render_mode = spec = None
 
     def __init__(
         self,
-        n_sim:        int,
-        n_blue:       int,
-        n_orange:     int,
-        seed:         int = 0,
-        frameskip:    int = 8,
+        n_sim:           int,
+        n_blue:          int,
+        n_orange:        int,
+        seed:            int = 0,
+        frameskip:       int = 8,
         *,
-        copy_outputs: bool = True,
-        synchronize:  bool = True
+        invert_orange:   bool = True,
+        copy_outputs:    bool = True,
+        synchronize:     bool = True,
+        reward_weights:  Mapping[str, float] | None = None,
+        reward_registry: Mapping[str, Reward] | None = None,
+        reward_scale:    float = 1.0,
     ) -> None:
         super().__init__()
 
@@ -40,13 +43,26 @@ class CARLTorchVectorEnv(VectorEnv):
         self._seed = seed
         self._copy_outputs = copy_outputs
         self._synchronize = synchronize
+        self._reward = (
+            TorchReward(
+                n_blue,
+                n_orange,
+                reward_weights,
+                scale=reward_scale,
+                invert_orange=invert_orange,
+                registry=reward_registry,
+            )
+            if reward_weights is not None
+            else None
+        )
 
         self._env = carl.Env(
             n_sim=n_sim,
             n_blue=n_blue,
             n_orange=n_orange,
             seed=seed,
-            frameskip=frameskip
+            frameskip=frameskip,
+            invert_orange=invert_orange,
         )
 
         self.n_cars = self._env.n_cars
@@ -54,10 +70,7 @@ class CARLTorchVectorEnv(VectorEnv):
 
         # Space specs for single env
         self.single_observation_space = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self._env.obs_dim,),
-            dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(self._env.obs_dim,), dtype=np.float32
         )
 
         self.single_action_space = gym.spaces.MultiDiscrete(
@@ -65,13 +78,9 @@ class CARLTorchVectorEnv(VectorEnv):
         )
 
         # Full batch obs/act spaces
-        self.observation_space = batch_space(
-            self.single_observation_space, n_sim
-        )
+        self.observation_space = batch_space(self.single_observation_space, n_sim)
 
-        self.action_space = batch_space(
-            self.single_action_space, n_sim
-        )
+        self.action_space = batch_space(self.single_action_space, n_sim)
 
     def _sync(self) -> None:
         if self._synchronize:
@@ -80,16 +89,16 @@ class CARLTorchVectorEnv(VectorEnv):
     def _from_carl(self, capsule: object) -> th.Tensor:
         tensor = th.from_dlpack(capsule)
         return tensor.clone() if self._copy_outputs else tensor
-    
+
     def reset(
         self,
         *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None
+        seed:    int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[th.Tensor, dict[str, Any]]:
         if self.closed:
             raise RuntimeError("Environment is closed")
-        
+
         if seed is not None and seed != self._seed:
             raise ValueError("CARL's seed is constructor-only")
 
@@ -99,26 +108,18 @@ class CARLTorchVectorEnv(VectorEnv):
         self._env.reset()
         self._sync()
 
-        return self._from_carl(self._env.get_obs()), {}
+        observation = self._from_carl(self._env.get_obs())
+        if self._reward is not None:
+            self._reward.reset(observation)
+        return observation, {}
 
     def step(
-        self,
-        actions: th.Tensor | np.ndarray
-    ) -> tuple[
-        th.Tensor,
-        th.Tensor,
-        th.Tensor,
-        th.Tensor,
-        dict[str, Any]
-    ]:
+        self, actions: th.Tensor | np.ndarray
+    ) -> tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor, dict[str, Any]]:
         if self.closed:
             raise RuntimeError("Environment is closed")
 
-        act = th.as_tensor(
-            actions,
-            dtype=th.int32,
-            device=self.device
-        ).contiguous()
+        act = th.as_tensor(actions, dtype=th.int32, device=self.device).contiguous()
 
         if tuple(act.shape) != self._action_shape:
             raise ValueError(
@@ -139,9 +140,12 @@ class CARLTorchVectorEnv(VectorEnv):
         terms = don & rew.ne(0)
         trunc = don & ~terms
 
-        info = {
-            "ball_touches": self._from_carl(self._env.get_ball_touches())
-        }
+        touches = self._from_carl(self._env.get_ball_touches())
+        info = {"ball_touches": touches}
+
+        if self._reward is not None:
+            rew, components = self._reward.step(obs, rew, touches, don)
+            info["reward_components"] = components
 
         return obs, rew, terms, trunc, info
 
