@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -10,9 +9,6 @@ from gymnasium.vector.utils import batch_space
 
 import carl
 
-from .rewards import Reward, TorchReward
-
-
 class CARLTorchVectorEnv(VectorEnv):
 
     metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
@@ -21,18 +17,15 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def __init__(
         self,
-        n_sim:           int,
-        n_blue:          int,
-        n_orange:        int,
-        seed:            int = 0,
-        frameskip:       int = 8,
+        n_sim:         int,
+        n_blue:        int,
+        n_orange:      int,
+        seed:          int = 0,
+        frameskip:     int = 8,
         *,
-        invert_orange:   bool = True,
-        copy_outputs:    bool = True,
-        synchronize:     bool = True,
-        reward_weights:  Mapping[str, float] | None = None,
-        reward_registry: Mapping[str, Reward] | None = None,
-        reward_scale:    float = 1.0,
+        invert_orange: bool = True,
+        copy_outputs:  bool = True,
+        synchronize:   bool = True,
     ) -> None:
         super().__init__()
 
@@ -43,18 +36,6 @@ class CARLTorchVectorEnv(VectorEnv):
         self._seed = seed
         self._copy_outputs = copy_outputs
         self._synchronize = synchronize
-        self._reward = (
-            TorchReward(
-                n_blue,
-                n_orange,
-                reward_weights,
-                scale=reward_scale,
-                invert_orange=invert_orange,
-                registry=reward_registry,
-            )
-            if reward_weights is not None
-            else None
-        )
 
         self._env = carl.Env(
             n_sim=n_sim,
@@ -108,10 +89,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self._env.reset()
         self._sync()
 
-        observation = self._from_carl(self._env.get_obs())
-        if self._reward is not None:
-            self._reward.reset(observation)
-        return observation, {}
+        return self._from_carl(self._env.get_obs()), {}
 
     def step(
         self, actions: th.Tensor | np.ndarray
@@ -140,12 +118,9 @@ class CARLTorchVectorEnv(VectorEnv):
         terms = don & rew.ne(0)
         trunc = don & ~terms
 
-        touches = self._from_carl(self._env.get_ball_touches())
-        info = {"ball_touches": touches}
-
-        if self._reward is not None:
-            rew, components = self._reward.step(obs, rew, touches, don)
-            info["reward_components"] = components
+        info = {
+            "ball_touches": self._from_carl(self._env.get_ball_touches())
+        }
 
         return obs, rew, terms, trunc, info
 
