@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State/GameState.cuh"
+#include "BoostPads.cuh"
 
 // --- Observation packing ---
 
@@ -59,6 +60,16 @@ CARL_D CARL_FI void packObservedCar(
     obs[o++] = (float)internal.isBoosting;
 }
 
+constexpr CARL_D int INVERTED_BOOST_PAD_INDICES[NUM_BOOST_PADS] = {
+     1,  0,  5,  4,  3,  2, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23,
+    22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6
+};
+
+CARL_D CARL_FI int observedBoostPadIndex(int padIdx, bool invert)
+{
+    return invert ? INVERTED_BOOST_PAD_INDICES[padIdx] : padIdx;
+}
+
 // Serialize an observer-specific view: ball, self, teammates, then opponents.
 CARL_D CARL_FI void packObservations(
     GameState* __restrict__ state,
@@ -115,6 +126,59 @@ CARL_D CARL_FI void packObservations(
     for (int c = opponentStart; c < opponentEnd; c++)
     {
         packObservedCar(state, carBase + c, invert, obs, o);
+    }
+
+    for (int p = 0; p < NUM_BOOST_PADS; p++)
+    {
+        const int padIdx = observedBoostPadIndex(p, invert);
+        obs[o++] = state->boostPadCooldowns[
+            simIdx * NUM_BOOST_PADS + padIdx] <= 0.f;
+    }
+
+    const Vec3 carPos = Vec3::ldg(state->cars.pos[carBase + observerIdx]);
+    for (int p = 0; p < NUM_BOOST_PADS; p++)
+    {
+        const int padIdx = observedBoostPadIndex(p, invert);
+        obs[o++] = (carPos - BOOST_PADS[padIdx].pos).len();
+    }
+}
+
+// Serialize canonical world state once per simulation for reward computation.
+CARL_D CARL_FI void packState(
+    GameState* __restrict__ state,
+    int simIdx,
+    int nCars,
+    int touchWindow,
+    float* __restrict__ output)
+{
+    int o = 0;
+    const Vec3 ballPos = Vec3::ldg(state->ball.pos[simIdx]);
+    const Vec3 ballVel = Vec3::ldg(state->ball.vel[simIdx]);
+    const Vec3 ballAng = Vec3::ldg(state->ball.ang[simIdx]);
+
+    output[o++] = ballPos.x;
+    output[o++] = ballPos.y;
+    output[o++] = ballPos.z;
+    output[o++] = ballVel.x;
+    output[o++] = ballVel.y;
+    output[o++] = ballVel.z;
+    output[o++] = ballAng.x;
+    output[o++] = ballAng.y;
+    output[o++] = ballAng.z;
+
+    const int carBase = simIdx * nCars;
+    for (int c = 0; c < nCars; c++)
+    {
+        const int carIdx = carBase + c;
+        packObservedCar(state, carIdx, false, output, o);
+        output[o++] = state->cars.ballContactTick[carIdx]
+                    > state->tickCount - touchWindow;
+    }
+
+    for (int p = 0; p < NUM_BOOST_PADS; p++)
+    {
+        output[o++] = state->boostPadCooldowns[
+            simIdx * NUM_BOOST_PADS + p] <= 0.f;
     }
 }
 

@@ -72,6 +72,9 @@ class CMakeBuild(build_ext):
         extension = extension_files[0]
         print(f"[carl] Installing {extension.name}")
         shutil.copy(extension, dest / extension.name)
+        asset_dest = dest / "assets"
+        asset_dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy(Path("assets/arena.obj"), asset_dest / "arena.obj")
         print("[carl] Done")
 
 

@@ -57,7 +57,7 @@ __global__ void packObsKernel(
 
     const int simIdx      = agentIdx / nCars;
     const int observerIdx = agentIdx % nCars;
-    const int obsDim      = OBS_BALL + nCars * OBS_PER_CAR;
+    const int obsDim      = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS;
 
     packObservations(
         state,
@@ -68,26 +68,31 @@ __global__ void packObsKernel(
         obs + agentIdx * obsDim);
 }
 
+__global__ void packStateKernel(
+    GameState* __restrict__ state,
+    float* __restrict__ output,
+    int nSim,
+    int nCars,
+    int touchWindow)
+{
+    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (simIdx >= nSim) return;
+
+    const int stateDim = OBS_BALL + nCars * STATE_PER_CAR + NUM_BOOST_PADS;
+    packState(state, simIdx, nCars, touchWindow, output + simIdx * stateDim);
+}
+
 __global__ void packRewardsDonesKernel(
     GameState* __restrict__ state,
     float* __restrict__ rewards,
-    float* __restrict__ touches,
     bool* __restrict__ dones,
-    int nSim, int nCars, int maxTicks, int touchWindow)
+    int nSim, int maxTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= nSim) return;
 
     packRewards(state, simIdx, rewards);
     packDones(state, simIdx, maxTicks, dones);
-
-    const int carBase = simIdx * nCars;
-
-    for (int c = 0; c < nCars; c++)
-    {
-        touches[carBase + c] = state->cars.ballContactTick[carBase + c]
-                             > state->tickCount - touchWindow;
-    }
 }
 
 __global__ void setBallKernel(
@@ -167,7 +172,8 @@ EnvIO::EnvIO(
     bool invertOrange)
     : nSim(nSim)
     , nCars(nCars)
-    , obsDim(OBS_BALL + nCars * OBS_PER_CAR)
+    , obsDim(OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS)
+    , stateDim(OBS_BALL + nCars * STATE_PER_CAR + NUM_BOOST_PADS)
     , actDim(nCars * ACT_PER_CAR)
     , invertOrange(invertOrange)
     , stream(stream)
@@ -175,18 +181,19 @@ EnvIO::EnvIO(
     obsShape[0] = nSim;
     obsShape[1] = nCars;
     obsShape[2] = obsDim;
+    stateShape[0] = nSim;
+    stateShape[1] = stateDim;
     actShape[0] = nSim;
     actShape[1] = nCars;
     actShape[2] = ACT_PER_CAR;
     rewardShape[0] = nSim;
-    touchShape[0] = nSim;
-    touchShape[1] = nCars;
     doneShape[0] = nSim;
 
     CUDA_CHECK(cudaMalloc(&d_obs, nSim * nCars * obsDim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_state, nSim * stateDim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_transitionState, nSim * stateDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_actions, nSim * nCars * sizeof(DiscreteControls)));
     CUDA_CHECK(cudaMalloc(&d_rewards, nSim * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_touches, nSim * nCars * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_dones, nSim * sizeof(bool)));
 
     perSimConfig
@@ -203,10 +210,27 @@ EnvIO::EnvIO(
 EnvIO::~EnvIO()
 {
     CUDA_CHECK(cudaFree(d_obs));
+    CUDA_CHECK(cudaFree(d_state));
+    CUDA_CHECK(cudaFree(d_transitionState));
     CUDA_CHECK(cudaFree(d_actions));
     CUDA_CHECK(cudaFree(d_rewards));
-    CUDA_CHECK(cudaFree(d_touches));
     CUDA_CHECK(cudaFree(d_dones));
+}
+
+void EnvIO::packState(GameState* d_gameState)
+{
+    packStateKernel<<<perSimConfig.gridDim,
+        perSimConfig.blockDim, 0, stream>>>(
+        d_gameState, d_state, nSim, nCars, 1);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void EnvIO::packTransitionState(GameState* d_gameState, int touchWindow)
+{
+    packStateKernel<<<perSimConfig.gridDim,
+        perSimConfig.blockDim, 0, stream>>>(
+        d_gameState, d_transitionState, nSim, nCars, touchWindow);
+    CUDA_CHECK(cudaGetLastError());
 }
 
 void EnvIO::packObs(GameState* d_state)
@@ -217,18 +241,27 @@ void EnvIO::packObs(GameState* d_state)
     CUDA_CHECK(cudaGetLastError());
 }
 
-void EnvIO::packRewardsDones(GameState* d_state, int touchWindow)
+void EnvIO::packRewardsDones(GameState* d_state)
 {
     packRewardsDonesKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_rewards, d_touches, d_dones,
-        nSim, nCars, maxTicks, touchWindow);
+        d_state, d_rewards, d_dones, nSim, maxTicks);
     CUDA_CHECK(cudaGetLastError());
 }
 
 DLManagedTensor* EnvIO::getObsTensor()
 {
     return makeFloatTensor(d_obs, obsShape, 3);
+}
+
+DLManagedTensor* EnvIO::getStateTensor()
+{
+    return makeFloatTensor(d_state, stateShape, 2);
+}
+
+DLManagedTensor* EnvIO::getTransitionStateTensor()
+{
+    return makeFloatTensor(d_transitionState, stateShape, 2);
 }
 
 DLManagedTensor* EnvIO::getActionsTensor()
@@ -239,11 +272,6 @@ DLManagedTensor* EnvIO::getActionsTensor()
 DLManagedTensor* EnvIO::getRewardsTensor()
 {
     return makeFloatTensor(d_rewards, rewardShape, 1);
-}
-
-DLManagedTensor* EnvIO::getTouchesTensor()
-{
-    return makeFloatTensor(d_touches, touchShape, 2);
 }
 
 DLManagedTensor* EnvIO::getDonesTensor()

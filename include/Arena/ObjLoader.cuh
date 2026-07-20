@@ -3,6 +3,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -15,6 +16,7 @@
 
 inline std::ifstream openArenaMeshObj()
 {
+    const char* configuredPath = std::getenv("CARL_ARENA_OBJ");
     const std::string sourceFile = __FILE__;
     const std::string sourceMarker = "/include/";
     const size_t markerPos = sourceFile.rfind(sourceMarker);
@@ -24,6 +26,7 @@ inline std::ifstream openArenaMeshObj()
         : sourceFile.substr(0, markerPos) + "/assets/arena.obj";
 
     const std::string candidates[] = {
+        configuredPath ? configuredPath : "",
         "assets/arena.obj",
         "../assets/arena.obj",
         sourceTreePath,

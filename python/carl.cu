@@ -167,6 +167,8 @@ public:
 
         env.reset();
         io.packObs(env.getDeviceState());
+        io.packState(env.getDeviceState());
+        io.packTransitionState(env.getDeviceState(), 1);
         io.packRewardsDones(env.getDeviceState());
     }
 
@@ -181,9 +183,11 @@ public:
             env.step(io.getActions());
         }
         
-        io.packRewardsDones(env.getDeviceState(), frameskip);
+        io.packRewardsDones(env.getDeviceState());
+        io.packTransitionState(env.getDeviceState(), frameskip);
         env.resetDones(io.getMaxTicks());
         io.packObs(env.getDeviceState());
+        io.packState(env.getDeviceState());
 
         return tensorToCapsule(io.getObsTensor());
     }
@@ -192,6 +196,8 @@ public:
     {
         env.reset();
         io.packObs(env.getDeviceState());
+        io.packState(env.getDeviceState());
+        io.packTransitionState(env.getDeviceState(), 1);
         io.packRewardsDones(env.getDeviceState());
     }
 
@@ -213,6 +219,8 @@ public:
             static_cast<const float*>(data(ang)));
 
         io.packObs(env.getDeviceState());
+        io.packState(env.getDeviceState());
+        io.packTransitionState(env.getDeviceState(), 1);
     }
 
     void setCar(
@@ -265,12 +273,34 @@ public:
             data(demo), byteDemoed);
 
         io.packObs(env.getDeviceState());
+        io.packState(env.getDeviceState());
+        io.packTransitionState(env.getDeviceState(), 1);
     }
 
-    py::object getObs()     { return tensorToCapsule(io.getObsTensor()); }
-    py::object getRewards() { return tensorToCapsule(io.getRewardsTensor()); }
-    py::object getTouches() { return tensorToCapsule(io.getTouchesTensor()); }
-    py::object getDones()   { return tensorToCapsule(io.getDonesTensor()); }
+    py::object getObs()
+    {
+        return tensorToCapsule(io.getObsTensor());
+    }
+
+    py::object getState()
+    {
+        return tensorToCapsule(io.getStateTensor());
+    }
+
+    py::object getTransitionState()
+    {
+        return tensorToCapsule(io.getTransitionStateTensor());
+    }
+
+    py::object getRewards()
+    {
+        return tensorToCapsule(io.getRewardsTensor());
+    }
+
+    py::object getDones()
+    {
+        return tensorToCapsule(io.getDonesTensor());
+    }
 
     int getObsDim() const { return io.getObsDim(); }
     int getActDim() const { return io.getActDim(); }
@@ -325,8 +355,9 @@ PYBIND11_MODULE(_carl, m)
              py::arg("demoed"))
 
         .def("get_obs",          &EnvWrapper::getObs)
+        .def("get_state",        &EnvWrapper::getState)
+        .def("get_transition_state", &EnvWrapper::getTransitionState)
         .def("get_rewards",      &EnvWrapper::getRewards)
-        .def("get_ball_touches", &EnvWrapper::getTouches)
         .def("get_dones",        &EnvWrapper::getDones)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)

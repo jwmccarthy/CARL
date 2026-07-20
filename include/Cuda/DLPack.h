@@ -52,3 +52,5 @@ struct DLManagedTensor
 // + isOnGround + isDemoed + hasFlipped + hasDoubleJumped + isBoosting(5)
 constexpr int OBS_PER_CAR = 21;
 constexpr int OBS_BALL = 9;  // pos + vel + ang
+constexpr int OBS_BOOST_PADS = 2 * 34;  // active flags + distances
+constexpr int STATE_PER_CAR = OBS_PER_CAR + 1;  // observation fields + ball touch

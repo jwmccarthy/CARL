@@ -43,7 +43,7 @@ obs = torch.utils.dlpack.from_dlpack(
     env.step(torch.utils.dlpack.to_dlpack(actions))
 )
 
-print(f"obs: {obs.shape} {obs.dtype}")  # torch.Size([1024, 8, 177]) torch.float32
+print(f"obs: {obs.shape} {obs.dtype}")  # torch.Size([1024, 8, 245]) torch.float32
 ```
 
 `JAX`:
@@ -79,7 +79,8 @@ obs = jax.dlpack.from_dlpack(
 
 ### Observation space
 
-Shape: `[n_sim, n_cars, obs_dim]` float32, where `obs_dim = 9 + n_cars * 21`.
+Shape: `[n_sim, n_cars, obs_dim]` float32, where
+`obs_dim = 9 + n_cars * 21 + 68`.
 For each observer, car blocks are ordered as self, remaining teammates by index,
 then opponents by index.
 
@@ -99,10 +100,80 @@ vertical axis.
 | Car up | [n_cars, 3] | [-1, 1] | up unit vector |
 | Car boost | [n_cars] | [0, 100] | boost amount |
 | Car flags | [n_cars, 5] | {0, 1} | on ground, demoed, has flip, has double jump, is boosting |
+| Boost pad active | [34] | {0, 1} | whether each pad is available |
+| Boost pad distance | [34] | | 3D distance from the observing car to each pad |
 
-### Action space
+When orange observations are inverted, boost pads are reordered by their
+180-degree rotated positions so pad features remain in the observer's frame.
 
-Shape: `[n_sim, n_cars, 7]` int32. For simulation `s` and car `c`, `actions[s, c]` is read in this order:
+### Torch vector environment
+
+`CARLTorchVectorEnv` exposes each car as one actor while retaining grouped
+physics simulations:
+
+```python
+from carl.gymnasium import CARLTorchVectorEnv
+
+env = CARLTorchVectorEnv(n_sim=1024, n_blue=1, n_orange=1)
+obs = env.reset()
+
+assert env.n_sim == 1024
+assert env.n_envs == 2048
+assert obs.shape == (env.n_envs, env.single_observation_space.shape[0])
+```
+
+Actor ordering is simulation-major and car-minor, with blue cars before orange
+cars. `step` accepts actions shaped `[n_envs, 7]` and returns the Gymnasium
+five-tuple with observations, rewards, terminations, and truncations batched as
+`[n_envs, ...]`. Default score rewards are actor-relative: scoring is `+1` and
+conceding is `-1` for both teams. All cars sharing a simulation terminate and
+autoreset together. `reset` returns the observation tensor directly.
+Completed actor returns and episode lengths are reported through the step
+tuple's `info["reward"]` and `info["length"]` lists.
+
+The wrapper relies on CUDA stream ordering and does not synchronize the device
+after each operation. Set `synchronize=True` when integrating CARL with custom
+non-default PyTorch streams that do not establish their own dependencies.
+
+### Torch reward context
+
+The wrapper accepts reward callables through `reward_funcs` or
+`register_reward`. Each callable receives canonical, non-observer-relative
+state snapshots and returns `[n_sim, n_cars]`; the wrapper flattens the combined
+reward to `[n_envs]`:
+
+```python
+from carl.gymnasium import CARLTorchVectorEnv, RewardContext
+
+
+def distance_to_ball(state):
+    delta = state.ball_position[:, None, :] - state.car_position
+    return delta.norm(dim=-1)
+
+
+def approach_ball(context: RewardContext):
+    progress = (
+        distance_to_ball(context.previous)
+        - distance_to_ball(context.current)
+    ) / 2300.0
+    return progress.clamp(-1.0, 1.0).masked_fill(
+        context.events.done[:, None], 0.0
+    )
+
+
+env = CARLTorchVectorEnv(1024, 2, 2, reward_funcs=[approach_ball])
+```
+
+The context exposes `current`, `previous`, `events`, and `actions`. State
+snapshots expose structural fields such as `ball_position`, `car_velocity`,
+and `boost_pad_active`; derived reward features remain in user code. Terminal
+`current` state is captured before same-step autoreset.
+
+### Native action space
+
+The native `carl.Env` action shape is `[n_sim, n_cars, 7]` int32. The Torch
+wrapper flattens its public action batch to `[n_envs, 7]`. For simulation `s`
+and car `c`, native `actions[s, c]` is read in this order:
 
 ```text
 [horizontal, vertical, throttle, powerslide, boost, air_roll, jump]
@@ -130,7 +201,14 @@ actions[:, 0] = torch.tensor(
 
 Horizontal and vertical are separate fields, so diagonal steering and dodges are possible. Opposing inputs within one field, such as left and right, are mutually exclusive.
 
-Each call to `step` applies the supplied controls before the first physics tick and holds them for all `frameskip` ticks. Observations, rewards, and dones describe the final tick; touches indicate whether contact occurred during any aggregated tick. Set `frameskip=1` to request controls every physics tick.
+`CARLTorchVectorEnv.action_codec` enumerates all 1,944 joint control
+combinations and `action_mask(observation)` returns their validity mask. It
+masks non-zero pitch and air roll on the ground, reverse throttle and
+powerslide in the air, boost with an empty tank, and jump after flip and double
+jump availability has been consumed. The codec can encode seven-field actions
+to joint indices and decode sampled indices back to CARL controls.
+
+Each call to `step` applies the supplied controls before the first physics tick and holds them for all `frameskip` ticks. Observations, rewards, and dones describe the final tick. In custom rewards, `context.current.car_ball_touches` indicates whether each car touched the ball during any aggregated tick. Set `frameskip=1` to request controls every physics tick.
 
 Episodes end when either team scores or `max_ticks` is reached. State can be replaced directly from contiguous CUDA tensors:
 
@@ -165,7 +243,7 @@ action_space = gym.spaces.MultiDiscrete(
 
 ### Performance
 
-Running `python/test.py` will display the ticks/s given an action vector. Depending on the GPU and environment config, CARL simulates between 5-50M ticks/s. By executing end-to-end on device, we also sidestep host-device transfer latency inherent to CPU-based vectorized simulators.
+Depending on the GPU and environment config, CARL simulates between 5-50M ticks/s. By executing end-to-end on device, we also sidestep host-device transfer latency inherent to CPU-based vectorized simulators.
 
 ## Development
 
@@ -173,7 +251,6 @@ Running `python/test.py` will display the ticks/s given an action vector. Depend
 
 ```bash
 uv sync --extra gymnasium
-uv run python python/test.py
 ```
 
 ## Releases

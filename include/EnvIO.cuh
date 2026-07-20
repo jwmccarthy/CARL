@@ -31,21 +31,23 @@ class EnvIO
 {
 private:
     float* d_obs     = nullptr;
+    float* d_state   = nullptr;
+    float* d_transitionState = nullptr;
     float* d_rewards = nullptr;
-    float* d_touches = nullptr;
     bool*  d_dones   = nullptr;
 
     DiscreteControls* d_actions = nullptr;
 
     int64_t obsShape[3];
+    int64_t stateShape[2];
     int64_t actShape[3];
     int64_t rewardShape[1];
-    int64_t touchShape[2];
     int64_t doneShape[1];
 
     int  nSim;
     int  nCars;
     int  obsDim;
+    int  stateDim;
     int  actDim;
     int  maxTicks = 30000;
     bool invertOrange;
@@ -65,14 +67,19 @@ public:
     // Pack state into observation buffer
     void packObs(GameState* d_state);
 
+    // Pack canonical state before and after same-step autoreset
+    void packState(GameState* d_state);
+    void packTransitionState(GameState* d_state, int touchWindow);
+
     // Pack rewards and dones
-    void packRewardsDones(GameState* d_state, int touchWindow = 1);
+    void packRewardsDones(GameState* d_state);
 
     // DLPack accessors (caller owns the capsule)
     DLManagedTensor* getObsTensor();
+    DLManagedTensor* getStateTensor();
+    DLManagedTensor* getTransitionStateTensor();
     DLManagedTensor* getActionsTensor();
     DLManagedTensor* getRewardsTensor();
-    DLManagedTensor* getTouchesTensor();
     DLManagedTensor* getDonesTensor();
 
     // Copy external actions into internal buffer
