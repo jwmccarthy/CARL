@@ -129,7 +129,8 @@ five-tuple with observations, rewards, terminations, and truncations batched as
 conceding is `-1` for both teams. All cars sharing a simulation terminate and
 autoreset together. `reset` returns the observation tensor directly.
 Completed actor returns and episode lengths are reported through the step
-tuple's `info["reward"]` and `info["length"]` lists.
+tuple's `info["reward"]` and `info["length"]` lists. Episode lengths are
+reported in physics ticks, matching the `max_ticks` unit.
 
 The wrapper relies on CUDA stream ordering and does not synchronize the device
 after each operation. Set `synchronize=True` when integrating CARL with custom

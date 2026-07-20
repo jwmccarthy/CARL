@@ -236,7 +236,7 @@ class CARLTorchVectorEnv(VectorEnv):
         done = terms | trunc
 
         self._episode_return += rew
-        self._episode_length += 1
+        self._episode_length += self._env.frameskip
         finished = done.nonzero(as_tuple=True)[0]
         info = {"reward": [], "length": []}
         if finished.numel():
