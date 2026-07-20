@@ -319,7 +319,14 @@ public:
         return cars;
     }
 
-    void setMaxTicks(int ticks) { io.setMaxTicks(ticks); }
+    void setMaxTicks(int ticks)
+    {
+        if (ticks < 1)
+        {
+            throw py::value_error("max_ticks must be at least 1");
+        }
+        io.setMaxTicks(ticks);
+    }
     int getFrameskip() const { return frameskip; }
 
     void setFrameskip(int ticks)
