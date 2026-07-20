@@ -203,8 +203,9 @@ Horizontal and vertical are separate fields, so diagonal steering and dodges are
 
 `CARLTorchVectorEnv.action_codec` provides a mask for the 18 logits across the
 seven `MultiDiscrete` control heads. It masks non-zero pitch and air roll on
-the ground, reverse throttle and powerslide in the air, boost with an empty
-tank, and jump after flip and double jump availability has been consumed.
+the ground, powerslide in the air, boost with an empty tank, and jump after
+flip and double jump availability has been consumed. Airborne throttle remains
+available because it still affects forward movement.
 
 Each call to `step` applies the supplied controls before the first physics tick and holds them for all `frameskip` ticks. Observations, rewards, and dones describe the final tick. In custom rewards, `context.current.car_ball_touches` indicates whether each car touched the ball during any aggregated tick. Set `frameskip=1` to request controls every physics tick.
 

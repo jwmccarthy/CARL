@@ -28,7 +28,6 @@ class CARLActionCodec(nn.Module):
             device=observation.device,
         )
         mask[..., 4:6] = ~on_ground[..., None]  # Pitch
-        mask[..., 8] = on_ground               # Reverse throttle
         mask[..., 10] = on_ground              # Powerslide
         mask[..., 12] = has_boost              # Boost
         mask[..., 14:16] = ~on_ground[..., None]  # Air roll
