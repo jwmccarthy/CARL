@@ -25,6 +25,8 @@ class CMakeBuild(build_ext):
         ).strip()
         print(f"[carl] pybind11: {pybind_dir}")
 
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
         build_dir.mkdir(parents=True, exist_ok=True)
 
         print("[carl] Configuring CMake...")
