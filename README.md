@@ -70,8 +70,8 @@ obs = jax.dlpack.from_dlpack(
 | n_orange | int | constructor | Orange team size per simulation |
 | seed | int | constructor | Random seed |
 | frameskip | int | constructor, read/write | Physics ticks per controller input (default 1) |
+| max_ticks | int | constructor | Physics ticks before an episode truncates |
 | invert_orange | bool | constructor | Rotate orange observations into the blue frame (default true) |
-| max_ticks | int | constructor | Ticks before episode ends |
 | n_cars | int | readonly | Total cars per simulation (n_blue + n_orange) |
 | obs_dim | int | readonly | Observation vector length |
 | act_dim | int | readonly | Action vector length |

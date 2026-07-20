@@ -32,6 +32,7 @@ class CARLTorchVectorEnv(VectorEnv):
         n_orange:      int,
         seed:          int = 0,
         frameskip:     int = 8,
+        max_ticks:     int = 30000,
         *,
         invert_orange: bool = True,
         copy_outputs:  bool = True,
@@ -48,6 +49,8 @@ class CARLTorchVectorEnv(VectorEnv):
         self._seed = seed
         self._copy_outputs = copy_outputs
         self._synchronize = synchronize
+        if max_ticks < 1:
+            raise ValueError("max_ticks must be positive")
         if reward_scale <= 0:
             raise ValueError("reward_scale must be positive")
         self.reward_funcs = list(reward_funcs or ())
@@ -62,6 +65,7 @@ class CARLTorchVectorEnv(VectorEnv):
             frameskip=frameskip,
             invert_orange=invert_orange,
         )
+        self._env.max_ticks = max_ticks
 
         self.n_cars = self._env.n_cars
         self.n_envs = n_sim * self.n_cars
