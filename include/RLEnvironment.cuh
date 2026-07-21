@@ -49,7 +49,7 @@ public:
     void resetDones(int maxTicks);
 
     GameState* getDeviceState() { return d_state; }
-    cudaStream_t getStream()    { return stream; }
+    cudaStream_t getStream() const { return stream; }
 
     int getNSim()  const { return h_state.nSim; }
     int getNCars() const { return h_state.nCars; }

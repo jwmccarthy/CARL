@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 import numpy as np
@@ -15,6 +15,19 @@ from .state import BOOST_PAD_POSITIONS, CarlEvents, CarlState, RewardContext
 
 
 RewardFunction = Callable[[RewardContext], th.Tensor]
+ResetState = Mapping[str, th.Tensor]
+ResetStateProvider = Callable[[th.Tensor], ResetState | None]
+
+_RESET_STATE_FIELDS = (
+    "ball_position",
+    "ball_velocity",
+    "ball_angular_velocity",
+    "car_position",
+    "car_rotation",
+    "car_velocity",
+    "car_angular_velocity",
+    "car_demoed",
+)
 
 
 class CARLTorchVectorEnv(VectorEnv):
@@ -27,18 +40,19 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def __init__(
         self,
-        n_sim:         int,
-        n_blue:        int,
-        n_orange:      int,
-        seed:          int = 0,
-        frameskip:     int = 8,
-        max_ticks:     int = 30000,
+        n_sim:                int,
+        n_blue:               int,
+        n_orange:             int,
+        seed:                 int = 0,
+        frameskip:            int = 8,
+        max_ticks:            int = 30000,
         *,
-        invert_orange: bool = True,
-        copy_outputs:  bool = True,
-        synchronize:   bool = False,
-        reward_funcs:  Iterable[RewardFunction] | None = None,
-        reward_scale:  float = 1.0,
+        invert_orange:        bool = True,
+        copy_outputs:         bool = True,
+        synchronize:          bool = False,
+        reward_funcs:         Iterable[RewardFunction] | None = None,
+        reward_scale:         float = 1.0,
+        reset_state_provider: ResetStateProvider | None = None,
     ) -> None:
         super().__init__()
 
@@ -53,8 +67,11 @@ class CARLTorchVectorEnv(VectorEnv):
             raise ValueError("max_ticks must be positive")
         if reward_scale <= 0:
             raise ValueError("reward_scale must be positive")
+        if reset_state_provider is not None and not callable(reset_state_provider):
+            raise TypeError("reset_state_provider must be callable")
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
+        self.reset_state_provider = reset_state_provider
         self._state: CarlState | None = None
 
         self._env = carl.Env(
@@ -115,6 +132,50 @@ class CARLTorchVectorEnv(VectorEnv):
             raw, self.n_cars, self._boost_pad_positions, self._team_sign
         )
 
+    def _refresh_state(self) -> th.Tensor:
+        self._sync()
+        observation = self._from_carl(self._env.get_obs())
+        self._state = (
+            self._state_from_carl(self._env.get_state())
+            if self.reward_funcs
+            else None
+        )
+        return observation.view(self.n_envs, self._env.obs_dim)
+
+    def _apply_reset_states(self, reset_mask: th.Tensor) -> None:
+        if self.reset_state_provider is None:
+            return
+
+        simulation_indices = reset_mask.nonzero(as_tuple=True)[0]
+        if not simulation_indices.numel():
+            return
+
+        state = self.reset_state_provider(reset_mask)
+        if state is None:
+            return
+        if not isinstance(state, Mapping):
+            raise TypeError("reset_state_provider must return a mapping or None")
+
+        missing = [field for field in _RESET_STATE_FIELDS if field not in state]
+        if missing:
+            raise KeyError(f"reset state is missing fields: {', '.join(missing)}")
+
+        self._env.set_ball(
+            state["ball_position"],
+            state["ball_velocity"],
+            state["ball_angular_velocity"],
+            simulation_indices=simulation_indices,
+        )
+        self._env.set_car(
+            state["car_position"],
+            state["car_rotation"],
+            state["car_velocity"],
+            state["car_angular_velocity"],
+            state["car_demoed"],
+            boost=state.get("car_boost"),
+            simulation_indices=simulation_indices,
+        )
+
     def register_reward(self, reward_function: RewardFunction) -> RewardFunction:
         if not callable(reward_function):
             raise TypeError("reward_function must be callable")
@@ -134,11 +195,11 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def _custom_reward(
         self,
-        actions: th.Tensor,
+        actions:     th.Tensor,
         score_delta: th.Tensor,
-        done: th.Tensor,
-        terminated: th.Tensor,
-        truncated: th.Tensor,
+        done:        th.Tensor,
+        terminated:  th.Tensor,
+        truncated:   th.Tensor,
     ) -> th.Tensor:
         if self._state is None:
             raise RuntimeError("reset must be called before using custom rewards")
@@ -177,7 +238,7 @@ class CARLTorchVectorEnv(VectorEnv):
     def reset(
         self,
         *,
-        seed: int | None = None,
+        seed:    int | None = None,
         options: dict[str, Any] | None = None,
     ) -> th.Tensor:
         if self.closed:
@@ -190,17 +251,57 @@ class CARLTorchVectorEnv(VectorEnv):
             raise NotImplementedError("CARL reset options are not supported")
 
         self._env.reset()
-        self._sync()
-
-        observation = self._from_carl(self._env.get_obs())
-        self._state = (
-            self._state_from_carl(self._env.get_state())
-            if self.reward_funcs
-            else None
-        )
+        reset_mask = th.ones(self.n_sim, dtype=th.bool, device=self.device)
+        self._apply_reset_states(reset_mask)
         self._episode_return.zero_()
         self._episode_length.zero_()
-        return observation.view(self.n_envs, self._env.obs_dim)
+        return self._refresh_state()
+
+    def set_ball(
+        self,
+        position:           th.Tensor,
+        velocity:           th.Tensor,
+        angular_velocity:   th.Tensor,
+        *,
+        simulation_indices: th.Tensor | None = None,
+    ) -> th.Tensor:
+        if self.closed:
+            raise RuntimeError("Environment is closed")
+
+        self._sync()
+        self._env.set_ball(
+            position,
+            velocity,
+            angular_velocity,
+            simulation_indices=simulation_indices,
+        )
+        return self._refresh_state()
+
+    def set_car(
+        self,
+        position:           th.Tensor,
+        rotation:           th.Tensor,
+        velocity:           th.Tensor,
+        angular_velocity:   th.Tensor,
+        demoed:             th.Tensor,
+        *,
+        boost:              th.Tensor | None = None,
+        simulation_indices: th.Tensor | None = None,
+    ) -> th.Tensor:
+        if self.closed:
+            raise RuntimeError("Environment is closed")
+
+        self._sync()
+        self._env.set_car(
+            position,
+            rotation,
+            velocity,
+            angular_velocity,
+            demoed,
+            boost=boost,
+            simulation_indices=simulation_indices,
+        )
+        return self._refresh_state()
 
     def step(
         self, actions: th.Tensor | np.ndarray
@@ -212,11 +313,10 @@ class CARLTorchVectorEnv(VectorEnv):
 
         self._sync()
 
-        obs_capsule = self._env.step(act)
+        self._env.step(act)
 
         self._sync()
 
-        obs = self._from_carl(obs_capsule).view(self.n_envs, self._env.obs_dim)
         score_delta = self._from_carl(self._env.get_rewards())
         don = self._from_carl(self._env.get_dones())
 
@@ -227,9 +327,11 @@ class CARLTorchVectorEnv(VectorEnv):
             rew = self._custom_reward(act, score_delta, don, terms, trunc).reshape(
                 self.n_envs
             )
-            self._state = self._state_from_carl(self._env.get_state())
         else:
             rew = (score_delta[:, None] * self._team_sign).reshape(self.n_envs)
+
+        self._apply_reset_states(don)
+        obs = self._refresh_state()
 
         terms = terms[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
         trunc = trunc[:, None].expand(-1, self.n_cars).reshape(self.n_envs)

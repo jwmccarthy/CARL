@@ -100,16 +100,23 @@ __global__ void setBallKernel(
     const float* __restrict__ pos,
     const float* __restrict__ vel,
     const float* __restrict__ ang,
+    const int64_t* __restrict__ simulationIndices,
+    int nSelected,
     int nSim)
 {
-    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (simIdx >= nSim) return;
+    const int sourceSimIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (sourceSimIdx >= nSelected) return;
 
-    const int offset = simIdx * 3;
-    state->ball.pos[simIdx] = { pos[offset], pos[offset + 1], pos[offset + 2] };
-    state->ball.vel[simIdx] = { vel[offset], vel[offset + 1], vel[offset + 2] };
-    state->ball.ang[simIdx] = { ang[offset], ang[offset + 1], ang[offset + 2] };
-    state->ball.imp[simIdx] = Vec3::zero();
+    const int64_t targetSimIdx64 = simulationIndices
+        ? simulationIndices[sourceSimIdx] : sourceSimIdx;
+    if (targetSimIdx64 < 0 || targetSimIdx64 >= nSim) return;
+
+    const int targetSimIdx = static_cast<int>(targetSimIdx64);
+    const int offset = sourceSimIdx * 3;
+    state->ball.pos[targetSimIdx] = { pos[offset], pos[offset + 1], pos[offset + 2] };
+    state->ball.vel[targetSimIdx] = { vel[offset], vel[offset + 1], vel[offset + 2] };
+    state->ball.ang[targetSimIdx] = { ang[offset], ang[offset + 1], ang[offset + 2] };
+    state->ball.imp[targetSimIdx] = Vec3::zero();
 }
 
 __global__ void setCarKernel(
@@ -120,13 +127,25 @@ __global__ void setCarKernel(
     const float* __restrict__ ang,
     const void* __restrict__ demoed,
     bool byteDemoed,
-    int nTotalCars)
+    const float* __restrict__ boost,
+    const int64_t* __restrict__ simulationIndices,
+    int nSelected,
+    int nCars,
+    int nSim)
 {
-    const int carIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (carIdx >= nTotalCars) return;
+    const int sourceCarIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (sourceCarIdx >= nSelected * nCars) return;
 
-    const int vecOffset = carIdx * 3;
-    const int rotOffset = carIdx * 4;
+    const int sourceSimIdx = sourceCarIdx / nCars;
+    const int localCarIdx = sourceCarIdx % nCars;
+    const int64_t targetSimIdx64 = simulationIndices
+        ? simulationIndices[sourceSimIdx] : sourceSimIdx;
+    if (targetSimIdx64 < 0 || targetSimIdx64 >= nSim) return;
+
+    const int carIdx = static_cast<int>(targetSimIdx64) * nCars + localCarIdx;
+
+    const int vecOffset = sourceCarIdx * 3;
+    const int rotOffset = sourceCarIdx * 4;
 
     const Vec3 carPos = {
         pos[vecOffset], pos[vecOffset + 1], pos[vecOffset + 2]
@@ -138,8 +157,8 @@ __global__ void setCarKernel(
     };
 
     const int isDemoed = byteDemoed
-        ? static_cast<const uint8_t*>(demoed)[carIdx]
-        : static_cast<const int32_t*>(demoed)[carIdx];
+        ? static_cast<const uint8_t*>(demoed)[sourceCarIdx]
+        : static_cast<const int32_t*>(demoed)[sourceCarIdx];
 
     state->cars.pos[carIdx] = carPos;
     state->cars.rot[carIdx] = carRot;
@@ -161,6 +180,12 @@ __global__ void setCarKernel(
     state->cars.isDemoed[carIdx] = isDemoed != 0;
     state->cars.demoRespawnTimer[carIdx] = isDemoed 
         ? DEMO_RESPAWN_TIME + PHYS_DT : 0.f;
+
+    if (boost)
+    {
+        state->cars.internal[carIdx].boost = fminf(
+            BOOST_MAX, fmaxf(0.f, boost[sourceCarIdx]));
+    }
 }
 
 // --- EnvIO ---
@@ -291,11 +316,20 @@ void EnvIO::setBall(
     GameState* d_state,
     const float* pos,
     const float* vel,
-    const float* ang)
+    const float* ang,
+    const int64_t* simulationIndices,
+    int nSelected)
 {
-    setBallKernel<<<perSimConfig.gridDim,
-        perSimConfig.blockDim, 0, stream>>>(
-        d_state, pos, vel, ang, nSim);
+    if (nSelected < 0) nSelected = nSim;
+    if (nSelected == 0) return;
+
+    const KernelConfig config = KernelConfig{}
+        .setBlockDim(32)
+        .setGridFromThreads(nSelected)
+        .setStream(stream);
+
+    setBallKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
+        d_state, pos, vel, ang, simulationIndices, nSelected, nSim);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -306,16 +340,23 @@ void EnvIO::setCar(
     const float* vel,
     const float* ang,
     const void* demoed,
-    bool byteDemoed)
+    bool byteDemoed,
+    const float* boost,
+    const int64_t* simulationIndices,
+    int nSelected)
 {
+    if (nSelected < 0) nSelected = nSim;
+    if (nSelected == 0) return;
+
     const KernelConfig perCarConfig = KernelConfig{}
         .setBlockDim(256)
-        .setGridFromThreads(nSim * nCars)
+        .setGridFromThreads(nSelected * nCars)
         .setStream(stream);
 
     setCarKernel<<<perCarConfig.gridDim,
         perCarConfig.blockDim, 0, stream>>>(
-        d_state, pos, rot, vel, ang, demoed, byteDemoed, nSim * nCars);
+        d_state, pos, rot, vel, ang, demoed, byteDemoed,
+        boost, simulationIndices, nSelected, nCars, nSim);
         
     CUDA_CHECK(cudaGetLastError());
 }

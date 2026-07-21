@@ -92,7 +92,9 @@ public:
         GameState* d_state,
         const float* pos,
         const float* vel,
-        const float* ang);
+        const float* ang,
+        const int64_t* simulationIndices = nullptr,
+        int nSelected = -1);
 
     void setCar(
         GameState* d_state,
@@ -101,7 +103,10 @@ public:
         const float* vel,
         const float* ang,
         const void* demoed,
-        bool byteDemoed);
+        bool byteDemoed,
+        const float* boost = nullptr,
+        const int64_t* simulationIndices = nullptr,
+        int nSelected = -1);
 
     // Properties
     int getObsDim() const { return obsDim; }

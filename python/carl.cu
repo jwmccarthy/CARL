@@ -1,6 +1,8 @@
 #include <cstring>
 #include <initializer_list>
+#include <optional>
 #include <string>
+#include <utility>
 #include <pybind11/pybind11.h>
 
 #include "RLEnvironment.cuh"
@@ -8,15 +10,17 @@
 
 namespace py = pybind11;
 
-// Accept a DLPack capsule or any object with __dlpack__
-static py::capsule toCapsule(py::object obj)
+// Accept a DLPack capsule or order a producer onto CARL's CUDA stream.
+static py::capsule toCapsule(py::object obj, cudaStream_t stream)
 {
     if (py::isinstance<py::capsule>(obj))
     {
         return obj.cast<py::capsule>();
     }
 
-    return obj.attr("__dlpack__")().cast<py::capsule>();
+    return obj.attr("__dlpack__")(
+        py::arg("stream") = reinterpret_cast<intptr_t>(stream)
+    ).cast<py::capsule>();
 }
 
 // Only delete if still named "dltensor" - consumers rename to prevent double-free
@@ -42,6 +46,12 @@ static py::object tensorToCapsule(DLManagedTensor* tensor)
     tensor->deleter = [](DLManagedTensor* self) { delete self; };
     return py::capsule(tensor, "dltensor", capsuleDeleter);
 }
+
+struct TensorView
+{
+    py::capsule capsule;
+    DLTensor tensor;
+};
 
 // Holds env + I/O, DLPack tensors to Python are non-owning views over EnvIO buffers
 class EnvWrapper
@@ -93,29 +103,26 @@ class EnvWrapper
             static_cast<const char*>(t.data) + t.byte_offset);
     }
 
-    DLTensor tensorData(
-        py::object obj,
+    void validateTensor(
+        const DLTensor& tensor,
         const char* name,
         std::initializer_list<int64_t> shape,
         uint8_t type,
         uint8_t bits) const
     {
-        py::capsule capsule = toCapsule(obj);
-        const DLManagedTensor* tensor = capsule.get_pointer<DLManagedTensor>();
-        if (!tensor) throw py::value_error("invalid DLPack tensor");
-
-        const DLTensor& t = tensor->dl_tensor;
-        if (t.dtype.code != type || t.dtype.bits != bits || t.dtype.lanes != 1)
+        if (tensor.dtype.code != type
+            || tensor.dtype.bits != bits
+            || tensor.dtype.lanes != 1)
         {
             throw py::type_error(std::string(name) + " has an invalid dtype");
         }
 
-        if (t.device.device_type != kDLCUDA)
+        if (tensor.device.device_type != kDLCUDA || tensor.device.device_id != 0)
         {
-            throw py::value_error(std::string(name) + " must be on a CUDA device");
+            throw py::value_error(std::string(name) + " must be on cuda:0");
         }
 
-        if (t.ndim != static_cast<int32_t>(shape.size()))
+        if (tensor.ndim != static_cast<int32_t>(shape.size()))
         {
             throw py::value_error(std::string(name) + " has an invalid shape");
         }
@@ -124,23 +131,72 @@ class EnvWrapper
         int64_t stride = 1;
         for (int64_t expected : shape)
         {
-            if (t.shape[dim++] != expected)
+            if (tensor.shape[dim++] != expected)
             {
                 throw py::value_error(std::string(name) + " has an invalid shape");
             }
         }
-        if (t.strides)
+        if (tensor.strides)
         {
-            for (int i = t.ndim - 1; i >= 0; i--)
+            for (int i = tensor.ndim - 1; i >= 0; i--)
             {
-                if (t.strides[i] != stride)
+                if (tensor.strides[i] != stride)
                 {
                     throw py::value_error(std::string(name) + " must be contiguous");
                 }
-                stride *= t.shape[i];
+                stride *= tensor.shape[i];
             }
         }
-        return t;
+    }
+
+    TensorView tensorData(
+        py::object obj,
+        const char* name,
+        std::initializer_list<int64_t> shape,
+        uint8_t type,
+        uint8_t bits) const
+    {
+        py::capsule capsule = toCapsule(obj, env.getStream());
+        const DLManagedTensor* managed = capsule.get_pointer<DLManagedTensor>();
+        if (!managed) throw py::value_error("invalid DLPack tensor");
+
+        const DLTensor tensor = managed->dl_tensor;
+        validateTensor(tensor, name, shape, type, bits);
+        return { std::move(capsule), tensor };
+    }
+
+    TensorView selectionData(py::object obj, int& nSelected) const
+    {
+        py::capsule capsule = toCapsule(obj, env.getStream());
+        const DLManagedTensor* managed = capsule.get_pointer<DLManagedTensor>();
+        if (!managed) throw py::value_error("invalid DLPack tensor");
+
+        const DLTensor tensor = managed->dl_tensor;
+        const bool validType = tensor.dtype.code == kDLInt
+            && tensor.dtype.bits == 64 && tensor.dtype.lanes == 1;
+        if (!validType)
+        {
+            throw py::type_error("simulation_indices must have dtype int64");
+        }
+        if (tensor.device.device_type != kDLCUDA || tensor.device.device_id != 0)
+        {
+            throw py::value_error("simulation_indices must be on cuda:0");
+        }
+        if (tensor.ndim != 1)
+        {
+            throw py::value_error("simulation_indices must be one-dimensional");
+        }
+        if (tensor.strides && tensor.strides[0] != 1)
+        {
+            throw py::value_error("simulation_indices must be contiguous");
+        }
+        if (tensor.shape[0] > env.getNSim())
+        {
+            throw py::value_error("too many simulation_indices");
+        }
+
+        nSelected = static_cast<int>(tensor.shape[0]);
+        return { std::move(capsule), tensor };
     }
 
     static const void* data(const DLTensor& tensor)
@@ -174,7 +230,7 @@ public:
 
     py::object step(py::object actions)
     {
-        py::capsule capsule = toCapsule(actions);
+        py::capsule capsule = toCapsule(actions, env.getStream());
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setActions(actionData(actTensor));
 
@@ -202,25 +258,40 @@ public:
     }
 
 
-    void setBall(py::object position, py::object velocity, py::object angularVelocity)
+    void setBall(
+        py::object position,
+        py::object velocity,
+        py::object angularVelocity,
+        py::object simulationIndices)
     {
+        int nSelected = env.getNSim();
+        std::optional<TensorView> selection;
+        const int64_t* selected = nullptr;
+        if (!simulationIndices.is_none())
+        {
+            selection.emplace(selectionData(simulationIndices, nSelected));
+            selected = static_cast<const int64_t*>(data(selection->tensor));
+        }
+
         const auto pos = tensorData(
-            position, "position", { env.getNSim(), 3 }, kDLFloat, 32);
+            position, "position", { nSelected, 3 }, kDLFloat, 32);
 
         const auto vel = tensorData(
-            velocity, "velocity", { env.getNSim(), 3 }, kDLFloat, 32);
+            velocity, "velocity", { nSelected, 3 }, kDLFloat, 32);
 
         const auto ang = tensorData(
-            angularVelocity, "angular_velocity", { env.getNSim(), 3 }, kDLFloat, 32);
+            angularVelocity, "angular_velocity", { nSelected, 3 }, kDLFloat, 32);
 
         io.setBall(env.getDeviceState(),
-            static_cast<const float*>(data(pos)),
-            static_cast<const float*>(data(vel)),
-            static_cast<const float*>(data(ang)));
+            static_cast<const float*>(data(pos.tensor)),
+            static_cast<const float*>(data(vel.tensor)),
+            static_cast<const float*>(data(ang.tensor)),
+            selected, nSelected);
 
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), 1);
+        CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
     }
 
     void setCar(
@@ -228,17 +299,28 @@ public:
         py::object rotation,
         py::object velocity,
         py::object angularVelocity,
-        py::object demoed)
+        py::object demoed,
+        py::object boost,
+        py::object simulationIndices)
     {
+        int nSelected = env.getNSim();
+        std::optional<TensorView> selection;
+        const int64_t* selected = nullptr;
+        if (!simulationIndices.is_none())
+        {
+            selection.emplace(selectionData(simulationIndices, nSelected));
+            selected = static_cast<const int64_t*>(data(selection->tensor));
+        }
+
         const std::initializer_list<int64_t> vecShape = {
-            env.getNSim(), env.getNCars(), 3
+            nSelected, env.getNCars(), 3
         };
 
         const auto pos = tensorData(position, "position",
             vecShape, kDLFloat, 32);
 
         const auto rot = tensorData(rotation, "rotation",
-            { env.getNSim(), env.getNCars(), 4 }, kDLFloat, 32);
+            { nSelected, env.getNCars(), 4 }, kDLFloat, 32);
 
         const auto vel = tensorData(velocity, "velocity",
             vecShape, kDLFloat, 32);
@@ -246,7 +328,7 @@ public:
         const auto ang = tensorData(angularVelocity, "angular_velocity",
             vecShape, kDLFloat, 32);
 
-        py::capsule demoCapsule = toCapsule(demoed);
+        py::capsule demoCapsule = toCapsule(demoed, env.getStream());
         const DLManagedTensor* demoTensor = demoCapsule.get_pointer<DLManagedTensor>();
 
         if (!demoTensor)
@@ -262,19 +344,29 @@ public:
             throw py::type_error("demoed must have dtype bool or int32");
         }
 
-        tensorData(demoed, "demoed", 
-            { env.getNSim(), env.getNCars() }, demo.dtype.code, demo.dtype.bits);
+        validateTensor(demo, "demoed",
+            { nSelected, env.getNCars() }, demo.dtype.code, demo.dtype.bits);
+
+        const float* boostData = nullptr;
+        std::optional<TensorView> boostTensor;
+        if (!boost.is_none())
+        {
+            boostTensor.emplace(tensorData(boost, "boost",
+                { nSelected, env.getNCars() }, kDLFloat, 32));
+            boostData = static_cast<const float*>(data(boostTensor->tensor));
+        }
 
         io.setCar(env.getDeviceState(),
-            static_cast<const float*>(data(pos)),
-            static_cast<const float*>(data(rot)),
-            static_cast<const float*>(data(vel)),
-            static_cast<const float*>(data(ang)),
-            data(demo), byteDemoed);
+            static_cast<const float*>(data(pos.tensor)),
+            static_cast<const float*>(data(rot.tensor)),
+            static_cast<const float*>(data(vel.tensor)),
+            static_cast<const float*>(data(ang.tensor)),
+            data(demo), byteDemoed, boostData, selected, nSelected);
 
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), 1);
+        CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
     }
 
     py::object getObs()
@@ -354,20 +446,27 @@ PYBIND11_MODULE(_carl, m)
         .def("reset", &EnvWrapper::reset)
 
         .def("set_ball", &EnvWrapper::setBall,
-             py::arg("position"), py::arg("velocity"),
-             py::arg("angular_velocity"))
+             py::arg("position"),
+             py::arg("velocity"),
+             py::arg("angular_velocity"),
+             py::arg("simulation_indices") = py::none())
         .def("set_car", &EnvWrapper::setCar,
-             py::arg("position"), py::arg("rotation"),
-             py::arg("velocity"), py::arg("angular_velocity"),
-             py::arg("demoed"))
+             py::arg("position"),
+             py::arg("rotation"),
+             py::arg("velocity"),
+             py::arg("angular_velocity"),
+             py::arg("demoed"),
+             py::arg("boost") = py::none(),
+             py::arg("simulation_indices") = py::none())
 
-        .def("get_obs",          &EnvWrapper::getObs)
-        .def("get_state",        &EnvWrapper::getState)
+        .def("get_obs",              &EnvWrapper::getObs)
+        .def("get_state",            &EnvWrapper::getState)
         .def("get_transition_state", &EnvWrapper::getTransitionState)
-        .def("get_rewards",      &EnvWrapper::getRewards)
-        .def("get_dones",        &EnvWrapper::getDones)
+        .def("get_rewards",          &EnvWrapper::getRewards)
+        .def("get_dones",            &EnvWrapper::getDones)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
+
         .def_property("frameskip", &EnvWrapper::getFrameskip,
                       &EnvWrapper::setFrameskip)
 
