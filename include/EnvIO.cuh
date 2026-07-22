@@ -31,6 +31,7 @@ class EnvIO
 {
 private:
     float* d_obs     = nullptr;
+    float* d_transitionObs = nullptr;
     float* d_state   = nullptr;
     float* d_transitionState = nullptr;
     float* d_rewards = nullptr;
@@ -51,6 +52,7 @@ private:
     int  actDim;
     int  maxTicks = 30000;
     bool invertOrange;
+    bool normalize;
 
     cudaStream_t stream;
     KernelConfig perSimConfig;
@@ -61,11 +63,13 @@ public:
         int nSim,
         int nCars,
         cudaStream_t stream,
-        bool invertOrange);
+        bool invertOrange,
+        bool normalize);
     ~EnvIO();
 
     // Pack state into observation buffer
     void packObs(GameState* d_state);
+    void packTransitionObs(GameState* d_state);
 
     // Pack canonical state before and after same-step autoreset
     void packState(GameState* d_state);
@@ -76,6 +80,7 @@ public:
 
     // DLPack accessors (caller owns the capsule)
     DLManagedTensor* getObsTensor();
+    DLManagedTensor* getTransitionObsTensor();
     DLManagedTensor* getStateTensor();
     DLManagedTensor* getTransitionStateTensor();
     DLManagedTensor* getActionsTensor();

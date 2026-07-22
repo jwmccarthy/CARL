@@ -1,6 +1,14 @@
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 import torch as th
+
+
+@dataclass(frozen=True)
+class RewardResult:
+    reward: th.Tensor
+    info:   Mapping[str, list[Any]] = field(default_factory=dict)
 
 
 BOOST_PAD_POSITIONS = (

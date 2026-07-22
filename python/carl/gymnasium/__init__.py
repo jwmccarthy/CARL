@@ -3,6 +3,7 @@ from .state import (
     CarlEvents,
     CarlState,
     RewardContext,
+    RewardResult,
 )
 from .torch import CARLTorchVectorEnv, ResetStateProvider, RewardFunction
 
@@ -14,5 +15,6 @@ __all__ = [
     "CarlState",
     "RewardContext",
     "RewardFunction",
+    "RewardResult",
     "ResetStateProvider",
 ]

@@ -211,9 +211,10 @@ public:
         int nOrange,
         int seed,
         int frameskip,
-        bool invertOrange)
+        bool invertOrange,
+        bool normalize)
         : env(nSim, nBlue, nOrange, seed)
-        , io(nSim, env.getNCars(), env.getStream(), invertOrange)
+        , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize)
         , frameskip(frameskip)
     {
         if (frameskip < 1)
@@ -241,6 +242,7 @@ public:
         
         io.packRewardsDones(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), frameskip);
+        io.packTransitionObs(env.getDeviceState());
         env.resetDones(io.getMaxTicks());
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
@@ -374,6 +376,11 @@ public:
         return tensorToCapsule(io.getObsTensor());
     }
 
+    py::object getTransitionObs()
+    {
+        return tensorToCapsule(io.getTransitionObsTensor());
+    }
+
     py::object getState()
     {
         return tensorToCapsule(io.getStateTensor());
@@ -436,11 +443,12 @@ PYBIND11_MODULE(_carl, m)
     m.doc() = "CARL: CUDA Rocket League simulation";
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int, int, bool>(),
+        .def(py::init<int, int, int, int, int, bool, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
              py::arg("frameskip") = 1,
-             py::arg("invert_orange") = true)
+             py::arg("invert_orange") = true,
+             py::arg("normalize") = false)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
         .def("reset", &EnvWrapper::reset)
@@ -460,6 +468,7 @@ PYBIND11_MODULE(_carl, m)
              py::arg("simulation_indices") = py::none())
 
         .def("get_obs",              &EnvWrapper::getObs)
+        .def("get_transition_obs",   &EnvWrapper::getTransitionObs)
         .def("get_state",            &EnvWrapper::getState)
         .def("get_transition_state", &EnvWrapper::getTransitionState)
         .def("get_rewards",          &EnvWrapper::getRewards)

@@ -143,6 +143,34 @@ CARL_D CARL_FI void packObservations(
     }
 }
 
+CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
+{
+    constexpr float positionScale[3] = { 4108.f, 6000.f, 2076.f };
+    constexpr float arenaDiagonal = 14692.54f;
+
+    for (int axis = 0; axis < 3; axis++) obs[axis] /= positionScale[axis];
+    for (int axis = 3; axis < 6; axis++) obs[axis] /= BALL_MAX_SPEED;
+    for (int axis = 6; axis < 9; axis++) obs[axis] /= BALL_MAX_ANG_SPEED;
+
+    for (int car = 0; car < nCars; car++)
+    {
+        const int offset = OBS_BALL + car * OBS_PER_CAR;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            obs[offset + axis] /= positionScale[axis];
+        }
+        for (int axis = 3; axis < 6; axis++) obs[offset + axis] /= CAR_MAX_SPEED;
+        for (int axis = 6; axis < 9; axis++) obs[offset + axis] /= CAR_MAX_ANG_SPEED;
+        obs[offset + 15] /= BOOST_MAX;
+    }
+
+    const int distanceOffset = OBS_BALL + nCars * OBS_PER_CAR + NUM_BOOST_PADS;
+    for (int pad = 0; pad < NUM_BOOST_PADS; pad++)
+    {
+        obs[distanceOffset + pad] /= arenaDiagonal;
+    }
+}
+
 // Serialize canonical world state once per simulation for reward computation.
 CARL_D CARL_FI void packState(
     GameState* __restrict__ state,

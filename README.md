@@ -30,6 +30,7 @@ env = CARLTorchVectorEnv(
     n_orange=1,
     frameskip=8,
     max_ticks=4096,
+    normalize=True,
 )
 
 observation = env.reset()
@@ -41,7 +42,7 @@ Actors use simulation order, then car order. Blue cars come before orange cars. 
 
 Default rewards are relative to each actor. Scoring gives `1`. Conceding gives `-1`. Every car in a completed simulation terminates and resets together.
 
-`info["reward"]` and `info["length"]` contain Python lists for completed actors. Lengths count physics ticks.
+`info["reward"]` and `info["length"]` contain Python lists for completed actors. Lengths count physics ticks. Same-step autoreset also exposes the pre-reset observation as `info["final_obs"]`, masked by `info["_final_obs"]`.
 
 ## Actions
 
@@ -66,6 +67,8 @@ Controls are held for every tick in `frameskip`. Episode completion is checked a
 ## Observations
 
 The native observation shape is `[n_sim, n_cars, obs_dim]` with `float32` values.
+
+Set `normalize=True` to normalize observations during CUDA packing using arena, ball, car, boost, and angular-speed limits. Reward state and reset setters remain in raw physics units.
 
 ```text
 obs_dim = 9 + n_cars * 21 + 68

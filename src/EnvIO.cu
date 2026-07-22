@@ -45,9 +45,11 @@ DLManagedTensor* makeBoolTensor(
 __global__ void packObsKernel(
     GameState* __restrict__ state,
     float* __restrict__ obs,
+    const bool* __restrict__ mask,
     int nSim,
     int nCars,
-    bool invertOrange)
+    bool invertOrange,
+    bool normalize)
 {
     const int agentIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (agentIdx >= nSim * nCars)
@@ -56,6 +58,10 @@ __global__ void packObsKernel(
     }
 
     const int simIdx      = agentIdx / nCars;
+    if (mask && !mask[simIdx])
+    {
+        return;
+    }
     const int observerIdx = agentIdx % nCars;
     const int obsDim      = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS;
 
@@ -66,6 +72,10 @@ __global__ void packObsKernel(
         nCars,
         invertOrange,
         obs + agentIdx * obsDim);
+    if (normalize)
+    {
+        normalizeObservations(obs + agentIdx * obsDim, nCars);
+    }
 }
 
 __global__ void packStateKernel(
@@ -194,13 +204,15 @@ EnvIO::EnvIO(
     int nSim,
     int nCars,
     cudaStream_t stream,
-    bool invertOrange)
+    bool invertOrange,
+    bool normalize)
     : nSim(nSim)
     , nCars(nCars)
     , obsDim(OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS)
     , stateDim(OBS_BALL + nCars * STATE_PER_CAR + NUM_BOOST_PADS)
     , actDim(nCars * ACT_PER_CAR)
     , invertOrange(invertOrange)
+    , normalize(normalize)
     , stream(stream)
 {
     obsShape[0] = nSim;
@@ -215,6 +227,7 @@ EnvIO::EnvIO(
     doneShape[0] = nSim;
 
     CUDA_CHECK(cudaMalloc(&d_obs, nSim * nCars * obsDim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_transitionObs, nSim * nCars * obsDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_state, nSim * stateDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_transitionState, nSim * stateDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_actions, nSim * nCars * sizeof(DiscreteControls)));
@@ -235,6 +248,7 @@ EnvIO::EnvIO(
 EnvIO::~EnvIO()
 {
     CUDA_CHECK(cudaFree(d_obs));
+    CUDA_CHECK(cudaFree(d_transitionObs));
     CUDA_CHECK(cudaFree(d_state));
     CUDA_CHECK(cudaFree(d_transitionState));
     CUDA_CHECK(cudaFree(d_actions));
@@ -262,7 +276,15 @@ void EnvIO::packObs(GameState* d_state)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_obs, nSim, nCars, invertOrange);
+        d_state, d_obs, nullptr, nSim, nCars, invertOrange, normalize);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void EnvIO::packTransitionObs(GameState* d_state)
+{
+    packObsKernel<<<perAgentConfig.gridDim,
+        perAgentConfig.blockDim, 0, stream>>>(
+        d_state, d_transitionObs, d_dones, nSim, nCars, invertOrange, normalize);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -277,6 +299,11 @@ void EnvIO::packRewardsDones(GameState* d_state)
 DLManagedTensor* EnvIO::getObsTensor()
 {
     return makeFloatTensor(d_obs, obsShape, 3);
+}
+
+DLManagedTensor* EnvIO::getTransitionObsTensor()
+{
+    return makeFloatTensor(d_transitionObs, obsShape, 3);
 }
 
 DLManagedTensor* EnvIO::getStateTensor()

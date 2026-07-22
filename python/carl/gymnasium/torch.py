@@ -11,10 +11,16 @@ from gymnasium.vector.utils import batch_space
 import carl
 
 from .action import CARLActionCodec
-from .state import BOOST_PAD_POSITIONS, CarlEvents, CarlState, RewardContext
+from .state import (
+    BOOST_PAD_POSITIONS,
+    CarlEvents,
+    CarlState,
+    RewardContext,
+    RewardResult,
+)
 
 
-RewardFunction = Callable[[RewardContext], th.Tensor]
+RewardFunction = Callable[[RewardContext], th.Tensor | RewardResult]
 ResetState = Mapping[str, th.Tensor]
 ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
@@ -48,6 +54,7 @@ class CARLTorchVectorEnv(VectorEnv):
         max_ticks:            int = 30000,
         *,
         invert_orange:        bool = True,
+        normalize:            bool = False,
         copy_outputs:         bool = True,
         synchronize:          bool = False,
         reward_funcs:         Iterable[RewardFunction] | None = None,
@@ -81,6 +88,7 @@ class CARLTorchVectorEnv(VectorEnv):
             seed=seed,
             frameskip=frameskip,
             invert_orange=invert_orange,
+            normalize=normalize,
         )
         self._env.max_ticks = max_ticks
 
@@ -220,7 +228,7 @@ class CARLTorchVectorEnv(VectorEnv):
         done:        th.Tensor,
         terminated:  th.Tensor,
         truncated:   th.Tensor,
-    ) -> th.Tensor:
+    ) -> tuple[th.Tensor, dict[str, list[Any]]]:
         if self._state is None:
             raise RuntimeError("reset must be called before using custom rewards")
 
@@ -243,9 +251,26 @@ class CARLTorchVectorEnv(VectorEnv):
             dtype=th.float32,
             device=self.device,
         )
+        info = {}
 
         for reward_func in self.reward_funcs:
             component = reward_func(context)
+            if isinstance(component, RewardResult):
+                expected = int(done.sum().item()) * self.n_cars
+                for key, values in component.info.items():
+                    if key in ("reward", "length"):
+                        raise ValueError(f"reward diagnostic uses reserved key: {key}")
+                    if key in info:
+                        raise ValueError(f"duplicate reward diagnostic key: {key}")
+                    if not isinstance(values, list):
+                        raise TypeError(f"reward diagnostic {key} must be a list")
+                    if len(values) != expected:
+                        raise ValueError(
+                            f"reward diagnostic {key} returned {len(values)} values; "
+                            f"expected {expected}"
+                        )
+                    info[key] = values
+                component = component.reward
             if component.shape != reward.shape:
                 raise ValueError(
                     f"Reward returned {tuple(component.shape)}; "
@@ -253,7 +278,7 @@ class CARLTorchVectorEnv(VectorEnv):
                 )
             reward += component
 
-        return reward * self.reward_scale
+        return reward * self.reward_scale, info
 
     def reset(
         self,
@@ -344,11 +369,13 @@ class CARLTorchVectorEnv(VectorEnv):
         trunc = don & ~terms
 
         if self.reward_funcs:
-            rew = self._custom_reward(act, score_delta, don, terms, trunc).reshape(
-                self.n_envs
+            rew, reward_info = self._custom_reward(
+                act, score_delta, don, terms, trunc
             )
+            rew = rew.reshape(self.n_envs)
         else:
             rew = (score_delta[:, None] * self._team_sign).reshape(self.n_envs)
+            reward_info = {}
 
         self._apply_reset_states(don)
         obs = self._refresh_state()
@@ -362,9 +389,15 @@ class CARLTorchVectorEnv(VectorEnv):
         finished = done.nonzero(as_tuple=True)[0]
         info = {"reward": [], "length": []}
         if finished.numel():
+            final_obs = self._from_carl(self._env.get_transition_obs()).view(
+                self.n_envs, self._env.obs_dim
+            )
             info = {
                 "reward": self._episode_return[finished].cpu().tolist(),
                 "length": self._episode_length[finished].cpu().tolist(),
+                "final_obs": final_obs,
+                "_final_obs": done,
+                **reward_info,
             }
             self._episode_return[finished] = 0
             self._episode_length[finished] = 0
