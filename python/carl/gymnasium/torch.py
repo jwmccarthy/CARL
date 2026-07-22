@@ -160,6 +160,26 @@ class CARLTorchVectorEnv(VectorEnv):
         if missing:
             raise KeyError(f"reset state is missing fields: {', '.join(missing)}")
 
+        selected_indices = state.get("simulation_indices")
+        if selected_indices is not None:
+            if not isinstance(selected_indices, th.Tensor):
+                raise TypeError("simulation_indices must be a tensor")
+            if selected_indices.dtype != th.int64 or selected_indices.ndim != 1:
+                raise TypeError("simulation_indices must be one-dimensional int64")
+            if selected_indices.device != reset_mask.device:
+                raise ValueError("simulation_indices must be on the reset mask device")
+            if not selected_indices.numel():
+                return
+            if (
+                selected_indices.lt(0).any()
+                or selected_indices.ge(self.n_sim).any()
+                or not reset_mask[selected_indices].all()
+            ):
+                raise ValueError("simulation_indices must select reset simulations")
+            if selected_indices.unique().numel() != selected_indices.numel():
+                raise ValueError("simulation_indices must be unique")
+            simulation_indices = selected_indices.contiguous()
+
         self._env.set_ball(
             state["ball_position"],
             state["ball_velocity"],

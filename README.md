@@ -113,7 +113,7 @@ Setters do not reset scores, episode time, controls, jump state, contacts, or wr
 
 `CARLTorchVectorEnv` accepts an optional `reset_state_provider`. The provider receives a Boolean CUDA mask shaped `[n_sim]` and returns compact tensors in `mask.nonzero()` order.
 
-The required mapping keys are `ball_position`, `ball_velocity`, `ball_angular_velocity`, `car_position`, `car_rotation`, `car_velocity`, `car_angular_velocity`, and `car_demoed`. `car_boost` is optional. Returning `None` keeps the normal kickoff state.
+The required mapping keys are `ball_position`, `ball_velocity`, `ball_angular_velocity`, `car_position`, `car_rotation`, `car_velocity`, `car_angular_velocity`, and `car_demoed`. `car_boost` is optional. A provider can return compact `simulation_indices` to override only part of the reset mask. Returning `None` keeps the normal kickoff state.
 
 On explicit reset, every mask value is true. During same step reset, the mask marks completed simulations. Terminal custom rewards use the transition before reset. Returned observations use the provider state.
 
