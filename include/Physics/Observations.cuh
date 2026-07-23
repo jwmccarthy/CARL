@@ -26,9 +26,9 @@ CARL_D CARL_FI void packObservedCar(
     const Vec3 ang = observationVector(
         Vec3::ldg(state->cars.ang[carIdx]), invert);
 
-    const Quat rot     = Quat::ldg(state->cars.rot[carIdx]);
+    const Quat rot = Quat::ldg(state->cars.rot[carIdx]);
     const Vec3 forward = observationVector(rot.toWorld(WORLD_X), invert);
-    const Vec3 up      = observationVector(rot.toWorld(WORLD_Z), invert);
+    const Vec3 up = observationVector(rot.toWorld(WORLD_Z), invert);
 
     const CarInternalState internal = state->cars.internal[carIdx];
 
@@ -148,23 +148,45 @@ CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
     constexpr float positionScale[3] = { 4108.f, 6000.f, 2076.f };
     constexpr float arenaDiagonal = 14692.54f;
 
-    for (int axis = 0; axis < 3; axis++) obs[axis] /= positionScale[axis];
-    for (int axis = 3; axis < 6; axis++) obs[axis] /= BALL_MAX_SPEED;
-    for (int axis = 6; axis < 9; axis++) obs[axis] /= BALL_MAX_ANG_SPEED;
+    for (int axis = 0; axis < 3; axis++)
+    {
+        obs[axis] /= positionScale[axis];
+    }
+
+    for (int axis = 3; axis < 6; axis++)
+    {
+        obs[axis] /= BALL_MAX_SPEED;
+    }
+
+    for (int axis = 6; axis < 9; axis++)
+    {
+        obs[axis] /= BALL_MAX_ANG_SPEED;
+    }
 
     for (int car = 0; car < nCars; car++)
     {
         const int offset = OBS_BALL + car * OBS_PER_CAR;
+
         for (int axis = 0; axis < 3; axis++)
         {
             obs[offset + axis] /= positionScale[axis];
         }
-        for (int axis = 3; axis < 6; axis++) obs[offset + axis] /= CAR_MAX_SPEED;
-        for (int axis = 6; axis < 9; axis++) obs[offset + axis] /= CAR_MAX_ANG_SPEED;
+
+        for (int axis = 3; axis < 6; axis++)
+        {
+            obs[offset + axis] /= CAR_MAX_SPEED;
+        }
+
+        for (int axis = 6; axis < 9; axis++)
+        {
+            obs[offset + axis] /= CAR_MAX_ANG_SPEED;
+        }
+
         obs[offset + 15] /= BOOST_MAX;
     }
 
     const int distanceOffset = OBS_BALL + nCars * OBS_PER_CAR + NUM_BOOST_PADS;
+
     for (int pad = 0; pad < NUM_BOOST_PADS; pad++)
     {
         obs[distanceOffset + pad] /= arenaDiagonal;
@@ -180,6 +202,7 @@ CARL_D CARL_FI void packState(
     float* __restrict__ output)
 {
     int o = 0;
+
     const Vec3 ballPos = Vec3::ldg(state->ball.pos[simIdx]);
     const Vec3 ballVel = Vec3::ldg(state->ball.vel[simIdx]);
     const Vec3 ballAng = Vec3::ldg(state->ball.ang[simIdx]);
@@ -205,8 +228,7 @@ CARL_D CARL_FI void packState(
 
     for (int p = 0; p < NUM_BOOST_PADS; p++)
     {
-        output[o++] = state->boostPadCooldowns[
-            simIdx * NUM_BOOST_PADS + p] <= 0.f;
+        output[o++] = state->boostPadCooldowns[simIdx * NUM_BOOST_PADS + p] <= 0.f;
     }
 }
 

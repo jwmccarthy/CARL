@@ -57,13 +57,13 @@ __global__ void packObsKernel(
         return;
     }
 
-    const int simIdx      = agentIdx / nCars;
+    const int simIdx = agentIdx / nCars;
     if (mask && !mask[simIdx])
     {
         return;
     }
     const int observerIdx = agentIdx % nCars;
-    const int obsDim      = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS;
+    const int obsDim = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS;
 
     packObservations(
         state,
@@ -72,6 +72,7 @@ __global__ void packObsKernel(
         nCars,
         invertOrange,
         obs + agentIdx * obsDim);
+        
     if (normalize)
     {
         normalizeObservations(obs + agentIdx * obsDim, nCars);
