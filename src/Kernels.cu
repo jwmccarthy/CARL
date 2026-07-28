@@ -25,12 +25,13 @@ __global__ void resetKernel(GameState* __restrict__ state)
 __global__ void resetDonesKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    int maxTicks)
+    int maxTicks,
+    int noTouchTimeoutTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim) return;
 
-    resetAfterDone(state, space, simIdx, maxTicks);
+    resetAfterDone(state, space, simIdx, maxTicks, noTouchTimeoutTicks);
 }
 
 __global__ void beginStepKernel(

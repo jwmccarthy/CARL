@@ -30,6 +30,7 @@ env = CARLTorchVectorEnv(
     n_orange=1,
     frameskip=8,
     max_ticks=4096,
+    no_touch_timeout_seconds=30.0,
     normalize=True,
 )
 
@@ -63,6 +64,8 @@ The action cardinalities are:
 `CARLTorchVectorEnv.action_codec` can mask invalid logits for `MultiCategoricalPolicy`. Native `step()` does not enforce this mask.
 
 Controls are held for every tick in `frameskip`. Episode completion is checked after those ticks.
+
+`no_touch_timeout_ticks` optionally truncates an episode after that many 120 Hz physics ticks without any car touching the ball. `no_touch_timeout_seconds` provides the same setting in seconds; specify only one. Both default to disabled. Like `max_ticks`, the condition is packed and reset natively with same-step autoreset.
 
 ## Observations
 
@@ -134,4 +137,4 @@ actions = torch.zeros((1024, 2, 7), dtype=torch.int32, device="cuda:0")
 observation = torch.from_dlpack(env.step(actions))
 ```
 
-The native API provides `reset`, `step`, state getters, reward and done getters, state setters, `frameskip`, `max_ticks`, observation dimensions, action dimensions, action cardinalities, simulation count, and car count.
+The native API provides `reset`, `step`, state getters, reward and done getters, state setters, `frameskip`, `max_ticks`, `no_touch_timeout_ticks`, observation dimensions, action dimensions, action cardinalities, simulation count, and car count. Native `no_touch_timeout_ticks=0` disables the timeout.

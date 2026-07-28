@@ -243,7 +243,7 @@ public:
         io.packRewardsDones(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), frameskip);
         io.packTransitionObs(env.getDeviceState());
-        env.resetDones(io.getMaxTicks());
+        env.resetDones(io.getMaxTicks(), io.getNoTouchTimeoutTicks());
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
 
@@ -426,6 +426,16 @@ public:
         }
         io.setMaxTicks(ticks);
     }
+
+    void setNoTouchTimeoutTicks(int ticks)
+    {
+        if (ticks < 0)
+        {
+            throw py::value_error("no_touch_timeout_ticks must be non-negative");
+        }
+        io.setNoTouchTimeoutTicks(ticks);
+    }
+
     int getFrameskip() const { return frameskip; }
 
     void setFrameskip(int ticks)
@@ -475,6 +485,8 @@ PYBIND11_MODULE(_carl, m)
         .def("get_dones",            &EnvWrapper::getDones)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
+        .def_property("no_touch_timeout_ticks", nullptr,
+                      &EnvWrapper::setNoTouchTimeoutTicks)
 
         .def_property("frameskip", &EnvWrapper::getFrameskip,
                       &EnvWrapper::setFrameskip)

@@ -51,6 +51,7 @@ private:
     int  stateDim;
     int  actDim;
     int  maxTicks = 30000;
+    int  noTouchTimeoutTicks = 0;
     bool invertOrange;
     bool normalize;
 
@@ -119,4 +120,6 @@ public:
 
     int getMaxTicks() const { return maxTicks; }
     void setMaxTicks(int ticks) { maxTicks = ticks; }
+    int getNoTouchTimeoutTicks() const { return noTouchTimeoutTicks; }
+    void setNoTouchTimeoutTicks(int ticks) { noTouchTimeoutTicks = ticks; }
 };

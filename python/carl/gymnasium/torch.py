@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable, Mapping
+import math
 from typing import Any
 
 import numpy as np
@@ -53,6 +54,8 @@ class CARLTorchVectorEnv(VectorEnv):
         frameskip:            int = 8,
         max_ticks:            int = 30000,
         *,
+        no_touch_timeout_ticks:   int | None = None,
+        no_touch_timeout_seconds: float | None = None,
         invert_orange:        bool = True,
         normalize:            bool = False,
         copy_outputs:         bool = True,
@@ -72,6 +75,22 @@ class CARLTorchVectorEnv(VectorEnv):
         self._synchronize = synchronize
         if max_ticks < 1:
             raise ValueError("max_ticks must be positive")
+        if (
+            no_touch_timeout_ticks is not None
+            and no_touch_timeout_seconds is not None
+        ):
+            raise ValueError(
+                "Specify no_touch_timeout_ticks or no_touch_timeout_seconds, not both"
+            )
+        if no_touch_timeout_ticks is not None and no_touch_timeout_ticks < 1:
+            raise ValueError("no_touch_timeout_ticks must be positive")
+        if no_touch_timeout_seconds is not None:
+            if (
+                not math.isfinite(no_touch_timeout_seconds)
+                or no_touch_timeout_seconds <= 0
+            ):
+                raise ValueError("no_touch_timeout_seconds must be positive and finite")
+            no_touch_timeout_ticks = math.ceil(no_touch_timeout_seconds * 120)
         if reward_scale <= 0:
             raise ValueError("reward_scale must be positive")
         if reset_state_provider is not None and not callable(reset_state_provider):
@@ -91,6 +110,7 @@ class CARLTorchVectorEnv(VectorEnv):
             normalize=normalize,
         )
         self._env.max_ticks = max_ticks
+        self._env.no_touch_timeout_ticks = no_touch_timeout_ticks or 0
 
         self.n_cars = self._env.n_cars
         self.n_envs = n_sim * self.n_cars

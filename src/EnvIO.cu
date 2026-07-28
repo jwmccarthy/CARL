@@ -97,13 +97,13 @@ __global__ void packRewardsDonesKernel(
     GameState* __restrict__ state,
     float* __restrict__ rewards,
     bool* __restrict__ dones,
-    int nSim, int maxTicks)
+    int nSim, int maxTicks, int noTouchTimeoutTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= nSim) return;
 
     packRewards(state, simIdx, rewards);
-    packDones(state, simIdx, maxTicks, dones);
+    packDones(state, simIdx, maxTicks, noTouchTimeoutTicks, dones);
 }
 
 __global__ void setBallKernel(
@@ -293,7 +293,8 @@ void EnvIO::packRewardsDones(GameState* d_state)
 {
     packRewardsDonesKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_rewards, d_dones, nSim, maxTicks);
+        d_state, d_rewards, d_dones,
+        nSim, maxTicks, noTouchTimeoutTicks);
     CUDA_CHECK(cudaGetLastError());
 }
 

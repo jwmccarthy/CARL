@@ -46,7 +46,7 @@ public:
 
     void step(const DiscreteControls* actions);
     void reset();
-    void resetDones(int maxTicks);
+    void resetDones(int maxTicks, int noTouchTimeoutTicks);
 
     GameState* getDeviceState() { return d_state; }
     cudaStream_t getStream() const { return stream; }

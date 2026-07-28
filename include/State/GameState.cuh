@@ -147,6 +147,7 @@ struct GameState
 
     int tickCount;
     DeviceArray<int> episodeTicks;
+    DeviceArray<int> lastBallTouchTicks;
 
     BallState ball;
     CarState  cars;
@@ -164,6 +165,7 @@ struct GameState
         , seed(seed)
         , tickCount(0)
         , episodeTicks(nSim)
+        , lastBallTouchTicks(nSim)
         , ball(nSim)
         , cars(nTotalCars)
         , boostPadCooldowns(nSim * NUM_BOOST_PADS)
@@ -174,6 +176,7 @@ struct GameState
     {
         tickCount = 0;
         episodeTicks.fill(0);
+        lastBallTouchTicks.fill(0);
         ball.reset();
         cars.reset();
         boostPadCooldowns.fill(0);

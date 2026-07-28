@@ -76,17 +76,23 @@ CARL_D CARL_FI void resetAfterDone(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
     int simIdx,
-    int maxTicks)
+    int maxTicks,
+    int noTouchTimeoutTicks)
 {
     GoalState& goal = state->goals[simIdx];
     const bool scored = goal.blueScore != 0 || goal.orangeScore != 0;
+    const bool noTouchTimeout = noTouchTimeoutTicks > 0
+        && state->tickCount - state->lastBallTouchTicks[simIdx]
+            >= noTouchTimeoutTicks;
 
-    if (!scored && state->episodeTicks[simIdx] < maxTicks) return;
+    if (!scored && !noTouchTimeout
+        && state->episodeTicks[simIdx] < maxTicks) return;
 
     goal = {};
 
     resetToKickoff(state, simIdx);
     state->episodeTicks[simIdx] = 0;
+    state->lastBallTouchTicks[simIdx] = state->tickCount;
 
     const int carBase = simIdx * state->nCars;
     for (int local = 0; local < state->nCars; local++)

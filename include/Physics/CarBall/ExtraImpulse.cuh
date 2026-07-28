@@ -60,6 +60,7 @@ CARL_D CARL_FI void applyBallCarExtraImpulse(
 {
     const int tick = state->tickCount;
     state->cars.ballContactTick[carIdx] = tick;
+    state->lastBallTouchTicks[ballIdx] = tick;
 
     const int lastTick = __ldg(&state->cars.ballHitTick[carIdx]);
     if (tick <= lastTick + 1 && lastTick <= tick) return;

@@ -246,10 +246,16 @@ CARL_D CARL_FI void packRewards(
 
 CARL_D CARL_FI void packDones(
     GameState* __restrict__ state,
-    int simIdx, int maxTicks, bool* __restrict__ dones)
+    int simIdx,
+    int maxTicks,
+    int noTouchTimeoutTicks,
+    bool* __restrict__ dones)
 {
     const GoalState& goal = state->goals[simIdx];
     dones[simIdx] = state->episodeTicks[simIdx] >= maxTicks
+                 || (noTouchTimeoutTicks > 0
+                     && state->tickCount - state->lastBallTouchTicks[simIdx]
+                        >= noTouchTimeoutTicks)
                  || goal.blueScore != 0
                  || goal.orangeScore != 0;
 }
