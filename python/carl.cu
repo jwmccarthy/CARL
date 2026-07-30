@@ -276,6 +276,7 @@ public:
         {
             selection.emplace(selectionData(simulationIndices, nSelected));
             selected = static_cast<const int64_t*>(data(selection->tensor));
+            nSelected = static_cast<int>(selection->tensor.shape[0]);
         }
 
         const auto pos = tensorData(
@@ -315,6 +316,7 @@ public:
         {
             selection.emplace(selectionData(simulationIndices, nSelected));
             selected = static_cast<const int64_t*>(data(selection->tensor));
+            nSelected = static_cast<int>(selection->tensor.shape[0]);
         }
 
         const std::initializer_list<int64_t> vecShape = {
@@ -384,6 +386,7 @@ public:
         {
             selection.emplace(selectionData(simulationIndices, nSelected));
             selected = static_cast<const int64_t*>(data(selection->tensor));
+            nSelected = static_cast<int>(selection->tensor.shape[0]);
         }
         const auto blue = tensorData(blueScore, "blue_score",
             { nSelected }, kDLInt, 32);
