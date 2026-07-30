@@ -36,6 +36,10 @@ private:
     float* d_transitionState = nullptr;
     float* d_rewards = nullptr;
     bool*  d_dones   = nullptr;
+    int*   d_scoreDifference = nullptr;
+    int*   d_episodeTicks = nullptr;
+    int*   d_transitionScoreDifference = nullptr;
+    int*   d_transitionEpisodeTicks = nullptr;
 
     DiscreteControls* d_actions = nullptr;
 
@@ -50,7 +54,7 @@ private:
     int  obsDim;
     int  stateDim;
     int  actDim;
-    int  maxTicks = 30000;
+    int  maxTicks = 5 * 60 * 120;
     int  noTouchTimeoutTicks = 0;
     bool invertOrange;
     bool normalize;
@@ -78,6 +82,7 @@ public:
 
     // Pack rewards and dones
     void packRewardsDones(GameState* d_state);
+    void packRawMatchState(GameState* d_state);
 
     // DLPack accessors (caller owns the capsule)
     DLManagedTensor* getObsTensor();
@@ -87,6 +92,10 @@ public:
     DLManagedTensor* getActionsTensor();
     DLManagedTensor* getRewardsTensor();
     DLManagedTensor* getDonesTensor();
+    DLManagedTensor* getScoreDifferenceTensor();
+    DLManagedTensor* getEpisodeTicksTensor();
+    DLManagedTensor* getTransitionScoreDifferenceTensor();
+    DLManagedTensor* getTransitionEpisodeTicksTensor();
 
     // Copy external actions into internal buffer
     void setActions(const int32_t* src);
@@ -113,6 +122,9 @@ public:
         const float* boost = nullptr,
         const int64_t* simulationIndices = nullptr,
         int nSelected = -1);
+    void setMatchState(GameState* d_state, const int32_t* blueScore,
+        const int32_t* orangeScore, const int32_t* episodeTicks,
+        const int64_t* simulationIndices = nullptr, int nSelected = -1);
 
     // Properties
     int getObsDim() const { return obsDim; }

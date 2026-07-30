@@ -106,6 +106,15 @@ __global__ void packRewardsDonesKernel(
     packDones(state, simIdx, maxTicks, noTouchTimeoutTicks, dones);
 }
 
+__global__ void packRawMatchStateKernel(GameState* state, int* score, int* ticks)
+{
+    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (simIdx >= state->nSim) return;
+    const GoalState goal = state->goals[simIdx];
+    score[simIdx] = goal.blueScore - goal.orangeScore;
+    ticks[simIdx] = state->episodeTicks[simIdx];
+}
+
 __global__ void setBallKernel(
     GameState* __restrict__ state,
     const float* __restrict__ pos,
@@ -199,6 +208,19 @@ __global__ void setCarKernel(
     }
 }
 
+__global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
+    const int32_t* orange, const int32_t* ticks, const int64_t* indices,
+    int nSelected)
+{
+    const int source = blockIdx.x * blockDim.x + threadIdx.x;
+    if (source >= nSelected) return;
+    const int64_t target = indices ? indices[source] : source;
+    if (target < 0 || target >= state->nSim) return;
+    state->goals[target].blueScore = blue[source];
+    state->goals[target].orangeScore = orange[source];
+    state->episodeTicks[target] = ticks[source];
+}
+
 // --- EnvIO ---
 
 EnvIO::EnvIO(
@@ -234,6 +256,10 @@ EnvIO::EnvIO(
     CUDA_CHECK(cudaMalloc(&d_actions, nSim * nCars * sizeof(DiscreteControls)));
     CUDA_CHECK(cudaMalloc(&d_rewards, nSim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_dones, nSim * sizeof(bool)));
+    CUDA_CHECK(cudaMalloc(&d_scoreDifference, nSim * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_episodeTicks, nSim * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_transitionScoreDifference, nSim * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_transitionEpisodeTicks, nSim * sizeof(int)));
 
     perSimConfig
         .setBlockDim(32)
@@ -255,6 +281,10 @@ EnvIO::~EnvIO()
     CUDA_CHECK(cudaFree(d_actions));
     CUDA_CHECK(cudaFree(d_rewards));
     CUDA_CHECK(cudaFree(d_dones));
+    CUDA_CHECK(cudaFree(d_scoreDifference));
+    CUDA_CHECK(cudaFree(d_episodeTicks));
+    CUDA_CHECK(cudaFree(d_transitionScoreDifference));
+    CUDA_CHECK(cudaFree(d_transitionEpisodeTicks));
 }
 
 void EnvIO::packState(GameState* d_gameState)
@@ -296,6 +326,16 @@ void EnvIO::packRewardsDones(GameState* d_state)
         d_state, d_rewards, d_dones,
         nSim, maxTicks, noTouchTimeoutTicks);
     CUDA_CHECK(cudaGetLastError());
+    packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
+        d_state, d_transitionScoreDifference, d_transitionEpisodeTicks);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void EnvIO::packRawMatchState(GameState* d_state)
+{
+    packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
+        d_state, d_scoreDifference, d_episodeTicks);
+    CUDA_CHECK(cudaGetLastError());
 }
 
 DLManagedTensor* EnvIO::getObsTensor()
@@ -331,6 +371,26 @@ DLManagedTensor* EnvIO::getRewardsTensor()
 DLManagedTensor* EnvIO::getDonesTensor()
 {
     return makeBoolTensor(d_dones, doneShape, 1);
+}
+
+DLManagedTensor* EnvIO::getScoreDifferenceTensor()
+{
+    return makeIntTensor(d_scoreDifference, doneShape, 1);
+}
+
+DLManagedTensor* EnvIO::getEpisodeTicksTensor()
+{
+    return makeIntTensor(d_episodeTicks, doneShape, 1);
+}
+
+DLManagedTensor* EnvIO::getTransitionScoreDifferenceTensor()
+{
+    return makeIntTensor(d_transitionScoreDifference, doneShape, 1);
+}
+
+DLManagedTensor* EnvIO::getTransitionEpisodeTicksTensor()
+{
+    return makeIntTensor(d_transitionEpisodeTicks, doneShape, 1);
 }
 
 // Copy external device action tensor into internal buffer (D2D, same stream)
@@ -387,5 +447,19 @@ void EnvIO::setCar(
         d_state, pos, rot, vel, ang, demoed, byteDemoed,
         boost, simulationIndices, nSelected, nCars, nSim);
         
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void EnvIO::setMatchState(GameState* d_state, const int32_t* blueScore,
+    const int32_t* orangeScore, const int32_t* episodeTicks,
+    const int64_t* simulationIndices, int nSelected)
+{
+    if (nSelected < 0) nSelected = nSim;
+    if (nSelected == 0) return;
+    const KernelConfig config = KernelConfig{}.setBlockDim(32)
+        .setGridFromThreads(nSelected).setStream(stream);
+    setMatchStateKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
+        d_state, blueScore, orangeScore, episodeTicks,
+        simulationIndices, nSelected);
     CUDA_CHECK(cudaGetLastError());
 }

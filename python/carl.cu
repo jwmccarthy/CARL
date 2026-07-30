@@ -227,6 +227,7 @@ public:
         io.packState(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), 1);
         io.packRewardsDones(env.getDeviceState());
+        io.packRawMatchState(env.getDeviceState());
     }
 
     py::object step(py::object actions)
@@ -244,6 +245,7 @@ public:
         io.packTransitionState(env.getDeviceState(), frameskip);
         io.packTransitionObs(env.getDeviceState());
         env.resetDones(io.getMaxTicks(), io.getNoTouchTimeoutTicks());
+        io.packRawMatchState(env.getDeviceState());
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
 
@@ -257,6 +259,7 @@ public:
         io.packState(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), 1);
         io.packRewardsDones(env.getDeviceState());
+        io.packRawMatchState(env.getDeviceState());
     }
 
 
@@ -371,6 +374,29 @@ public:
         CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
     }
 
+    void setMatchState(py::object blueScore, py::object orangeScore,
+                       py::object episodeTicks, py::object simulationIndices)
+    {
+        int nSelected = env.getNSim();
+        std::optional<TensorView> selection;
+        const int64_t* selected = nullptr;
+        if (!simulationIndices.is_none())
+        {
+            selection.emplace(selectionData(simulationIndices, nSelected));
+            selected = static_cast<const int64_t*>(data(selection->tensor));
+        }
+        const auto blue = tensorData(blueScore, "blue_score",
+            { nSelected }, kDLInt, 32);
+        const auto orange = tensorData(orangeScore, "orange_score",
+            { nSelected }, kDLInt, 32);
+        const auto ticks = tensorData(episodeTicks, "episode_ticks",
+            { nSelected }, kDLInt, 32);
+        io.setMatchState(env.getDeviceState(),
+            static_cast<const int32_t*>(data(blue.tensor)),
+            static_cast<const int32_t*>(data(orange.tensor)),
+            static_cast<const int32_t*>(data(ticks.tensor)), selected, nSelected);
+    }
+
     py::object getObs()
     {
         return tensorToCapsule(io.getObsTensor());
@@ -399,6 +425,26 @@ public:
     py::object getDones()
     {
         return tensorToCapsule(io.getDonesTensor());
+    }
+
+    py::object getScoreDifference()
+    {
+        return tensorToCapsule(io.getScoreDifferenceTensor());
+    }
+
+    py::object getEpisodeTicks()
+    {
+        return tensorToCapsule(io.getEpisodeTicksTensor());
+    }
+
+    py::object getTransitionScoreDifference()
+    {
+        return tensorToCapsule(io.getTransitionScoreDifferenceTensor());
+    }
+
+    py::object getTransitionEpisodeTicks()
+    {
+        return tensorToCapsule(io.getTransitionEpisodeTicksTensor());
     }
 
     int getObsDim() const { return io.getObsDim(); }
@@ -483,6 +529,13 @@ PYBIND11_MODULE(_carl, m)
         .def("get_transition_state", &EnvWrapper::getTransitionState)
         .def("get_rewards",          &EnvWrapper::getRewards)
         .def("get_dones",            &EnvWrapper::getDones)
+        .def("set_match_state",      &EnvWrapper::setMatchState,
+             py::arg("blue_score"), py::arg("orange_score"),
+             py::arg("episode_ticks"), py::arg("simulation_indices") = py::none())
+        .def("get_score_difference", &EnvWrapper::getScoreDifference)
+        .def("get_episode_ticks",    &EnvWrapper::getEpisodeTicks)
+        .def("get_transition_score_difference", &EnvWrapper::getTransitionScoreDifference)
+        .def("get_transition_episode_ticks", &EnvWrapper::getTransitionEpisodeTicks)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
         .def_property("no_touch_timeout_ticks", nullptr,

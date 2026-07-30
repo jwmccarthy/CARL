@@ -14,6 +14,7 @@ import carl
 from .action import CARLActionCodec
 from .state import (
     BOOST_PAD_POSITIONS,
+    REGULATION_TICKS,
     CarlEvents,
     CarlState,
     RewardContext,
@@ -52,7 +53,7 @@ class CARLTorchVectorEnv(VectorEnv):
         n_orange:             int,
         seed:                 int = 0,
         frameskip:            int = 8,
-        max_ticks:            int = 30000,
+        max_ticks:            int = REGULATION_TICKS,
         *,
         no_touch_timeout_ticks:   int | None = None,
         no_touch_timeout_seconds: float | None = None,
@@ -128,8 +129,8 @@ class CARLTorchVectorEnv(VectorEnv):
             self.n_envs, dtype=th.float32, device=self.device
         )
         self._episode_length = th.zeros(self.n_envs, dtype=th.int64, device=self.device)
-        self._score_difference = th.zeros(self.n_sim, dtype=th.float32, device=self.device)
-        self._episode_ticks = th.zeros(self.n_sim, dtype=th.int64, device=self.device)
+        self._score_difference = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
+        self._episode_ticks = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
         self.action_codec = CARLActionCodec().to(self.device)
         self._set_spaces()
 
@@ -225,6 +226,17 @@ class CARLTorchVectorEnv(VectorEnv):
             boost=state.get("car_boost"),
             simulation_indices=simulation_indices,
         )
+        match_fields = ("blue_score", "orange_score", "episode_ticks")
+        if any(field in state for field in match_fields):
+            missing_match = [field for field in match_fields if field not in state]
+            if missing_match:
+                raise KeyError(
+                    f"reset state is missing fields: {', '.join(missing_match)}"
+                )
+            self._env.set_match_state(
+                state["blue_score"], state["orange_score"], state["episode_ticks"],
+                simulation_indices=simulation_indices,
+            )
 
     def register_reward(self, reward_function: RewardFunction) -> RewardFunction:
         if not callable(reward_function):
@@ -390,11 +402,15 @@ class CARLTorchVectorEnv(VectorEnv):
 
         score_delta = self._from_carl(self._env.get_rewards())
         don = self._from_carl(self._env.get_dones())
+        self._score_difference = self._from_carl(
+            self._env.get_transition_score_difference()
+        )
+        self._episode_ticks = self._from_carl(
+            self._env.get_transition_episode_ticks()
+        )
 
         terms = don & score_delta.ne(0)
         trunc = don & ~terms
-        self._score_difference += score_delta
-        self._episode_ticks += self._env.frameskip
 
         if self.reward_funcs:
             rew, reward_info = self._custom_reward(

@@ -47,6 +47,7 @@ BOOST_PAD_POSITIONS = (
     ( 1792.0,  4184.0, 70.0),
     (    0.0,  4240.0, 70.0),
 )
+REGULATION_TICKS = 5 * 60 * 120
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ class RewardContext:
 
 __all__ = [
     "BOOST_PAD_POSITIONS",
+    "REGULATION_TICKS",
     "CarlEvents",
     "CarlState",
     "RewardContext",

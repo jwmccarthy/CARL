@@ -2,6 +2,7 @@ from .action import ACTION_NVECS, CARLActionCodec
 from .state import (
     CarlEvents,
     CarlState,
+    REGULATION_TICKS,
     RewardContext,
     RewardResult,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "CARLTorchVectorEnv",
     "CarlEvents",
     "CarlState",
+    "REGULATION_TICKS",
     "RewardContext",
     "RewardFunction",
     "RewardResult",
