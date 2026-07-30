@@ -115,6 +115,13 @@ __global__ void packRawMatchStateKernel(GameState* state, int* score, int* ticks
     ticks[simIdx] = state->episodeTicks[simIdx];
 }
 
+__global__ void packOvertimeKernel(GameState* state, bool* overtime)
+{
+    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (simIdx >= state->nSim) return;
+    packOvertime(state, simIdx, overtime);
+}
+
 __global__ void setBallKernel(
     GameState* __restrict__ state,
     const float* __restrict__ pos,
@@ -218,6 +225,7 @@ __global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
     if (target < 0 || target >= state->nSim) return;
     state->goals[target].blueScore = blue[source];
     state->goals[target].orangeScore = orange[source];
+    state->goals[target].overtime = false;
     state->episodeTicks[target] = ticks[source];
 }
 
@@ -260,6 +268,8 @@ EnvIO::EnvIO(
     CUDA_CHECK(cudaMalloc(&d_episodeTicks, nSim * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_transitionScoreDifference, nSim * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_transitionEpisodeTicks, nSim * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_overtime, nSim * sizeof(bool)));
+    CUDA_CHECK(cudaMalloc(&d_transitionOvertime, nSim * sizeof(bool)));
 
     perSimConfig
         .setBlockDim(32)
@@ -285,6 +295,8 @@ EnvIO::~EnvIO()
     CUDA_CHECK(cudaFree(d_episodeTicks));
     CUDA_CHECK(cudaFree(d_transitionScoreDifference));
     CUDA_CHECK(cudaFree(d_transitionEpisodeTicks));
+    CUDA_CHECK(cudaFree(d_overtime));
+    CUDA_CHECK(cudaFree(d_transitionOvertime));
 }
 
 void EnvIO::packState(GameState* d_gameState)
@@ -329,12 +341,18 @@ void EnvIO::packRewardsDones(GameState* d_state)
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_transitionScoreDifference, d_transitionEpisodeTicks);
     CUDA_CHECK(cudaGetLastError());
+    packOvertimeKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
+        d_state, d_transitionOvertime);
+    CUDA_CHECK(cudaGetLastError());
 }
 
 void EnvIO::packRawMatchState(GameState* d_state)
 {
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_scoreDifference, d_episodeTicks);
+    CUDA_CHECK(cudaGetLastError());
+    packOvertimeKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
+        d_state, d_overtime);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -391,6 +409,16 @@ DLManagedTensor* EnvIO::getTransitionScoreDifferenceTensor()
 DLManagedTensor* EnvIO::getTransitionEpisodeTicksTensor()
 {
     return makeIntTensor(d_transitionEpisodeTicks, doneShape, 1);
+}
+
+DLManagedTensor* EnvIO::getOvertimeTensor()
+{
+    return makeBoolTensor(d_overtime, doneShape, 1);
+}
+
+DLManagedTensor* EnvIO::getTransitionOvertimeTensor()
+{
+    return makeBoolTensor(d_transitionOvertime, doneShape, 1);
 }
 
 // Copy external device action tensor into internal buffer (D2D, same stream)

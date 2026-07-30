@@ -40,6 +40,8 @@ private:
     int*   d_episodeTicks = nullptr;
     int*   d_transitionScoreDifference = nullptr;
     int*   d_transitionEpisodeTicks = nullptr;
+    bool*  d_overtime = nullptr;
+    bool*  d_transitionOvertime = nullptr;
 
     DiscreteControls* d_actions = nullptr;
 
@@ -96,6 +98,8 @@ public:
     DLManagedTensor* getEpisodeTicksTensor();
     DLManagedTensor* getTransitionScoreDifferenceTensor();
     DLManagedTensor* getTransitionEpisodeTicksTensor();
+    DLManagedTensor* getOvertimeTensor();
+    DLManagedTensor* getTransitionOvertimeTensor();
 
     // Copy external actions into internal buffer
     void setActions(const int32_t* src);

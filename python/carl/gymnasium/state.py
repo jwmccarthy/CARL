@@ -170,6 +170,7 @@ class RewardContext:
     actions:  th.Tensor
     score_difference: th.Tensor
     episode_ticks:    th.Tensor
+    overtime:         th.Tensor
 
 
 __all__ = [

@@ -85,6 +85,14 @@ CARL_D CARL_FI void resetAfterDone(
         && state->tickCount - state->lastBallTouchTicks[simIdx]
             >= noTouchTimeoutTicks;
 
+    if (!goal.overtime && !scored && !noTouchTimeout
+        && state->episodeTicks[simIdx] >= maxTicks
+        && goal.blueScore == goal.orangeScore)
+    {
+        goal.overtime = true;
+        return;
+    }
+
     if (!scored && !noTouchTimeout
         && state->episodeTicks[simIdx] < maxTicks) return;
 

@@ -12,6 +12,7 @@ struct GoalState
     int orangeScore;
     int lastScorer;
     int tick;
+    bool overtime;
 };
 
 struct BallState

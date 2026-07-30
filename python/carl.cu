@@ -450,6 +450,9 @@ public:
         return tensorToCapsule(io.getTransitionEpisodeTicksTensor());
     }
 
+    py::object getOvertime() { return tensorToCapsule(io.getOvertimeTensor()); }
+    py::object getTransitionOvertime() { return tensorToCapsule(io.getTransitionOvertimeTensor()); }
+
     int getObsDim() const { return io.getObsDim(); }
     int getActDim() const { return io.getActDim(); }
     int getNSim()   const { return env.getNSim();  }
@@ -539,6 +542,8 @@ PYBIND11_MODULE(_carl, m)
         .def("get_episode_ticks",    &EnvWrapper::getEpisodeTicks)
         .def("get_transition_score_difference", &EnvWrapper::getTransitionScoreDifference)
         .def("get_transition_episode_ticks", &EnvWrapper::getTransitionEpisodeTicks)
+        .def("get_overtime", &EnvWrapper::getOvertime)
+        .def("get_transition_overtime", &EnvWrapper::getTransitionOvertime)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
         .def_property("no_touch_timeout_ticks", nullptr,

@@ -252,10 +252,18 @@ CARL_D CARL_FI void packDones(
     bool* __restrict__ dones)
 {
     const GoalState& goal = state->goals[simIdx];
-    dones[simIdx] = state->episodeTicks[simIdx] >= maxTicks
-                 || (noTouchTimeoutTicks > 0
-                     && state->tickCount - state->lastBallTouchTicks[simIdx]
-                        >= noTouchTimeoutTicks)
+    const bool regulationExpired = state->episodeTicks[simIdx] >= maxTicks
+        && goal.blueScore != goal.orangeScore;
+    dones[simIdx] = (!goal.overtime && regulationExpired)
+                 || (!goal.overtime && noTouchTimeoutTicks > 0
+                      && state->tickCount - state->lastBallTouchTicks[simIdx]
+                         >= noTouchTimeoutTicks)
                  || goal.blueScore != 0
                  || goal.orangeScore != 0;
+}
+
+CARL_D CARL_FI void packOvertime(
+    GameState* __restrict__ state, int simIdx, bool* __restrict__ overtime)
+{
+    overtime[simIdx] = state->goals[simIdx].overtime;
 }
