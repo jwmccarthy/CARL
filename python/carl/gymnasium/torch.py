@@ -128,6 +128,8 @@ class CARLTorchVectorEnv(VectorEnv):
             self.n_envs, dtype=th.float32, device=self.device
         )
         self._episode_length = th.zeros(self.n_envs, dtype=th.int64, device=self.device)
+        self._score_difference = th.zeros(self.n_sim, dtype=th.float32, device=self.device)
+        self._episode_ticks = th.zeros(self.n_sim, dtype=th.int64, device=self.device)
         self.action_codec = CARLActionCodec().to(self.device)
         self._set_spaces()
 
@@ -264,6 +266,8 @@ class CARLTorchVectorEnv(VectorEnv):
                 truncated=truncated,
             ),
             actions=actions,
+            score_difference=self._score_difference,
+            episode_ticks=self._episode_ticks,
         )
 
         reward = th.zeros(
@@ -320,6 +324,8 @@ class CARLTorchVectorEnv(VectorEnv):
         self._apply_reset_states(reset_mask)
         self._episode_return.zero_()
         self._episode_length.zero_()
+        self._score_difference.zero_()
+        self._episode_ticks.zero_()
         return self._refresh_state()
 
     def set_ball(
@@ -387,6 +393,8 @@ class CARLTorchVectorEnv(VectorEnv):
 
         terms = don & score_delta.ne(0)
         trunc = don & ~terms
+        self._score_difference += score_delta
+        self._episode_ticks += self._env.frameskip
 
         if self.reward_funcs:
             rew, reward_info = self._custom_reward(
@@ -398,6 +406,8 @@ class CARLTorchVectorEnv(VectorEnv):
             reward_info = {}
 
         self._apply_reset_states(don)
+        self._score_difference[don] = 0
+        self._episode_ticks[don] = 0
         obs = self._refresh_state()
 
         terms = terms[:, None].expand(-1, self.n_cars).reshape(self.n_envs)

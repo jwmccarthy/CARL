@@ -167,6 +167,8 @@ class RewardContext:
     previous: CarlState
     events:   CarlEvents
     actions:  th.Tensor
+    score_difference: th.Tensor
+    episode_ticks:    th.Tensor
 
 
 __all__ = [
