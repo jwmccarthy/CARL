@@ -140,7 +140,9 @@ class EnvWrapper
         {
             for (int i = tensor.ndim - 1; i >= 0; i--)
             {
-                if (tensor.strides[i] != stride)
+                // Size-one dimensions may carry any stride while remaining
+                // contiguous because they address only one element.
+                if (tensor.shape[i] > 1 && tensor.strides[i] != stride)
                 {
                     throw py::value_error(std::string(name) + " must be contiguous");
                 }
