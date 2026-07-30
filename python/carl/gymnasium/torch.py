@@ -235,7 +235,9 @@ class CARLTorchVectorEnv(VectorEnv):
                     f"reset state is missing fields: {', '.join(missing_match)}"
                 )
             self._env.set_match_state(
-                state["blue_score"], state["orange_score"], state["episode_ticks"],
+                state["blue_score"].contiguous(),
+                state["orange_score"].contiguous(),
+                state["episode_ticks"].contiguous(),
                 simulation_indices=simulation_indices,
             )
 
