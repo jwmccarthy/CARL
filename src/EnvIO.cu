@@ -63,7 +63,10 @@ __global__ void packObsKernel(
         return;
     }
     const int observerIdx = agentIdx % nCars;
-    const int obsDim = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS;
+    const int obsDim = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS
+        + OBS_RELATIVE_EGO_BALL
+        + (nCars - 1) * OBS_RELATIVE_PER_OTHER_CAR
+        + OBS_RELATIVE_GOALS;
 
     packObservations(
         state,
@@ -239,7 +242,10 @@ EnvIO::EnvIO(
     bool normalize)
     : nSim(nSim)
     , nCars(nCars)
-    , obsDim(OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS)
+    , obsDim(OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS
+        + OBS_RELATIVE_EGO_BALL
+        + (nCars - 1) * OBS_RELATIVE_PER_OTHER_CAR
+        + OBS_RELATIVE_GOALS)
     , stateDim(OBS_BALL + nCars * STATE_PER_CAR + NUM_BOOST_PADS)
     , actDim(nCars * ACT_PER_CAR)
     , invertOrange(invertOrange)

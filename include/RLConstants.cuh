@@ -229,6 +229,8 @@ constexpr float BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
 // --- Goal detection ---
 
+constexpr float SOCCAR_GOAL_CENTER_Y = 5120.f;
+constexpr float SOCCAR_GOAL_CENTER_Z = 321.3875f;
 constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5124.25f;
 
 // --- Steering curves ---

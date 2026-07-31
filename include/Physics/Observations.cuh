@@ -60,6 +60,28 @@ CARL_D CARL_FI void packObservedCar(
     obs[o++] = (float)internal.isBoosting;
 }
 
+CARL_D CARL_FI void packRelativeCar(
+    GameState* __restrict__ state,
+    int carIdx,
+    Vec3 egoPos,
+    Vec3 egoVel,
+    bool invert,
+    float* __restrict__ obs,
+    int& o)
+{
+    const Vec3 relativePos = observationVector(
+        Vec3::ldg(state->cars.pos[carIdx]) - egoPos, invert);
+    const Vec3 relativeVel = observationVector(
+        Vec3::ldg(state->cars.vel[carIdx]) - egoVel, invert);
+
+    obs[o++] = relativePos.x;
+    obs[o++] = relativePos.y;
+    obs[o++] = relativePos.z;
+    obs[o++] = relativeVel.x;
+    obs[o++] = relativeVel.y;
+    obs[o++] = relativeVel.z;
+}
+
 constexpr CARL_D int INVERTED_BOOST_PAD_INDICES[NUM_BOOST_PADS] = {
      1,  0,  5,  4,  3,  2, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23,
     22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6
@@ -86,11 +108,14 @@ CARL_D CARL_FI void packObservations(
     int o = 0;
 
     // Ball
-    const Vec3 ballPos = observationVector(
-        Vec3::ldg(state->ball.pos[simIdx]), invert);
+    const Vec3 rawBallPos = Vec3::ldg(state->ball.pos[simIdx]);
+    const Vec3 rawBallVel = Vec3::ldg(state->ball.vel[simIdx]);
+    const Vec3 egoPos = Vec3::ldg(state->cars.pos[carBase + observerIdx]);
+    const Vec3 egoVel = Vec3::ldg(state->cars.vel[carBase + observerIdx]);
 
-    const Vec3 ballVel = observationVector(
-        Vec3::ldg(state->ball.vel[simIdx]), invert);
+    const Vec3 ballPos = observationVector(rawBallPos, invert);
+
+    const Vec3 ballVel = observationVector(rawBallVel, invert);
 
     const Vec3 ballAng = observationVector(
         Vec3::ldg(state->ball.ang[simIdx]), invert);
@@ -135,12 +160,50 @@ CARL_D CARL_FI void packObservations(
             simIdx * NUM_BOOST_PADS + padIdx] <= 0.f;
     }
 
-    const Vec3 carPos = Vec3::ldg(state->cars.pos[carBase + observerIdx]);
     for (int p = 0; p < NUM_BOOST_PADS; p++)
     {
         const int padIdx = observedBoostPadIndex(p, invert);
-        obs[o++] = (carPos - BOOST_PADS[padIdx].pos).len();
+        obs[o++] = (egoPos - BOOST_PADS[padIdx].pos).len();
     }
+
+    const Vec3 egoToBallPos = observationVector(rawBallPos - egoPos, invert);
+    const Vec3 egoToBallVel = observationVector(rawBallVel - egoVel, invert);
+    obs[o++] = egoToBallPos.x;
+    obs[o++] = egoToBallPos.y;
+    obs[o++] = egoToBallPos.z;
+    obs[o++] = egoToBallVel.x;
+    obs[o++] = egoToBallVel.y;
+    obs[o++] = egoToBallVel.z;
+
+    for (int c = teamStart; c < teamEnd; c++)
+    {
+        if (c != observerIdx)
+        {
+            packRelativeCar(
+                state, carBase + c, egoPos, egoVel, invert, obs, o);
+        }
+    }
+
+    for (int c = opponentStart; c < opponentEnd; c++)
+    {
+        packRelativeCar(
+            state, carBase + c, egoPos, egoVel, invert, obs, o);
+    }
+
+    const float ownGoalY = observerIsOrange
+        ? SOCCAR_GOAL_CENTER_Y : -SOCCAR_GOAL_CENTER_Y;
+    const Vec3 ownGoal = { 0.f, ownGoalY, SOCCAR_GOAL_CENTER_Z };
+    const Vec3 opponentGoal = { 0.f, -ownGoalY, SOCCAR_GOAL_CENTER_Z };
+    const Vec3 ballToOwnGoal = observationVector(ownGoal - rawBallPos, invert);
+    const Vec3 ballToOpponentGoal = observationVector(
+        opponentGoal - rawBallPos, invert);
+
+    obs[o++] = ballToOwnGoal.x;
+    obs[o++] = ballToOwnGoal.y;
+    obs[o++] = ballToOwnGoal.z;
+    obs[o++] = ballToOpponentGoal.x;
+    obs[o++] = ballToOpponentGoal.y;
+    obs[o++] = ballToOpponentGoal.z;
 }
 
 CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
@@ -190,6 +253,33 @@ CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
     for (int pad = 0; pad < NUM_BOOST_PADS; pad++)
     {
         obs[distanceOffset + pad] /= arenaDiagonal;
+    }
+
+    int relativeOffset = distanceOffset + NUM_BOOST_PADS;
+    for (int axis = 0; axis < 3; axis++)
+    {
+        obs[relativeOffset + axis] /= 2.f * positionScale[axis];
+        obs[relativeOffset + 3 + axis] /= BALL_MAX_SPEED + CAR_MAX_SPEED;
+    }
+    relativeOffset += OBS_RELATIVE_EGO_BALL;
+
+    for (int car = 1; car < nCars; car++)
+    {
+        for (int axis = 0; axis < 3; axis++)
+        {
+            obs[relativeOffset + axis] /= 2.f * positionScale[axis];
+            obs[relativeOffset + 3 + axis] /= 2.f * CAR_MAX_SPEED;
+        }
+        relativeOffset += OBS_RELATIVE_PER_OTHER_CAR;
+    }
+
+    for (int goal = 0; goal < 2; goal++)
+    {
+        for (int axis = 0; axis < 3; axis++)
+        {
+            obs[relativeOffset + goal * 3 + axis]
+                /= 2.f * positionScale[axis];
+        }
     }
 }
 

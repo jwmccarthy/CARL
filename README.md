@@ -74,10 +74,13 @@ The native observation shape is `[n_sim, n_cars, obs_dim]` with `float32` values
 Set `normalize=True` to normalize observations during CUDA packing using arena, ball, car, boost, and angular-speed limits. Reward state and reset setters remain in raw physics units.
 
 ```text
-obs_dim = 9 + n_cars * 21 + 68
+obs_dim = 9 + n_cars * 21 + 68 + 6 + (n_cars - 1) * 6 + 6
+        = 83 + n_cars * 27
 ```
 
-Each observation contains ball position, velocity, and angular velocity. It then contains position, velocity, angular velocity, forward direction, up direction, boost, and state flags for every car. The final fields contain boost pad state and distance.
+Each observation contains ball position, velocity, and angular velocity. It then contains position, velocity, angular velocity, forward direction, up direction, boost, and state flags for every car, followed by boost pad state and distance. These existing fields retain their original ordering.
+
+The appended fields contain ego-to-ball relative position and velocity, then ego-to-car relative position and velocity for every other car in the same teammate/opponent order, then ball-to-own-goal and ball-to-opponent-goal vectors. Goal identity is relative to the observing team, and orange vectors use the same optional rotation as the base observation.
 
 Car blocks start with the observing car, followed by teammates and opponents. Orange observations can be rotated into the blue frame with `invert_orange=True`.
 
