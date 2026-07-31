@@ -77,13 +77,16 @@ CARL_D CARL_FI void resetAfterDone(
     Workspace* __restrict__ space,
     int simIdx,
     int maxTicks,
+    int overtimeTimeoutTicks,
     int noTouchTimeoutTicks)
 {
     GoalState& goal = state->goals[simIdx];
-    const bool scored = goal.blueScore != 0 || goal.orangeScore != 0;
+    const bool scored = goal.lastScorer != 0;
     const bool noTouchTimeout = noTouchTimeoutTicks > 0
         && state->tickCount - state->lastBallTouchTicks[simIdx]
             >= noTouchTimeoutTicks;
+    const bool overtimeExpired = goal.overtime
+        && state->episodeTicks[simIdx] >= maxTicks + overtimeTimeoutTicks;
 
     if (!goal.overtime && !scored && !noTouchTimeout
         && state->episodeTicks[simIdx] >= maxTicks
@@ -93,8 +96,8 @@ CARL_D CARL_FI void resetAfterDone(
         return;
     }
 
-    if (!scored && !noTouchTimeout
-        && state->episodeTicks[simIdx] < maxTicks) return;
+    if (!scored && !noTouchTimeout && !overtimeExpired
+        && (goal.overtime || state->episodeTicks[simIdx] < maxTicks)) return;
 
     goal = {};
 

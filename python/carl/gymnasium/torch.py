@@ -55,6 +55,8 @@ class CARLTorchVectorEnv(VectorEnv):
         frameskip:            int = 8,
         max_ticks:            int = REGULATION_TICKS,
         *,
+        overtime_timeout_ticks:   int | None = None,
+        overtime_timeout_seconds: float | None = None,
         no_touch_timeout_ticks:   int | None = None,
         no_touch_timeout_seconds: float | None = None,
         invert_orange:        bool = True,
@@ -76,6 +78,26 @@ class CARLTorchVectorEnv(VectorEnv):
         self._synchronize = synchronize
         if max_ticks < 1:
             raise ValueError("max_ticks must be positive")
+        if (
+            overtime_timeout_ticks is not None
+            and overtime_timeout_seconds is not None
+        ):
+            raise ValueError(
+                "Specify overtime_timeout_ticks or overtime_timeout_seconds, not both"
+            )
+        if overtime_timeout_seconds is not None:
+            if (
+                not math.isfinite(overtime_timeout_seconds)
+                or overtime_timeout_seconds <= 0
+            ):
+                raise ValueError(
+                    "overtime_timeout_seconds must be positive and finite"
+                )
+            overtime_timeout_ticks = math.ceil(overtime_timeout_seconds * 120)
+        if overtime_timeout_ticks is None:
+            overtime_timeout_ticks = REGULATION_TICKS
+        if overtime_timeout_ticks < 1:
+            raise ValueError("overtime_timeout_ticks must be positive")
         if (
             no_touch_timeout_ticks is not None
             and no_touch_timeout_seconds is not None
@@ -111,6 +133,7 @@ class CARLTorchVectorEnv(VectorEnv):
             normalize=normalize,
         )
         self._env.max_ticks = max_ticks
+        self._env.overtime_timeout_ticks = overtime_timeout_ticks
         self._env.no_touch_timeout_ticks = no_touch_timeout_ticks or 0
 
         self.n_cars = self._env.n_cars

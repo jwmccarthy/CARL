@@ -10,6 +10,7 @@ __global__ void resetDonesKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
     int maxTicks,
+    int overtimeTimeoutTicks,
     int noTouchTimeoutTicks);
 
 __global__ void beginStepKernel(

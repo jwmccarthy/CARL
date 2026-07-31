@@ -140,10 +140,11 @@ void RLEnvironment::reset()
     PROFILE("reset", threadPerSimKernelConfig.launch(resetKernel, d_state));
 }
 
-void RLEnvironment::resetDones(int maxTicks, int noTouchTimeoutTicks)
+void RLEnvironment::resetDones(
+    int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks)
 {
     PROFILE("reset dones",
         threadPerSimKernelConfig.launch(
             resetDonesKernel, d_state, d_space,
-            maxTicks, noTouchTimeoutTicks));
+            maxTicks, overtimeTimeoutTicks, noTouchTimeoutTicks));
 }

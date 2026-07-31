@@ -100,13 +100,16 @@ __global__ void packRewardsDonesKernel(
     GameState* __restrict__ state,
     float* __restrict__ rewards,
     bool* __restrict__ dones,
-    int nSim, int maxTicks, int noTouchTimeoutTicks)
+    int nSim, int maxTicks, int overtimeTimeoutTicks,
+    int noTouchTimeoutTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= nSim) return;
 
     packRewards(state, simIdx, rewards);
-    packDones(state, simIdx, maxTicks, noTouchTimeoutTicks, dones);
+    packDones(
+        state, simIdx, maxTicks, overtimeTimeoutTicks,
+        noTouchTimeoutTicks, dones);
 }
 
 __global__ void packRawMatchStateKernel(GameState* state, int* score, int* ticks)
@@ -228,6 +231,7 @@ __global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
     if (target < 0 || target >= state->nSim) return;
     state->goals[target].blueScore = blue[source];
     state->goals[target].orangeScore = orange[source];
+    state->goals[target].lastScorer = 0;
     state->goals[target].overtime = false;
     state->episodeTicks[target] = ticks[source];
 }
@@ -342,7 +346,7 @@ void EnvIO::packRewardsDones(GameState* d_state)
     packRewardsDonesKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
         d_state, d_rewards, d_dones,
-        nSim, maxTicks, noTouchTimeoutTicks);
+        nSim, maxTicks, overtimeTimeoutTicks, noTouchTimeoutTicks);
     CUDA_CHECK(cudaGetLastError());
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_transitionScoreDifference, d_transitionEpisodeTicks);

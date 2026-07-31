@@ -330,26 +330,30 @@ CARL_D CARL_FI void packRewards(
 {
     const GoalState& goal = state->goals[simIdx];
 
-    // Reward: +1 for blue scoring, -1 for orange
-    rewards[simIdx] = (float)(goal.blueScore - goal.orangeScore);
+    // Transition reward: +1 for a blue goal, -1 for an orange goal.
+    rewards[simIdx] = (float)goal.lastScorer;
 }
 
 CARL_D CARL_FI void packDones(
     GameState* __restrict__ state,
     int simIdx,
     int maxTicks,
+    int overtimeTimeoutTicks,
     int noTouchTimeoutTicks,
     bool* __restrict__ dones)
 {
     const GoalState& goal = state->goals[simIdx];
     const bool regulationExpired = state->episodeTicks[simIdx] >= maxTicks
         && goal.blueScore != goal.orangeScore;
+    const bool overtimeExpired = goal.overtime
+        && state->episodeTicks[simIdx] >= maxTicks + overtimeTimeoutTicks;
+    const bool scored = goal.lastScorer != 0;
     dones[simIdx] = (!goal.overtime && regulationExpired)
-                 || (!goal.overtime && noTouchTimeoutTicks > 0
-                      && state->tickCount - state->lastBallTouchTicks[simIdx]
-                         >= noTouchTimeoutTicks)
-                 || goal.blueScore != 0
-                 || goal.orangeScore != 0;
+                 || overtimeExpired
+                 || (noTouchTimeoutTicks > 0
+                       && state->tickCount - state->lastBallTouchTicks[simIdx]
+                          >= noTouchTimeoutTicks)
+                 || scored;
 }
 
 CARL_D CARL_FI void packOvertime(

@@ -246,7 +246,9 @@ public:
         io.packRewardsDones(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), frameskip);
         io.packTransitionObs(env.getDeviceState());
-        env.resetDones(io.getMaxTicks(), io.getNoTouchTimeoutTicks());
+        env.resetDones(
+            io.getMaxTicks(), io.getOvertimeTimeoutTicks(),
+            io.getNoTouchTimeoutTicks());
         io.packRawMatchState(env.getDeviceState());
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
@@ -490,6 +492,15 @@ public:
         io.setNoTouchTimeoutTicks(ticks);
     }
 
+    void setOvertimeTimeoutTicks(int ticks)
+    {
+        if (ticks < 1)
+        {
+            throw py::value_error("overtime_timeout_ticks must be at least 1");
+        }
+        io.setOvertimeTimeoutTicks(ticks);
+    }
+
     int getFrameskip() const { return frameskip; }
 
     void setFrameskip(int ticks)
@@ -548,6 +559,8 @@ PYBIND11_MODULE(_carl, m)
         .def("get_transition_overtime", &EnvWrapper::getTransitionOvertime)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
+        .def_property("overtime_timeout_ticks", nullptr,
+                      &EnvWrapper::setOvertimeTimeoutTicks)
         .def_property("no_touch_timeout_ticks", nullptr,
                       &EnvWrapper::setNoTouchTimeoutTicks)
 
