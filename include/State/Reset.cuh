@@ -104,7 +104,7 @@ CARL_D CARL_FI void resetAfterDone(
     const bool reset = scored || noTouchTimeout || overtimeExpired
                     || (!goal.overtime && tickTimeout);
 
-    if (!reset) return;
+    if (reset) return;
 
     goal = {};
 
