@@ -72,6 +72,8 @@ class CARLTorchVectorEnv(VectorEnv):
         self.n_sim = n_sim
         self.device = th.device("cuda:0")
         self.closed = False
+        self._frameskip = frameskip
+        self._max_ticks = max_ticks
 
         self._seed = seed
         self._copy_outputs = copy_outputs
@@ -159,6 +161,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self._episode_length = th.zeros(self.n_envs, dtype=th.int64, device=self.device)
         self._score_difference = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
         self._episode_ticks = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
+        self._elapsed_ticks = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
         self._overtime = th.zeros(self.n_sim, dtype=th.bool, device=self.device)
         self.action_codec = CARLActionCodec().to(self.device)
         self._set_spaces()
@@ -204,6 +207,7 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def _apply_reset_states(self, reset_mask: th.Tensor) -> None:
         self.last_reset_aux = {}
+        self._elapsed_ticks[reset_mask] = 0
         if self.reset_state_provider is None:
             return
 
@@ -323,6 +327,7 @@ class CARLTorchVectorEnv(VectorEnv):
                 state["episode_ticks"].contiguous(),
                 simulation_indices=simulation_indices,
             )
+            self._elapsed_ticks[simulation_indices] = state["episode_ticks"]
 
     def register_reward(self, reward_function: RewardFunction) -> RewardFunction:
         if not callable(reward_function):
@@ -429,6 +434,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self._episode_length.zero_()
         self._score_difference.zero_()
         self._episode_ticks.zero_()
+        self._episode_ticks.copy_(self._elapsed_ticks)
         self._overtime.zero_()
         return self._refresh_state()
 
@@ -493,13 +499,13 @@ class CARLTorchVectorEnv(VectorEnv):
         self._sync()
 
         score_delta = self._from_carl(self._env.get_rewards())
+        self._elapsed_ticks.add_(self._frameskip)
         don = self._from_carl(self._env.get_dones())
+        don |= self._elapsed_ticks.ge(self._max_ticks)
         self._score_difference = self._from_carl(
             self._env.get_transition_score_difference()
         )
-        self._episode_ticks = self._from_carl(
-            self._env.get_transition_episode_ticks()
-        )
+        self._episode_ticks = self._elapsed_ticks.clone()
         self._overtime = self._from_carl(self._env.get_transition_overtime())
 
         terms = don & score_delta.ne(0)
