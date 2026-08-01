@@ -67,7 +67,6 @@ CARL_D CARL_FI void applyBallCarExtraImpulse(
 {
     const int tick = state->tickCount;
     state->cars.ballContactTick[carIdx] = tick;
-    state->lastBallTouchTicks[ballIdx] = tick;
 
     const int lastTick = __ldg(&state->cars.ballHitTick[carIdx]);
     if (tick <= lastTick + 1 && lastTick <= tick) return;
@@ -75,5 +74,7 @@ CARL_D CARL_FI void applyBallCarExtraImpulse(
     state->cars.ballHitTick[carIdx] = tick;
     const Vec3 addedVel = ballCarExtraVelocity(
         ballPos, carPos, carVel, carRot, preSolveBallVel);
+    if (addedVel.lenSq() >= 2500.f)
+        state->lastBallTouchTicks[ballIdx] = tick;
     state->ball.imp[ballIdx] = Vec3::ldg(state->ball.imp[ballIdx]) + addedVel;
 }
