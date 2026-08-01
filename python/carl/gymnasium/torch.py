@@ -72,7 +72,6 @@ class CARLTorchVectorEnv(VectorEnv):
         self.n_sim = n_sim
         self.device = th.device("cuda:0")
         self.closed = False
-        self._frameskip = frameskip
 
         self._seed = seed
         self._copy_outputs = copy_outputs
@@ -123,7 +122,6 @@ class CARLTorchVectorEnv(VectorEnv):
         
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
-        self._meaningful_no_touch_ticks = no_touch_timeout_ticks or 0
         self.reset_state_provider = reset_state_provider
         self.last_reset_aux = None
         self._state: CarlState | None = None
@@ -161,12 +159,6 @@ class CARLTorchVectorEnv(VectorEnv):
         self._episode_length = th.zeros(self.n_envs, dtype=th.int64, device=self.device)
         self._score_difference = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
         self._episode_ticks = th.zeros(self.n_sim, dtype=th.int32, device=self.device)
-        self._ticks_since_meaningful_touch = th.zeros(
-            self.n_sim, dtype=th.int32, device=self.device
-        )
-        self._previous_ball_velocity = th.zeros(
-            self.n_sim, 3, dtype=th.float32, device=self.device
-        )
         self._overtime = th.zeros(self.n_sim, dtype=th.bool, device=self.device)
         self.action_codec = CARLActionCodec().to(self.device)
         self._set_spaces()
@@ -212,7 +204,6 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def _apply_reset_states(self, reset_mask: th.Tensor) -> None:
         self.last_reset_aux = {}
-        self._ticks_since_meaningful_touch[reset_mask] = 0
         if self.reset_state_provider is None:
             return
 
@@ -439,10 +430,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self._score_difference.zero_()
         self._episode_ticks.zero_()
         self._overtime.zero_()
-        observation = self._refresh_state()
-        if self._state is not None:
-            self._previous_ball_velocity.copy_(self._state.ball_velocity)
-        return observation
+        return self._refresh_state()
 
     def set_ball(
         self,
@@ -506,19 +494,6 @@ class CARLTorchVectorEnv(VectorEnv):
 
         score_delta = self._from_carl(self._env.get_rewards())
         don = self._from_carl(self._env.get_dones())
-        if self._meaningful_no_touch_ticks:
-            transition = self._state_from_carl(self._env.get_transition_state())
-            velocity_change = (
-                transition.ball_velocity - self._previous_ball_velocity
-            ).norm(dim=-1)
-            meaningful_touch = transition.car_ball_touches.any(dim=-1) & (
-                velocity_change >= 50.0
-            )
-            self._ticks_since_meaningful_touch.add_(self._frameskip)
-            self._ticks_since_meaningful_touch[meaningful_touch] = 0
-            don |= self._ticks_since_meaningful_touch.ge(
-                self._meaningful_no_touch_ticks
-            )
         self._score_difference = self._from_carl(
             self._env.get_transition_score_difference()
         )
@@ -544,8 +519,6 @@ class CARLTorchVectorEnv(VectorEnv):
         self._episode_ticks[don] = 0
         self._overtime[don] = False
         obs = self._refresh_state()
-        if self._state is not None:
-            self._previous_ball_velocity.copy_(self._state.ball_velocity)
 
         terms = terms[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
         trunc = trunc[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
@@ -562,10 +535,6 @@ class CARLTorchVectorEnv(VectorEnv):
             info = {
                 "reward":     self._episode_return[finished].cpu().tolist(),
                 "length":     self._episode_length[finished].cpu().tolist(),
-                "reward_per_step": (
-                    self._episode_return[finished]
-                    / self._episode_length[finished].clamp_min(1)
-                ).cpu().tolist(),
                 "final_obs":  final_obs,
                 "_final_obs": done,
                 **reward_info,
