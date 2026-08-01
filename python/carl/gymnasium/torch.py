@@ -136,10 +136,8 @@ class CARLTorchVectorEnv(VectorEnv):
             normalize=normalize,
         )
         self._env.max_ticks = max_ticks
-        if hasattr(self._env, "overtime_timeout_ticks"):
-            self._env.overtime_timeout_ticks = overtime_timeout_ticks
-        if hasattr(self._env, "no_touch_timeout_ticks"):
-            self._env.no_touch_timeout_ticks = no_touch_timeout_ticks or 0
+        self._env.overtime_timeout_ticks = overtime_timeout_ticks
+        self._env.no_touch_timeout_ticks = no_touch_timeout_ticks or 0
 
         self.n_cars = self._env.n_cars
         self.n_envs = n_sim * self.n_cars
