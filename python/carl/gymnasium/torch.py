@@ -506,7 +506,6 @@ class CARLTorchVectorEnv(VectorEnv):
 
         score_delta = self._from_carl(self._env.get_rewards())
         don = self._from_carl(self._env.get_dones())
-        transition = None
         if self._meaningful_no_touch_ticks:
             transition = self._state_from_carl(self._env.get_transition_state())
             velocity_change = (
@@ -547,8 +546,6 @@ class CARLTorchVectorEnv(VectorEnv):
         obs = self._refresh_state()
         if self._state is not None:
             self._previous_ball_velocity.copy_(self._state.ball_velocity)
-        elif transition is not None:
-            self._previous_ball_velocity.copy_(transition.ball_velocity)
 
         terms = terms[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
         trunc = trunc[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
