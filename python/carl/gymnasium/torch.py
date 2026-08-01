@@ -123,7 +123,6 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
-        self.last_reset_aux = None
         self._state: CarlState | None = None
 
         self._env = carl.Env(
@@ -201,7 +200,6 @@ class CARLTorchVectorEnv(VectorEnv):
         return observation.view(self.n_envs, self._env.obs_dim)
 
     def _apply_reset_states(self, reset_mask: th.Tensor) -> None:
-        self.last_reset_aux = {}
         if self.reset_state_provider is None:
             return
 
@@ -214,11 +212,6 @@ class CARLTorchVectorEnv(VectorEnv):
             return
         if not isinstance(state, Mapping):
             raise TypeError("reset_state_provider must return a mapping or None")
-        self.last_reset_aux = {
-            key: value
-            for key, value in state.items()
-            if key not in _RESET_STATE_FIELDS and key != "simulation_indices"
-        }
 
         missing = [field for field in _RESET_STATE_FIELDS if field not in state]
         if missing:
@@ -243,55 +236,6 @@ class CARLTorchVectorEnv(VectorEnv):
             if selected_indices.unique().numel() != selected_indices.numel():
                 raise ValueError("simulation_indices must be unique")
             simulation_indices = selected_indices.contiguous()
-
-        warmup_fields = tuple(f"warmup_{field}" for field in _RESET_STATE_FIELDS)
-        if all(field in state for field in warmup_fields):
-            history_length = state["warmup_ball_position"].shape[1]
-            warmup = th.zeros(
-                history_length,
-                self.n_sim,
-                self.n_cars,
-                self._env.obs_dim,
-                device=self.device,
-            )
-            for index in range(history_length):
-                self._env.set_ball(
-                    state["warmup_ball_position"][:, index].contiguous(),
-                    state["warmup_ball_velocity"][:, index].contiguous(),
-                    state["warmup_ball_angular_velocity"][:, index].contiguous(),
-                    simulation_indices=simulation_indices,
-                )
-                self._env.set_car(
-                    state["warmup_car_position"][:, index].contiguous(),
-                    state["warmup_car_rotation"][:, index].contiguous(),
-                    state["warmup_car_velocity"][:, index].contiguous(),
-                    state["warmup_car_angular_velocity"][:, index].contiguous(),
-                    state["warmup_car_demoed"][:, index].contiguous(),
-                    boost=state.get("warmup_car_boost")[:, index].contiguous()
-                    if state.get("warmup_car_boost") is not None
-                    else None,
-                    simulation_indices=simulation_indices,
-                )
-                encoded = self._from_carl(self._env.get_obs()).view(
-                    self.n_sim, self.n_cars, self._env.obs_dim
-                )
-                warmup[index, simulation_indices] = encoded[simulation_indices]
-            actor_indices = (
-                simulation_indices[:, None] * self.n_cars
-                + th.arange(self.n_cars, device=self.device)[None, :]
-            ).reshape(-1)
-            self.last_reset_aux["warmup_observation"] = warmup.view(
-                history_length, self.n_envs, self._env.obs_dim
-            )
-            self.last_reset_aux["warmup_actor_indices"] = actor_indices
-            valid = state.get("warmup_valid")
-            if valid is not None:
-                actor_valid = valid.T[:, :, None].expand(
-                    history_length, -1, self.n_cars
-                )
-                self.last_reset_aux["warmup_valid"] = actor_valid.reshape(
-                    history_length, -1
-                )
 
         self._env.set_ball(
             state["ball_position"],
