@@ -164,10 +164,10 @@ class CarlEvents:
 
 @dataclass(frozen=True)
 class RewardContext:
-    current:  CarlState
-    previous: CarlState
-    events:   CarlEvents
-    actions:  th.Tensor
+    current:          CarlState
+    previous:         CarlState
+    events:           CarlEvents
+    actions:          th.Tensor
     score_difference: th.Tensor
     episode_ticks:    th.Tensor
     overtime:         th.Tensor

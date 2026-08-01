@@ -11,6 +11,7 @@ SELF_HAS_DOUBLE_JUMPED_INDEX = 9 + 19
 
 
 class CARLActionCodec(nn.Module):
+    
     @property
     def action_shape(self) -> tuple[int, ...]:
         return (len(ACTION_NVECS),)

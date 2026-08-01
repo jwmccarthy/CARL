@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../Cuda/Random.cuh"
 #include "GameState.cuh"
 #include "Workspace.cuh"
 #include "../RLConstants.cuh"
+#include "../Cuda/Random.cuh"
 
 CARL_D CARL_FI void resetBall(BallState* __restrict__ ball, int simIdx)
 {
@@ -27,6 +27,7 @@ CARL_D CARL_FI void resetCar(CarState* __restrict__ cars, int carIdx, int locIdx
     cars->rot[carIdx] = Quat::angle(yaw);
     cars->cen[carIdx] = cars->getHitboxCenter(carIdx);
     cars->imp[carIdx] = Vec3::zero();
+    
     cars->isDemoed[carIdx] = 0;
     cars->demoRespawnTimer[carIdx] = 0.f;
     cars->carContactIdx[carIdx] = -1;
@@ -82,11 +83,14 @@ CARL_D CARL_FI void resetAfterDone(
 {
     GoalState& goal = state->goals[simIdx];
     const bool scored = goal.lastScorer != 0;
+
+    const int ticksSinceTouch = state->tickCount - state->lastBallTouchTicks[simIdx];
+
     const bool noTouchTimeout = noTouchTimeoutTicks > 0
-        && state->tickCount - state->lastBallTouchTicks[simIdx]
-            >= noTouchTimeoutTicks;
+        && ticksSinceTouch >= noTouchTimeoutTicks;
     const bool overtimeExpired = goal.overtime
         && state->episodeTicks[simIdx] >= maxTicks + overtimeTimeoutTicks;
+    const bool tickTimeout = state->episodeTicks[simIdx] >= maxTicks;
 
     if (!goal.overtime && !scored && !noTouchTimeout
         && state->episodeTicks[simIdx] >= maxTicks
@@ -96,8 +100,11 @@ CARL_D CARL_FI void resetAfterDone(
         return;
     }
 
-    if (!scored && !noTouchTimeout && !overtimeExpired
-        && (goal.overtime || state->episodeTicks[simIdx] < maxTicks)) return;
+    // All temporal bound reset conditions
+    const bool reset = scored || noTouchTimeout || overtimeExpired
+                    || (!goal.overtime && tickTimeout);
+
+    if (reset) return;
 
     goal = {};
 

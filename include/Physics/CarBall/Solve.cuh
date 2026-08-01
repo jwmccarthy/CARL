@@ -58,11 +58,14 @@ CARL_D CARL_FI BallCarRow makeBallCarRow(
     row.ballTorque = ballOffset.cross(axis);
 
     const Vec3 carTorque = carOffset.cross(axis);
+
     row.carAngular = car.rot.toWorld(
         car.rot.toLocal(carTorque) * CAR_INV_INERTIA);
+
     const float denom = BALL_INV_MASS + CAR_INV_MASS
         + BALL_INV_INERTIA * row.ballTorque.lenSq()
         + row.carAngular.dot(carTorque);
+
     row.jacInv = 1.f / fmaxf(denom, 1e-8f);
 
     return row;
@@ -113,21 +116,24 @@ CARL_D CARL_FI BallCarConstraint makeBallCarConstraint(
         car,
         constraint.ballOffset,
         constraint.carOffset);
+
     Vec3 tangent = (ballVel + ballAng.cross(constraint.ballOffset))
         - (car.vel + car.ang.cross(constraint.carOffset));
     tangent = tangent - contact.normal * relNormal;
+
     const float tangentLenSq = tangent.lenSq();
 
-    constraint.restitution =
-        fabsf(relNormal) > CAR_RESTITUTION_VEL_THRESH
-            ? CAR_BALL_RESTITUTION * -relNormal
-            : 0.f;
+    constraint.restitution = fabsf(relNormal) > CAR_RESTITUTION_VEL_THRESH
+        ? CAR_BALL_RESTITUTION * -relNormal
+        : 0.f;
     constraint.hasFriction = tangentLenSq > 1e-8f;
+
     if (constraint.hasFriction)
     {
         tangent = tangent * rsqrtf(tangentLenSq);
         constraint.friction = makeBallCarRow(
-            car, tangent, constraint.ballOffset, constraint.carOffset);
+            car, tangent, constraint.ballOffset, 
+            constraint.carOffset);
     }
 
     return constraint;
@@ -143,19 +149,15 @@ CARL_D CARL_FI void solveBallCarConstraint(
     {
         BallCarRow& normal = constraint.normal;
         const float relNormal = ballCarRowVelocity(
-            normal,
-            ballVel,
-            ballAng,
-            car,
+            normal, ballVel, ballAng, car,
             constraint.ballOffset,
             constraint.carOffset);
+
         const float normalImpulse = solveLowerImpulse(
             constraint.restitution * normal.jacInv,
-            0.f,
-            normal.jacInv,
-            relNormal,
-            0.f,
-            normal.applied);
+            0.f, normal.jacInv, relNormal,
+            0.f, normal.applied);
+
         applyBallCarRow(
             ballVel, ballAng, car, normal, normalImpulse);
 
@@ -163,22 +165,16 @@ CARL_D CARL_FI void solveBallCarConstraint(
 
         BallCarRow& friction = constraint.friction;
         const float relTangent = ballCarRowVelocity(
-            friction,
-            ballVel,
-            ballAng,
-            car,
+            friction, ballVel, ballAng, car,
             constraint.ballOffset,
             constraint.carOffset);
-        const float maxFriction =
-            CAR_BALL_FRICTION * constraint.normal.applied;
+
+        const float maxFriction = CAR_BALL_FRICTION * constraint.normal.applied;
         const float frictionImpulse = solveImpulse(
-            0.f,
-            0.f,
-            friction.jacInv,
-            relTangent,
-            -maxFriction,
-            maxFriction,
-            friction.applied);
+            0.f, 0.f, friction.jacInv,
+            relTangent, -maxFriction,
+            maxFriction, friction.applied);
+
         applyBallCarRow(
             ballVel, ballAng, car, friction, frictionImpulse);
     }
@@ -191,8 +187,7 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
     const BallCarContact& contact,
     const BallCarRow& normal)
 {
-    const float penetration =
-        contact.depth - CAR_SOLVER_LINEAR_SLOP;
+    const float penetration = contact.depth - CAR_SOLVER_LINEAR_SLOP;
     if (penetration <= 0.f) return;
 
     const float pushImpulse = penetration * CAR_CONTACT_ERP
@@ -202,12 +197,9 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
     const Vec3 carCorrection = contact.normal
         * (-pushImpulse * CAR_INV_MASS * PHYS_DT);
 
-    state->ball.pos[ballIdx] =
-        Vec3::ldg(state->ball.pos[ballIdx]) + ballCorrection;
-    state->cars.pos[carIdx] =
-        Vec3::ldg(state->cars.pos[carIdx]) + carCorrection;
-    state->cars.cen[carIdx] =
-        Vec3::ldg(state->cars.cen[carIdx]) + carCorrection;
+    state->ball.pos[ballIdx] = Vec3::ldg(state->ball.pos[ballIdx]) + ballCorrection;
+    state->cars.pos[carIdx] = Vec3::ldg(state->cars.pos[carIdx]) + carCorrection;
+    state->cars.cen[carIdx] = Vec3::ldg(state->cars.cen[carIdx]) + carCorrection;
 }
 
 CARL_D CARL_FI void solveBallCarPair(
@@ -219,16 +211,17 @@ CARL_D CARL_FI void solveBallCarPair(
     if (__ldg(&state->cars.isDemoed[carIdx])) return;
 
     const Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
+
     Vec3 ballVel = Vec3::ldg(state->ball.vel[ballIdx]);
     Vec3 ballAng = Vec3::ldg(state->ball.ang[ballIdx]);
     BallCarBody car = loadBallCarBody(state, carIdx);
+
     const Vec3 preSolveCarVel = car.vel;
-    const BallCarContact contact =
-        sphereOBBContact(ballPos, car.cen, car.rot);
+    const BallCarContact contact = sphereOBBContact(ballPos, car.cen, car.rot);
     if (!contact.hit) return;
 
-    BallCarConstraint constraint =
-        makeBallCarConstraint(car, ballVel, ballAng, contact);
+    BallCarConstraint constraint = makeBallCarConstraint(car, ballVel, ballAng, contact);
+
     solveBallCarConstraint(
         ballVel, ballAng, car, constraint);
 
@@ -238,16 +231,12 @@ CARL_D CARL_FI void solveBallCarPair(
     state->cars.ang[carIdx] = car.ang;
 
     applyBallCarSplitCorrection(
-        state, ballIdx, carIdx, contact, constraint.normal);
+        state, ballIdx, carIdx, 
+        contact, constraint.normal);
+
     applyBallCarExtraImpulse(
-        state,
-        ballIdx,
-        carIdx,
-        ballPos,
-        car.pos,
-        preSolveCarVel,
-        car.rot,
-        preSolveBallVel);
+        state, ballIdx, carIdx, ballPos, car.pos,
+        preSolveCarVel, car.rot, preSolveBallVel);
 }
 
 CARL_D __noinline__ void solveBallCarForSim(

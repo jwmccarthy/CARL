@@ -48,24 +48,24 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def __init__(
         self,
-        n_sim:                int,
-        n_blue:               int,
-        n_orange:             int,
-        seed:                 int = 0,
-        frameskip:            int = 8,
-        max_ticks:            int = REGULATION_TICKS,
+        n_sim:                    int,
+        n_blue:                   int,
+        n_orange:                 int,
+        seed:                     int = 0,
+        frameskip:                int = 8,
+        max_ticks:                int = REGULATION_TICKS,
         *,
         overtime_timeout_ticks:   int | None = None,
         overtime_timeout_seconds: float | None = None,
         no_touch_timeout_ticks:   int | None = None,
         no_touch_timeout_seconds: float | None = None,
-        invert_orange:        bool = True,
-        normalize:            bool = False,
-        copy_outputs:         bool = True,
-        synchronize:          bool = False,
-        reward_funcs:         Iterable[RewardFunction] | None = None,
-        reward_scale:         float = 1.0,
-        reset_state_provider: ResetStateProvider | None = None,
+        invert_orange:            bool = True,
+        normalize:                bool = False,
+        copy_outputs:             bool = True,
+        synchronize:              bool = False,
+        reward_funcs:             Iterable[RewardFunction] | None = None,
+        reward_scale:             float = 1.0,
+        reset_state_provider:     ResetStateProvider | None = None,
     ) -> None:
         super().__init__()
 
@@ -76,6 +76,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self._seed = seed
         self._copy_outputs = copy_outputs
         self._synchronize = synchronize
+
         if max_ticks < 1:
             raise ValueError("max_ticks must be positive")
         if (
@@ -118,6 +119,7 @@ class CARLTorchVectorEnv(VectorEnv):
             raise ValueError("reward_scale must be positive")
         if reset_state_provider is not None and not callable(reset_state_provider):
             raise TypeError("reset_state_provider must be callable")
+        
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
@@ -318,8 +320,10 @@ class CARLTorchVectorEnv(VectorEnv):
 
         for reward_func in self.reward_funcs:
             component = reward_func(context)
+
             if isinstance(component, RewardResult):
                 expected = int(done.sum().item()) * self.n_cars
+
                 for key, values in component.info.items():
                     if key in ("reward", "length"):
                         raise ValueError(f"reward diagnostic uses reserved key: {key}")
@@ -333,7 +337,9 @@ class CARLTorchVectorEnv(VectorEnv):
                             f"expected {expected}"
                         )
                     info[key] = values
+
                 component = component.reward
+
             if component.shape != reward.shape:
                 raise ValueError(
                     f"Reward returned {tuple(component.shape)}; "
@@ -469,9 +475,9 @@ class CARLTorchVectorEnv(VectorEnv):
                 self.n_envs, self._env.obs_dim
             )
             info = {
-                "reward": self._episode_return[finished].cpu().tolist(),
-                "length": self._episode_length[finished].cpu().tolist(),
-                "final_obs": final_obs,
+                "reward":     self._episode_return[finished].cpu().tolist(),
+                "length":     self._episode_length[finished].cpu().tolist(),
+                "final_obs":  final_obs,
                 "_final_obs": done,
                 **reward_info,
             }

@@ -105,6 +105,7 @@ CARL_D CARL_FI void adjustInternalEdgeContact(
             contact.arenaPos,
             tri.getVert(edge),
             tri.getVert((edge + 1) % 3));
+
         const float distSq = (contact.arenaPos - nearest).lenSq();
 
         if (distSq < bestDistSq)
@@ -185,12 +186,12 @@ CARL_D CARL_FI Contact edgeEdgeContact(
     const float denom = 1.f - axisDot * axisDot;
 
     Vec3 pointOnTri = triPoint;
+
     if (denom > 1e-6f)
     {
         const float carProj = carToTri.dot(carAxis);
         const float triProj = carToTri.dot(triAxis);
-        const float unclampedParam =
-            (axisDot * carProj - triProj) / denom;
+        const float unclampedParam = (axisDot * carProj - triProj) / denom;
         const float triParam = clampf(unclampedParam, 0.f, triLength);
 
         pointOnTri = triPoint + triAxis * triParam;
@@ -201,8 +202,8 @@ CARL_D CARL_FI Contact edgeEdgeContact(
         carParamProj,
         -CAR_HALF_EX[carAxisIdx],
         CAR_HALF_EX[carAxisIdx]);
-    const Vec3 pointOnCar = carPoint + carAxis * carParam;
 
+    const Vec3 pointOnCar = carPoint + carAxis * carParam;
     const Vec3 separation = pointOnTri - pointOnCar;
     const float separationSq = separation.lenSq();
 

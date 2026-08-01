@@ -142,13 +142,12 @@ CARL_D CARL_FI void resolvePairRow(
     float upper)
 {
     const float relVel = pairRowVelocity(
-        row,
-        bodyA.deltaVel,
-        bodyA.deltaAng,
-        bodyB.deltaVel,
-        bodyB.deltaAng);
+        row, bodyA.deltaVel, bodyA.deltaAng,
+        bodyB.deltaVel, bodyB.deltaAng);
+
     const float impulse = solveImpulse(
-        row.rhs, 0.f, row.jacInv, relVel, lower, upper, row.applied);
+        row.rhs, 0.f, row.jacInv, 
+        relVel, lower, upper, row.applied);
 
     applyPairImpulse(bodyA, bodyB, row, impulse, false);
 }
@@ -159,13 +158,12 @@ CARL_D CARL_FI void resolvePairLower(
     PairSolverRow& row)
 {
     const float relVel = pairRowVelocity(
-        row,
-        bodyA.deltaVel,
-        bodyA.deltaAng,
-        bodyB.deltaVel,
-        bodyB.deltaAng);
+        row, bodyA.deltaVel, bodyA.deltaAng,
+        bodyB.deltaVel, bodyB.deltaAng);
+
     const float impulse = solveLowerImpulse(
-        row.rhs, 0.f, row.jacInv, relVel, 0.f, row.applied);
+        row.rhs, 0.f, row.jacInv, 
+        relVel, 0.f, row.applied);
 
     applyPairImpulse(bodyA, bodyB, row, impulse, false);
 }
@@ -176,18 +174,12 @@ CARL_D CARL_FI void resolvePairSplit(
     PairSolverRow& row)
 {
     const float relVel = pairRowVelocity(
-        row,
-        bodyA.pushVel,
-        bodyA.turnVel,
-        bodyB.pushVel,
-        bodyB.turnVel);
+        row, bodyA.pushVel, bodyA.turnVel,
+        bodyB.pushVel, bodyB.turnVel);
+
     const float impulse = solveLowerImpulse(
-        row.rhsPen,
-        0.f,
-        row.jacInv,
-        relVel,
-        0.f,
-        row.appliedPush);
+        row.rhsPen, 0.f, row.jacInv,
+        relVel, 0.f, row.appliedPush);
 
     applyPairImpulse(bodyA, bodyB, row, impulse, true);
 }
@@ -204,15 +196,11 @@ CARL_D __noinline__ void solvePairContacts(
     #pragma unroll
     for (int i = 0; i < count; i++)
     {
-        const Vec3 relA =
-            bodyA.cen - bodyA.pos + bodyA.rot.toWorld(contacts[i].carPosA);
-        const Vec3 relB =
-            bodyB.cen - bodyB.pos + bodyB.rot.toWorld(contacts[i].carPosB);
+        const Vec3 relA = bodyA.cen - bodyA.pos + bodyA.rot.toWorld(contacts[i].carPosA);
+        const Vec3 relB = bodyB.cen - bodyB.pos + bodyB.rot.toWorld(contacts[i].carPosB);
 
-        rows[i].normal =
-            makePairNormalRow(bodyA, bodyB, contacts[i], relA, relB);
-        rows[i].friction =
-            makePairFrictionRow(bodyA, bodyB, contacts[i], relA, relB);
+        rows[i].normal = makePairNormalRow(bodyA, bodyB, contacts[i], relA, relB);
+        rows[i].friction = makePairFrictionRow(bodyA, bodyB, contacts[i], relA, relB);
     }
 
     for (int iter = 0; iter < CAR_SOLVER_ITERS; iter++)
@@ -235,14 +223,11 @@ CARL_D __noinline__ void solvePairContacts(
         #pragma unroll
         for (int i = 0; i < count; i++)
         {
-            const float maxImpulse =
-                CARCAR_COLLISION_FRICTION * rows[i].normal.applied;
+            const float maxImpulse = CARCAR_COLLISION_FRICTION * rows[i].normal.applied;
+
             resolvePairRow(
-                bodyA,
-                bodyB,
-                rows[i].friction,
-                -maxImpulse,
-                maxImpulse);
+                bodyA, bodyB, rows[i].friction,
+                -maxImpulse, maxImpulse);
         }
     }
 

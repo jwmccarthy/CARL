@@ -62,13 +62,15 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaNormalRow(
     const BallArenaContact& contact,
     const Vec3& relPos)
 {
-    BallArenaSolverRow row =
-        makeBallArenaAxisRow(contact.normal, relPos);
+    BallArenaSolverRow row = makeBallArenaAxisRow(contact.normal, relPos);
+
     const float relVel = ballArenaRowVelocity(row, body.vel, body.ang);
+
     float bounce = fabsf(relVel) > CAR_RESTITUTION_VEL_THRESH
         ? BALL_WORLD_RESTITUTION * -relVel
         : 0.f;
     bounce = fmaxf(bounce, 0.f);
+
     const float posError = contact.depth * CAR_CONTACT_ERP / PHYS_DT;
     const float posImpulse = posError * row.jacInv;
     const float velImpulse = (bounce - relVel) * row.jacInv;
@@ -104,6 +106,7 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaFrictionRow(
     const float tangentVel = ballArenaRowVelocity(row, body.vel, body.ang);
     row.rhs = -tangentVel * row.jacInv;
     row.upper = 0.f;
+
     return row;
 }
 
@@ -126,15 +129,14 @@ CARL_D CARL_FI void resolveBallArenaSplit(
 {
     if (row.rhsPen == 0.f) return;
 
-    const float relVel =
-        ballArenaRowVelocity(row, body.pushVel, body.pushAng);
+    const float relVel = ballArenaRowVelocity(row, body.pushVel, body.pushAng);
+
     const float impulse = solveLowerImpulse(
-        row.rhsPen,
-        0.f,
-        row.jacInv,
-        relVel,
+        row.rhsPen, 0.f,
+        row.jacInv, relVel,
         row.lower,
         row.appliedPush);
+
     applyBallArenaImpulse(body, row, impulse, true);
 }
 
@@ -142,10 +144,11 @@ CARL_D CARL_FI void resolveBallArenaNormal(
     BallArenaSolverBody& body,
     BallArenaSolverRow& row)
 {
-    const float relVel =
-        ballArenaRowVelocity(row, body.deltaVel, body.deltaAng);
+    const float relVel = ballArenaRowVelocity(row, body.deltaVel, body.deltaAng);
     const float impulse = solveLowerImpulse(
-        row.rhs, 0.f, row.jacInv, relVel, row.lower, row.applied);
+        row.rhs, 0.f, row.jacInv, 
+        relVel, row.lower, row.applied);
+
     applyBallArenaImpulse(body, row, impulse, false);
 }
 
@@ -154,16 +157,15 @@ CARL_D CARL_FI void resolveBallArenaFriction(
     BallArenaSolverRow& row,
     float maxImpulse)
 {
-    const float relVel =
-        ballArenaRowVelocity(row, body.deltaVel, body.deltaAng);
+    const float relVel = ballArenaRowVelocity(
+        row, body.deltaVel, body.deltaAng);
     const float impulse = solveImpulse(
-        row.rhs,
-        0.f,
-        row.jacInv,
-        relVel,
+        row.rhs, 0.f,
+        row.jacInv, relVel,
         -maxImpulse,
         maxImpulse,
         row.applied);
+
     applyBallArenaImpulse(body, row, impulse, false);
 }
 
@@ -178,8 +180,7 @@ CARL_D CARL_FI void clampBallArenaVelocity(BallArenaSolverBody& body)
     const float angSpeedSq = body.ang.lenSq();
     if (angSpeedSq > BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED)
     {
-        body.ang = body.ang
-            * (BALL_MAX_ANG_SPEED * rsqrtf(angSpeedSq));
+        body.ang = body.ang * (BALL_MAX_ANG_SPEED * rsqrtf(angSpeedSq));
     }
 }
 
@@ -193,12 +194,9 @@ CARL_D CARL_FI void solveBallArenaContacts(
     #pragma unroll
     for (int i = 0; i < count; i++)
     {
-        const Vec3 relPos =
-            contacts[i].normal * (-BALL_COLLISION_RADIUS);
-        rows[i].normal =
-            makeBallArenaNormalRow(body, contacts[i], relPos);
-        rows[i].friction =
-            makeBallArenaFrictionRow(body, contacts[i], relPos);
+        const Vec3 relPos = contacts[i].normal * (-BALL_COLLISION_RADIUS);
+        rows[i].normal = makeBallArenaNormalRow(body, contacts[i], relPos);
+        rows[i].friction = makeBallArenaFrictionRow(body, contacts[i], relPos);
     }
 
     for (int iter = 0; iter < CAR_SOLVER_ITERS; iter++)
@@ -221,8 +219,8 @@ CARL_D CARL_FI void solveBallArenaContacts(
         #pragma unroll
         for (int i = 0; i < count; i++)
         {
-            const float maxImpulse =
-                BALL_WORLD_FRICTION * rows[i].normal.applied;
+            const float maxImpulse = BALL_WORLD_FRICTION * rows[i].normal.applied;
+            
             if (maxImpulse <= 0.f) continue;
 
             resolveBallArenaFriction(body, rows[i].friction, maxImpulse);
@@ -231,5 +229,6 @@ CARL_D CARL_FI void solveBallArenaContacts(
 
     body.vel = body.vel + body.deltaVel;
     body.ang = body.ang + body.deltaAng;
+
     clampBallArenaVelocity(body);
 }

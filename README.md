@@ -1,8 +1,6 @@
 # CARL
 
-CARL is a CUDA Rocket League Soccar physics simulator. Simulation state and native input and output buffers are stored in CUDA memory and exposed through DLPack.
-
-CARL uses ideas and constants from [RocketSim](https://github.com/ZealanL/RocketSim). Its vector environment design was informed by [PureJaxRL](https://chrislu.page/blog/meta-disco/).
+CUDA-Accelerated Rocket League (CARL) is a Rocket League physics simulator based on [RocketSim](https://github.com/ZealanL/RocketSim). Inspired by [PureJaxRL](https://chrislu.page/blog/meta-disco/), it is a vectorized environment for reinforcement learning in Rocket League that resides entirely on the GPU.
 
 ## Requirements
 
@@ -39,9 +37,7 @@ actions = torch.zeros((env.n_envs, 7), dtype=torch.int32, device="cuda:0")
 observation, reward, terminated, truncated, info = env.step(actions)
 ```
 
-Actors use simulation order, then car order. Blue cars come before orange cars. `reset()` returns only the observation tensor. `step()` returns the Gymnasium five value result.
-
-Default rewards are relative to each actor. Scoring gives `1`. Conceding gives `-1`. Every car in a completed simulation terminates and resets together.
+Actors use simulation order, then car order. Blue cars come before orange cars. `reset()` returns only the observation tensor. `step()` returns the Gymnasium five-value result.
 
 `info["reward"]` and `info["length"]` contain Python lists for completed actors. Lengths count physics ticks. Same-step autoreset also exposes the pre-reset observation as `info["final_obs"]`, masked by `info["_final_obs"]`.
 
@@ -80,18 +76,19 @@ obs_dim = 9 + n_cars * 21 + 68 + 6 + (n_cars - 1) * 6 + 6
 
 Each observation contains ball position, velocity, and angular velocity. It then contains position, velocity, angular velocity, forward direction, up direction, boost, and state flags for every car, followed by boost pad state and distance. These existing fields retain their original ordering.
 
-The appended fields contain ego-to-ball relative position and velocity, then ego-to-car relative position and velocity for every other car in the same teammate/opponent order, then ball-to-own-goal and ball-to-opponent-goal vectors. Goal identity is relative to the observing team, and orange vectors use the same optional rotation as the base observation.
+The appended fields contain self-to-ball relative position and velocity, then self-to-car relative position and velocity for every other car in the same teammate/opponent order, then ball-to-own-goal and ball-to-opponent-goal vectors. Goal identity is relative to the observing team, and orange vectors use the same optional rotation as the base observation.
 
 Car blocks start with the observing car, followed by teammates and opponents. Orange observations can be rotated into the blue frame with `invert_orange=True`.
 
 ## Custom Rewards
+
+The environment carries a default, zero-sum reward tied to goals, but rewards are customizable via the exposed `RewardContext`.
 
 Reward functions receive a `RewardContext` and return `[n_sim, n_cars]`.
 
 ```python
 def speed_reward(context):
     return context.current.car_velocity.norm(dim=-1) / 2300.0
-
 
 env = CARLTorchVectorEnv(1024, 1, 1, reward_funcs=[speed_reward])
 ```
@@ -105,11 +102,11 @@ The context contains previous state, current transition state, actions, score ev
 Full updates use these shapes:
 
 ```text
-ball vectors       [n_sim, 3] float32
-car vectors        [n_sim, n_cars, 3] float32
-car rotation       [n_sim, n_cars, 4] float32
-car demo state     [n_sim, n_cars] bool or int32
-car boost          [n_sim, n_cars] float32
+ball vectors   : [n_sim, 3]         : float32
+car vectors    : [n_sim, n_cars, 3] : float32
+car rotation   : [n_sim, n_cars, 4] : float32
+car demo state : [n_sim, n_cars]    : bool or int32
+car boost      : [n_sim, n_cars]    : float32
 ```
 
 Rotations use quaternion order `(x, y, z, w)`. Boost is limited to the range from `0` to `100`.
@@ -126,7 +123,7 @@ The required mapping keys are `ball_position`, `ball_velocity`, `ball_angular_ve
 
 On explicit reset, every mask value is true. During same step reset, the mask marks completed simulations. Terminal custom rewards use the transition before reset. Returned observations use the provider state.
 
-## Native API
+## API
 
 The native environment accepts CUDA arrays through DLPack.
 
@@ -139,5 +136,3 @@ env = carl.Env(n_sim=1024, n_blue=1, n_orange=1, seed=0, frameskip=8)
 actions = torch.zeros((1024, 2, 7), dtype=torch.int32, device="cuda:0")
 observation = torch.from_dlpack(env.step(actions))
 ```
-
-The native API provides `reset`, `step`, state getters, reward and done getters, state setters, `frameskip`, `max_ticks`, `no_touch_timeout_ticks`, observation dimensions, action dimensions, action cardinalities, simulation count, and car count. Native `no_touch_timeout_ticks=0` disables the timeout.

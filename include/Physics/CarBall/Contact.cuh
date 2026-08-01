@@ -17,6 +17,7 @@ CARL_D CARL_FI BallCarContact sphereOBBContact(
 {
     BallCarContact contact{};
     const Vec3 localBall = carRot.toLocal(ballPos - carCen);
+
     const Vec3 clamped = {
         clampf(localBall.x, -CAR_BALL_CORE_HALF_EX.x,
             CAR_BALL_CORE_HALF_EX.x),
@@ -25,6 +26,7 @@ CARL_D CARL_FI BallCarContact sphereOBBContact(
         clampf(localBall.z, -CAR_BALL_CORE_HALF_EX.z,
             CAR_BALL_CORE_HALF_EX.z)
     };
+
     const Vec3 delta = localBall - clamped;
     const float distSq = delta.lenSq();
     const float intersectDist = BALL_RADIUS + CAR_BALL_SHAPE_MARGIN;
@@ -43,6 +45,7 @@ CARL_D CARL_FI BallCarContact sphereOBBContact(
         contact.normal = carRot.toWorld(localNormal);
         contact.depth = intersectDist - dist;
         contact.hit = true;
+
         return contact;
     }
 
@@ -69,5 +72,6 @@ CARL_D CARL_FI BallCarContact sphereOBBContact(
     contact.normal = carRot.toWorld(localNormal);
     contact.depth = intersectDist + minDist;
     contact.hit = true;
+    
     return contact;
 }

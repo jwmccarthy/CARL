@@ -13,8 +13,7 @@ enum AirAxis
 
 CARL_D CARL_FI bool jumpGraceActive(const CarInternalState& s)
 {
-    return s.hasJumped
-        && s.jumpTime < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD;
+    return s.hasJumped && s.jumpTime < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD;
 }
 
 CARL_D CARL_FI bool shouldContinueJump(
@@ -88,8 +87,7 @@ CARL_D CARL_FI Vec3 scaledDodgeVel(
     if (fabsf(dodge.x) < 0.1f) dodge.x = 0.f;
     if (fabsf(dodge.y) < 0.1f) dodge.y = 0.f;
 
-    const float speedScale =
-        clampf(ctx.absFwdSpeed / CAR_MAX_SPEED, 0.f, 1.f);
+    const float speedScale = clampf(ctx.absFwdSpeed / CAR_MAX_SPEED, 0.f, 1.f);
     const bool isBackward = isBackwardDodge(ctx, dodge);
     const float maxFwdScale = isBackward
         ? FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE
@@ -97,8 +95,8 @@ CARL_D CARL_FI Vec3 scaledDodgeVel(
 
     Vec3 vel = dodge * FLIP_INITIAL_VEL_SCALE;
     vel.x *= (maxFwdScale - 1.f) * speedScale + 1.f;
-    vel.y *=
-        (FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE - 1.f) * speedScale + 1.f;
+    vel.y *= (FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE - 1.f) * speedScale + 1.f;
+
     if (isBackward) vel.x *= FLIP_BACKWARD_IMPULSE_SCALE_X;
 
     return vel;
@@ -170,7 +168,8 @@ CARL_D CARL_FI void tryStartDodge(ControlCtx& ctx)
     const CarControls& c = ctx.input();
 
     // A flip reset (landing on ball while airborne, then leaving) leaves
-    // hasJumped false with a fresh dodge window. A normal jump sets it true    // Either way the car can dodge if it still has a flip available
+    // hasJumped false with a fresh dodge window. A normal jump sets it true
+    // Either way the car can dodge if it still has a flip available
     const bool canDodge = hasFlipOrJump(s);
     if (!ctx.jumpPressed || !canDodge) return;
 
@@ -203,6 +202,7 @@ CARL_D CARL_FI void updateFlipMotion(ControlCtx& ctx)
     Vec3 vel = Vec3::ldg(ctx.state->cars.vel[ctx.carIdx]);
     const bool dampZ = s.flipTime >= FLIP_Z_DAMP_START
         && (vel.z < 0.f || s.flipTime < FLIP_Z_DAMP_END);
+
     if (!dampZ) return;
 
     vel.z *= 1.f - FLIP_Z_DAMP_120;
@@ -255,6 +255,7 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
 
     const bool hasPitchInput = rel.y != 0.f && c.pitch != 0.f;
     const bool pitchMatchesFlip = (rel.y > 0.f) == (c.pitch > 0.f);
+
     if (hasPitchInput && pitchMatchesFlip)
     {
         pitchScale = 1.f - fminf(fabsf(c.pitch), 1.f);
@@ -268,8 +269,7 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
     };
     const Vec3 worldTorque = ctx.rot.toWorld(relTorque);
 
-    ctx.state->cars.ang[ctx.carIdx] =
-        Vec3::ldg(ctx.state->cars.ang[ctx.carIdx])
+    ctx.state->cars.ang[ctx.carIdx] = Vec3::ldg(ctx.state->cars.ang[ctx.carIdx])
         + worldTorque * PHYS_DT;
 
     return useAir;
@@ -278,8 +278,7 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
 CARL_D CARL_FI float airPitchScale(const CarInternalState& s)
 {
     const bool pitchLocked = s.isFlipping
-        || (s.hasFlipped
-            && s.flipTime < FLIP_TORQUE_TIME + FLIP_PITCHLOCK_EXTRA_TIME);
+        || (s.hasFlipped && s.flipTime < FLIP_TORQUE_TIME + FLIP_PITCHLOCK_EXTRA_TIME);
 
     return pitchLocked ? 0.f : 1.f;
 }

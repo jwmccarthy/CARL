@@ -29,6 +29,7 @@ CARL_D __noinline__ Vec3 solveBallArena(
 
     state->ball.vel[ballIdx] = body.vel;
     state->ball.ang[ballIdx] = body.ang;
+
     return body.pushVel;
 }
 
@@ -47,9 +48,10 @@ CARL_D CARL_FI void solveBallForSim(
     const Vec3 preSolveVel = sleeping
         ? ballVel
         : ballVel * powf(1.f - BALL_DRAG, PHYS_DT)
-            + WORLD_GRAVITY * PHYS_DT;
+        + WORLD_GRAVITY * PHYS_DT;
 
     Vec3 pushVel = Vec3::zero();
+    
     if (!sleeping)
     {
         pushVel = solveBallArena(state, arena, ballIdx, preSolveVel);

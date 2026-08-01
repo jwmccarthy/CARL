@@ -66,9 +66,7 @@ CARL_D CARL_FI ManifoldPoint makeManifoldPoint(
         -contact.depth,
         CAR_WORLD_FRICTION,
         CAR_WORLD_RESTITUTION,
-        0.f,
-        0.f,
-        0
+        0.f, 0.f, 0
     };
 }
 
@@ -83,9 +81,11 @@ CARL_D CARL_FI int manifoldReplacementIndex(
 
     int deepest = -1;
     float deepestPenetration = -candidate.dist;
+
     for (int i = 0; i < MAX_CAR_MANIFOLD_POINTS; i++)
     {
         const float penetration = -points[i].dist;
+
         if (penetration > deepestPenetration)
         {
             deepest = i;
@@ -95,15 +95,24 @@ CARL_D CARL_FI int manifoldReplacementIndex(
 
     float area[4]{};
     if (deepest != 0)
+    {
         area[0] = (candidate.carPos - p1).cross(p3 - p2).lenSq();
+    }
     if (deepest != 1)
+    {
         area[1] = (candidate.carPos - p0).cross(p3 - p2).lenSq();
+    }
     if (deepest != 2)
+    {
         area[2] = (candidate.carPos - p0).cross(p3 - p1).lenSq();
+    }
     if (deepest != 3)
+    {
         area[3] = (candidate.carPos - p0).cross(p2 - p1).lenSq();
+    }
 
     int best = 0;
+
     for (int i = 1; i < MAX_CAR_MANIFOLD_POINTS; i++)
     {
         if (area[i] > area[best]) best = i;
@@ -157,10 +166,15 @@ CARL_D CARL_FI void addManifoldPoint(
     const ManifoldPoint& point)
 {
     int idx = count;
+
     if (idx == MAX_CAR_MANIFOLD_POINTS)
+    {
         idx = manifoldReplacementIndex(points, point);
+    }
     else
+    {
         count++;
+    }
 
     points[idx] = point;
 }
@@ -173,7 +187,9 @@ CARL_D CARL_FI bool hasNearbyManifoldPoint(
     for (int i = 0; i < count; i++)
     {
         if ((points[i].carPos - carPos).lenSq() < CAR_MANIFOLD_BREAK_SQ)
+        {
             return true;
+        }
     }
 
     return false;
@@ -189,6 +205,7 @@ CARL_D CARL_FI void insertBestContact(
 {
     const int pairBase = __ldg(&space->ctHit.carHitStart[carIdx]);
     const int pairCount = carHitPairCount(space, carIdx);
+
     int bestPair = -1;
     Contact best{};
     float bestDist = FLT_MAX;
@@ -205,9 +222,12 @@ CARL_D CARL_FI void insertBestContact(
                 space->ctCon, contactBase + contactOffset);
 
             if (hasNearbyManifoldPoint(points, pointCount, contact.carPos))
+            {
                 continue;
+            }
 
             const float dist = -contact.depth;
+
             if (dist < bestDist)
             {
                 bestDist = dist;
@@ -233,10 +253,14 @@ CARL_D CARL_FI void writeLocalManifold(
     manifold.count[carIdx] = count;
 
     for (int i = 0; i < count; i++)
+    {
         writeManifoldPoint(manifold, points[i], base + i);
+    }
 
     for (int i = count; i < MAX_CAR_MANIFOLD_POINTS; i++)
+    {
         writeManifoldPoint(manifold, {}, base + i);
+    }
 }
 
 CARL_D __noinline__ int buildLocalManifold(
@@ -250,7 +274,9 @@ CARL_D __noinline__ int buildLocalManifold(
     int pointCount = __ldg(&space->ctMan.count[carIdx]);
 
     for (int i = 0; i < pointCount; i++)
+    {
         points[i] = readManifoldPoint(space->ctMan, base + i);
+    }
 
     refreshManifold(points, pointCount, pose);
     insertBestContact(

@@ -114,11 +114,8 @@ CARL_D CARL_FI void packObservations(
     const Vec3 egoVel = Vec3::ldg(state->cars.vel[carBase + observerIdx]);
 
     const Vec3 ballPos = observationVector(rawBallPos, invert);
-
     const Vec3 ballVel = observationVector(rawBallVel, invert);
-
-    const Vec3 ballAng = observationVector(
-        Vec3::ldg(state->ball.ang[simIdx]), invert);
+    const Vec3 ballAng = observationVector(Vec3::ldg(state->ball.ang[simIdx]), invert);
 
     obs[o++] = ballPos.x;
     obs[o++] = ballPos.y;
@@ -146,7 +143,7 @@ CARL_D CARL_FI void packObservations(
     }
 
     const int opponentStart = observerIsOrange ? 0 : state->nBlue;
-    const int opponentEnd   = observerIsOrange ? state->nBlue : nCars;
+    const int opponentEnd = observerIsOrange ? state->nBlue : nCars;
 
     for (int c = opponentStart; c < opponentEnd; c++)
     {
@@ -168,6 +165,7 @@ CARL_D CARL_FI void packObservations(
 
     const Vec3 egoToBallPos = observationVector(rawBallPos - egoPos, invert);
     const Vec3 egoToBallVel = observationVector(rawBallVel - egoVel, invert);
+
     obs[o++] = egoToBallPos.x;
     obs[o++] = egoToBallPos.y;
     obs[o++] = egoToBallPos.z;
@@ -191,12 +189,13 @@ CARL_D CARL_FI void packObservations(
     }
 
     const float ownGoalY = observerIsOrange
-        ? SOCCAR_GOAL_CENTER_Y : -SOCCAR_GOAL_CENTER_Y;
+        ? SOCCAR_GOAL_CENTER_Y 
+        : -SOCCAR_GOAL_CENTER_Y;
+
     const Vec3 ownGoal = { 0.f, ownGoalY, SOCCAR_GOAL_CENTER_Z };
     const Vec3 opponentGoal = { 0.f, -ownGoalY, SOCCAR_GOAL_CENTER_Z };
     const Vec3 ballToOwnGoal = observationVector(ownGoal - rawBallPos, invert);
-    const Vec3 ballToOpponentGoal = observationVector(
-        opponentGoal - rawBallPos, invert);
+    const Vec3 ballToOpponentGoal = observationVector(opponentGoal - rawBallPos, invert);
 
     obs[o++] = ballToOwnGoal.x;
     obs[o++] = ballToOwnGoal.y;
@@ -256,11 +255,13 @@ CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
     }
 
     int relativeOffset = distanceOffset + NUM_BOOST_PADS;
+
     for (int axis = 0; axis < 3; axis++)
     {
         obs[relativeOffset + axis] /= 2.f * positionScale[axis];
         obs[relativeOffset + 3 + axis] /= BALL_MAX_SPEED + CAR_MAX_SPEED;
     }
+
     relativeOffset += OBS_RELATIVE_EGO_BALL;
 
     for (int car = 1; car < nCars; car++)
@@ -270,6 +271,7 @@ CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
             obs[relativeOffset + axis] /= 2.f * positionScale[axis];
             obs[relativeOffset + 3 + axis] /= 2.f * CAR_MAX_SPEED;
         }
+
         relativeOffset += OBS_RELATIVE_PER_OTHER_CAR;
     }
 
@@ -343,17 +345,18 @@ CARL_D CARL_FI void packDones(
     bool* __restrict__ dones)
 {
     const GoalState& goal = state->goals[simIdx];
+
     const bool regulationExpired = state->episodeTicks[simIdx] >= maxTicks
         && goal.blueScore != goal.orangeScore;
     const bool overtimeExpired = goal.overtime
         && state->episodeTicks[simIdx] >= maxTicks + overtimeTimeoutTicks;
     const bool scored = goal.lastScorer != 0;
-    dones[simIdx] = (!goal.overtime && regulationExpired)
-                 || overtimeExpired
-                 || (noTouchTimeoutTicks > 0
-                       && state->tickCount - state->lastBallTouchTicks[simIdx]
-                          >= noTouchTimeoutTicks)
-                 || scored;
+    const bool gameOver = !goal.overtime && regulationExpired;
+    const bool timeout = (noTouchTimeoutTicks > 0
+        && state->tickCount - state->lastBallTouchTicks[simIdx]
+        >= noTouchTimeoutTicks);
+
+    dones[simIdx] = gameOver || overtimeExpired || timeout || scored;
 }
 
 CARL_D CARL_FI void packOvertime(

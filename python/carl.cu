@@ -551,19 +551,19 @@ PYBIND11_MODULE(_carl, m)
         .def("set_match_state",      &EnvWrapper::setMatchState,
              py::arg("blue_score"), py::arg("orange_score"),
              py::arg("episode_ticks"), py::arg("simulation_indices") = py::none())
-        .def("get_score_difference", &EnvWrapper::getScoreDifference)
-        .def("get_episode_ticks",    &EnvWrapper::getEpisodeTicks)
+
+        .def("get_score_difference",            &EnvWrapper::getScoreDifference)
+        .def("get_episode_ticks",               &EnvWrapper::getEpisodeTicks)
         .def("get_transition_score_difference", &EnvWrapper::getTransitionScoreDifference)
-        .def("get_transition_episode_ticks", &EnvWrapper::getTransitionEpisodeTicks)
-        .def("get_overtime", &EnvWrapper::getOvertime)
-        .def("get_transition_overtime", &EnvWrapper::getTransitionOvertime)
+        .def("get_transition_episode_ticks",    &EnvWrapper::getTransitionEpisodeTicks)
+        .def("get_overtime",                    &EnvWrapper::getOvertime)
+        .def("get_transition_overtime",         &EnvWrapper::getTransitionOvertime)
 
         .def_property("max_ticks", nullptr, &EnvWrapper::setMaxTicks)
         .def_property("overtime_timeout_ticks", nullptr,
                       &EnvWrapper::setOvertimeTimeoutTicks)
         .def_property("no_touch_timeout_ticks", nullptr,
                       &EnvWrapper::setNoTouchTimeoutTicks)
-
         .def_property("frameskip", &EnvWrapper::getFrameskip,
                       &EnvWrapper::setFrameskip)
 

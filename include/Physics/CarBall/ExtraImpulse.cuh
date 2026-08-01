@@ -5,11 +5,18 @@
 
 CARL_D CARL_FI float ballCarExtraImpulseCurve(float speed)
 {
-    if (speed <= 500.f) return 0.65f;
+    if (speed <= 500.f) 
+    {
+        return 0.65f;
+    }
     if (speed <= 2300.f)
+    {
         return 0.65f + (0.55f - 0.65f) * ((speed - 500.f) / 1800.f);
+    }
     if (speed <= 4600.f)
+    {
         return 0.55f + (0.30f - 0.55f) * ((speed - 2300.f) / 2300.f);
+    }
     return 0.30f;
 }
 
@@ -37,8 +44,8 @@ CARL_D CARL_FI Vec3 ballCarExtraVelocity(
 
     hitDir = hitDir * rsqrtf(dirLenSq);
     const Vec3 forward = carRot.toWorld(WORLD_X);
-    const float forwardScale =
-        hitDir.dot(forward) * (1.f - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
+    const float forwardScale = hitDir.dot(forward) 
+        * (1.f - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
     hitDir = hitDir - forward * forwardScale;
 
     const float adjustedLenSq = hitDir.lenSq();
@@ -68,6 +75,5 @@ CARL_D CARL_FI void applyBallCarExtraImpulse(
     state->cars.ballHitTick[carIdx] = tick;
     const Vec3 addedVel = ballCarExtraVelocity(
         ballPos, carPos, carVel, carRot, preSolveBallVel);
-    state->ball.imp[ballIdx] =
-        Vec3::ldg(state->ball.imp[ballIdx]) + addedVel;
+    state->ball.imp[ballIdx] = Vec3::ldg(state->ball.imp[ballIdx]) + addedVel;
 }

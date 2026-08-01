@@ -69,11 +69,8 @@ __global__ void packObsKernel(
         + OBS_RELATIVE_GOALS;
 
     packObservations(
-        state,
-        simIdx,
-        observerIdx,
-        nCars,
-        invertOrange,
+        state, simIdx, observerIdx,
+        nCars, invertOrange,
         obs + agentIdx * obsDim);
         
     if (normalize)
@@ -100,7 +97,9 @@ __global__ void packRewardsDonesKernel(
     GameState* __restrict__ state,
     float* __restrict__ rewards,
     bool* __restrict__ dones,
-    int nSim, int maxTicks, int overtimeTimeoutTicks,
+    int nSim, 
+    int maxTicks, 
+    int overtimeTimeoutTicks,
     int noTouchTimeoutTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -347,12 +346,17 @@ void EnvIO::packRewardsDones(GameState* d_state)
         perSimConfig.blockDim, 0, stream>>>(
         d_state, d_rewards, d_dones,
         nSim, maxTicks, overtimeTimeoutTicks, noTouchTimeoutTicks);
+
     CUDA_CHECK(cudaGetLastError());
+
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_transitionScoreDifference, d_transitionEpisodeTicks);
+
     CUDA_CHECK(cudaGetLastError());
+
     packOvertimeKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_transitionOvertime);
+
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -360,9 +364,12 @@ void EnvIO::packRawMatchState(GameState* d_state)
 {
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_scoreDifference, d_episodeTicks);
+
     CUDA_CHECK(cudaGetLastError());
+
     packOvertimeKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
         d_state, d_overtime);
+
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -457,6 +464,7 @@ void EnvIO::setBall(
 
     setBallKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
         d_state, pos, vel, ang, simulationIndices, nSelected, nSim);
+
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -494,10 +502,13 @@ void EnvIO::setMatchState(GameState* d_state, const int32_t* blueScore,
 {
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
+
     const KernelConfig config = KernelConfig{}.setBlockDim(32)
         .setGridFromThreads(nSelected).setStream(stream);
+
     setMatchStateKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
         d_state, blueScore, orangeScore, episodeTicks,
         simulationIndices, nSelected);
+        
     CUDA_CHECK(cudaGetLastError());
 }

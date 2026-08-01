@@ -151,11 +151,12 @@ CARL_D CARL_FI int faceContacts(
 
     Vec3* input = polyA;
     Vec3* output = polyB;
+
     const int polyCount = clipIncidentQuad(face, input, output);
-    const Vec3 refCenter =
-        face.ref->cen + refNormal * CAR_HALF_EX[face.axis];
+    const Vec3 refCenter = face.ref->cen + refNormal * CAR_HALF_EX[face.axis];
 
     int count = 0;
+    
     for (int i = 0; i < polyCount && count < MAX_CAR_MANIFOLD_POINTS; i++)
     {
         const float depth = (refCenter - input[i]).dot(refNormal);

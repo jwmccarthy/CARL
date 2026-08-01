@@ -86,9 +86,7 @@ CARL_D CARL_FI void updateBoost(ControlCtx& ctx)
     if (s.isBoosting)
     {
         s.boostingTime += PHYS_DT;
-        s.boost = fmaxf(
-            s.boost - BOOST_USED_PER_SECOND * PHYS_DT,
-            0.f);
+        s.boost = fmaxf(s.boost - BOOST_USED_PER_SECOND * PHYS_DT, 0.f);
 
         const float accel = ctx.onGround ? BOOST_ACCEL_GROUND : BOOST_ACCEL_AIR;
         addDeferredVel(ctx, ctx.fwd * (accel * PHYS_DT));
@@ -125,8 +123,8 @@ CARL_D CARL_FI void updateSteer(ControlCtx& ctx)
     float angle = steerAngleFromSpeed(ctx.absFwdSpeed);
     if (s.handbrakeVal > 0.f)
     {
-        const float slideAngle =
-            powerslideSteerAngleFromSpeed(ctx.absFwdSpeed);
+        const float slideAngle = powerslideSteerAngleFromSpeed(ctx.absFwdSpeed);
+        
         angle += (slideAngle - angle) * s.handbrakeVal;
     }
 

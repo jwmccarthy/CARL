@@ -66,8 +66,7 @@ CARL_D CARL_FI bool frontHit(
 
     for (int i = 0; i < pair.count; i++)
     {
-        const Vec3 point =
-            aIsBumper ? pair.contacts[i].carPosA : pair.contacts[i].carPosB;
+        const Vec3 point = aIsBumper ? pair.contacts[i].carPosA : pair.contacts[i].carPosB;
         if (point.x + CAR_OFFSETS.x > BUMP_MIN_FORWARD_DIST) return true;
     }
 
@@ -182,8 +181,7 @@ CARL_D CARL_FI void tryApplyBump(
     if (!frontHit(pair, aIsBumper, delta, bumperRot)) return;
 
     const bool grounded = state->cars.internal[victim].isOnGround != 0;
-    const float forwardScale =
-        grounded ? bumpGround(closingSpeed) : bumpAir(closingSpeed);
+    const float forwardScale = grounded ? bumpGround(closingSpeed) : bumpAir(closingSpeed);
 
     const Vec3 up = grounded ? victimRot.toWorld(WORLD_Z) : WORLD_Z;
     const Vec3 impulse = velDir * forwardScale + up * bumpUp(closingSpeed);

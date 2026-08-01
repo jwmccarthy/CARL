@@ -107,6 +107,5 @@ CARL_D CARL_FI bool opposingThrottle(
     float fwdSpeed,
     float absFwdSpeed)
 {
-    return absFwdSpeed > CAR_STOPPING_VEL
-        && ((throttle > 0.f) != (fwdSpeed > 0.f));
+    return absFwdSpeed > CAR_STOPPING_VEL && ((throttle > 0.f) != (fwdSpeed > 0.f));
 }

@@ -52,8 +52,7 @@ CARL_D CARL_FI SolverRow makeAxisRow(
     row.angular = applyInvInertiaWorld(body, row.relCross);
 
     const Vec3 linearResponse = row.angular.cross(relPos);
-    const float denom =
-        CAR_INV_MASS + axis.dot(linearResponse);
+    const float denom = CAR_INV_MASS + axis.dot(linearResponse);
 
     row.jacInv = 1.f / fmaxf(denom, 1e-8f);
     row.upper = 1e10f;
@@ -143,8 +142,7 @@ CARL_D CARL_FI SolverContact makeSolverContact(
     const ManifoldPoint& point,
     const SolverMotion& motion)
 {
-    const Vec3 relPos =
-        motion.centerOffset + body.rot.toWorld(point.carPos);
+    const Vec3 relPos = motion.centerOffset + body.rot.toWorld(point.carPos);
 
     return {
         makeNormalRow(body, point, relPos, motion),
@@ -175,12 +173,8 @@ CARL_D CARL_FI void resolveRow(
 {
     const float relVel = rowVelocity(row, body.deltaVel, body.deltaAng);
     const float impulse = solveImpulse(
-        row.rhs,
-        row.cfm,
-        row.jacInv,
-        relVel,
-        row.lower,
-        row.upper,
+        row.rhs, row.cfm, row.jacInv,
+        relVel, row.lower, row.upper,
         row.applied);
 
     applyRowImpulse(body, row, impulse);
@@ -192,12 +186,8 @@ CARL_D CARL_FI void resolveLowerRow(
 {
     const float relVel = rowVelocity(row, body.deltaVel, body.deltaAng);
     const float impulse = solveLowerImpulse(
-        row.rhs,
-        row.cfm,
-        row.jacInv,
-        relVel,
-        row.lower,
-        row.applied);
+        row.rhs, row.cfm, row.jacInv,
+        relVel, row.lower, row.applied);
 
     applyRowImpulse(body, row, impulse);
 }
@@ -210,12 +200,8 @@ CARL_D CARL_FI void resolveSplitRow(
 
     const float relVel = rowVelocity(row, body.pushVel, body.turnVel);
     const float impulse = solveLowerImpulse(
-        row.rhsPen,
-        row.cfm,
-        row.jacInv,
-        relVel,
-        row.lower,
-        row.appliedPush);
+        row.rhsPen, row.cfm, row.jacInv,
+        relVel, row.lower, row.appliedPush);
 
     body.pushVel = body.pushVel + row.axis * (CAR_INV_MASS * impulse);
     body.turnVel = body.turnVel + row.angular * impulse;
@@ -262,8 +248,9 @@ CARL_D __noinline__ void solveCarManifold(
         for (int i = 0; i < count; i++)
         {
             SolverContact& contact = contacts[i];
-            const float maxImpulse =
-                contact.frictionCoeff * contact.normal.applied;
+
+            const float maxImpulse = contact.frictionCoeff * contact.normal.applied;
+
             if (maxImpulse <= 0.f) continue;
 
             contact.friction.lower = -maxImpulse;

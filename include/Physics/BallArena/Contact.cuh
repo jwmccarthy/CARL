@@ -85,6 +85,7 @@ CARL_D CARL_FI bool sphereTriangleContact(
     contact.depth = distSq > 1e-8f
         ? radius - sqrtf(distSq)
         : radius;
+
     return true;
 }
 
@@ -97,6 +98,7 @@ CARL_D CARL_FI int gatherBallArenaContacts(
     const Vec3 extent = Vec3::fill(radius);
     const Int3 cellLo = arena->aabbToCell3D(center - extent);
     const Int3 cellHi = arena->aabbToCell3D(center + extent);
+
     int count = 0;
 
     for (int z = cellLo.z; z <= cellHi.z; z++)
@@ -115,10 +117,12 @@ CARL_D CARL_FI int gatherBallArenaContacts(
             if (owner.x != x || owner.y != y || owner.z != z) continue;
 
             BallArenaContact contact;
+
             if (!sphereTriangleContact(
                 contact, center, radius, arena->ldg(triIdx))) continue;
 
             int slot = -1;
+
             for (int c = 0; c < count; c++)
             {
                 if (contacts[c].normal.dot(contact.normal) > 0.999f)
@@ -131,7 +135,9 @@ CARL_D CARL_FI int gatherBallArenaContacts(
             if (slot >= 0)
             {
                 if (contact.depth > contacts[slot].depth)
+                {
                     contacts[slot] = contact;
+                }
             }
             else if (count < 4)
             {

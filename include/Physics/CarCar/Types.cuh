@@ -39,9 +39,11 @@ struct CarPairCollision
     int pairIdx;
     int carA;
     int carB;
+    
     CarBox boxA;
     CarBox boxB;
     CarCarContact contacts[MAX_CAR_MANIFOLD_POINTS];
+
     int count;
 };
 

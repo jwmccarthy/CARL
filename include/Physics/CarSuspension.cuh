@@ -298,10 +298,8 @@ CARL_D __noinline__ void applyCarSuspension(
     const int carIdx,
     const int tickCount)
 {
-    const float brakeFactor =
-        __ldg(&space->susp.brakeFactorPrev[carIdx]);
-    const float brakeTorque =
-        brakeFactor * (CAR_MASS * (14.25f + 1.f / 3.f));
+    const float brakeFactor = __ldg(&space->susp.brakeFactorPrev[carIdx]);
+    const float brakeTorque = brakeFactor * (CAR_MASS * (14.25f + 1.f / 3.f));
 
     const Vec3 up = body.rot.toWorld(WORLD_Z);
     const SuspFrame frame = {

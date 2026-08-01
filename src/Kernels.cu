@@ -33,7 +33,9 @@ __global__ void resetDonesKernel(
     if (simIdx >= state->nSim) return;
 
     resetAfterDone(
-        state, space, simIdx, maxTicks, overtimeTimeoutTicks,
+        state, space, simIdx, 
+        maxTicks, 
+        overtimeTimeoutTicks,
         noTouchTimeoutTicks);
 }
 
@@ -45,6 +47,7 @@ __global__ void beginStepKernel(
     if (carIdx >= state->nTotalCars) return;
 
     if (carIdx == 0) state->tickCount++;
+    
     if (carIdx % state->nCars == 0)
     {
         state->episodeTicks[carIdx / state->nCars]++;
