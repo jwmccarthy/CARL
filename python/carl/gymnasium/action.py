@@ -28,11 +28,13 @@ class CARLActionCodec(nn.Module):
             dtype=th.bool,
             device=observation.device,
         )
-        mask[..., 4:6] = ~on_ground[..., None]  # Pitch
-        mask[..., 10] = on_ground              # Powerslide
-        mask[..., 12] = has_boost              # Boost
+        
+        mask[..., 4:6] = ~on_ground[..., None]    # Pitch
+        mask[..., 10] = on_ground                 # Powerslide
+        mask[..., 12] = has_boost                 # Boost
         mask[..., 14:16] = ~on_ground[..., None]  # Air roll
-        mask[..., 17] = jump_available         # Jump
+        mask[..., 17] = jump_available            # Jump
+
         return mask
 
 
