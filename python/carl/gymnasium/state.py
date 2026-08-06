@@ -1,8 +1,8 @@
+import torch as th
+
+from typing import Any
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
-
-import torch as th
 
 
 @dataclass(frozen=True)

@@ -226,8 +226,10 @@ __global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
 {
     const int source = blockIdx.x * blockDim.x + threadIdx.x;
     if (source >= nSelected) return;
+
     const int64_t target = indices ? indices[source] : source;
     if (target < 0 || target >= state->nSim) return;
+
     state->goals[target].blueScore = blue[source];
     state->goals[target].orangeScore = orange[source];
     state->goals[target].lastScorer = 0;
