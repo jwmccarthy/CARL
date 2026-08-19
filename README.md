@@ -18,9 +18,7 @@ uv sync --extra gymnasium
 
 ```python
 import torch
-
 from carl.gymnasium import CARLTorchVectorEnv
-
 
 env = CARLTorchVectorEnv(
     n_sim=1024,
@@ -51,28 +49,15 @@ The Torch action shape is `[n_envs, 7]`. The native action shape is `[n_sim, n_c
 
 Horizontal, vertical, throttle, and air roll use `0` for neutral, `1` for the first direction, and `2` for the opposite direction. Powerslide, boost, and jump use `0` for off and `1` for on.
 
-The action cardinalities are:
-
-```python
-[3, 3, 3, 2, 2, 3, 2]
-```
-
-`CARLTorchVectorEnv.action_codec` can mask invalid logits for `MultiCategoricalPolicy`. Native `step()` does not enforce this mask.
-
 Controls are held for every tick in `frameskip`. Episode completion is checked after those ticks.
 
 `no_touch_timeout_ticks` optionally truncates an episode after that many 120 Hz physics ticks without any car touching the ball. `no_touch_timeout_seconds` provides the same setting in seconds; specify only one. Both default to disabled. Like `max_ticks`, the condition is packed and reset natively with same-step autoreset.
 
 ## Observations
 
-The native observation shape is `[n_sim, n_cars, obs_dim]` with `float32` values.
+The native observation shape is `[n_sim, n_cars, obs_dim]` (all `f32`).
 
 Set `normalize=True` to normalize observations during CUDA packing using arena, ball, car, boost, and angular-speed limits. Reward state and reset setters remain in raw physics units.
-
-```text
-obs_dim = 9 + n_cars * 21 + 68 + 6 + (n_cars - 1) * 6 + 6
-        = 83 + n_cars * 27
-```
 
 Each observation contains ball position, velocity, and angular velocity. It then contains position, velocity, angular velocity, forward direction, up direction, boost, and state flags for every car, followed by boost pad state and distance. These existing fields retain their original ordering.
 
@@ -94,45 +79,3 @@ env = CARLTorchVectorEnv(1024, 1, 1, reward_funcs=[speed_reward])
 ```
 
 The context contains previous state, current transition state, actions, score events, termination flags, and truncation flags. Reward functions are summed and multiplied by `reward_scale`. Custom rewards replace the default score reward.
-
-## State Setters
-
-`set_ball()` changes ball position, velocity, and angular velocity. `set_car()` changes car position, rotation, velocity, angular velocity, demo state, and optional boost.
-
-Full updates use these shapes:
-
-```text
-ball vectors   : [n_sim, 3]         : float32
-car vectors    : [n_sim, n_cars, 3] : float32
-car rotation   : [n_sim, n_cars, 4] : float32
-car demo state : [n_sim, n_cars]    : bool or int32
-car boost      : [n_sim, n_cars]    : float32
-```
-
-Rotations use quaternion order `(x, y, z, w)`. Boost is limited to the range from `0` to `100`.
-
-Selected updates pass `simulation_indices` as contiguous `int64` values on `cuda:0`. State tensors then use the selection count as their first dimension. Indices must be unique and valid. Duplicate indices race. Invalid indices are skipped.
-
-Setters do not reset scores, episode time, controls, jump state, contacts, or wrapper statistics. Native setters return `None`. Torch setters return refreshed observations and refresh the custom reward baseline.
-
-## Reset State Provider
-
-`CARLTorchVectorEnv` accepts an optional `reset_state_provider`. The provider receives a Boolean CUDA mask shaped `[n_sim]` and returns compact tensors in `mask.nonzero()` order.
-
-The required mapping keys are `ball_position`, `ball_velocity`, `ball_angular_velocity`, `car_position`, `car_rotation`, `car_velocity`, `car_angular_velocity`, and `car_demoed`. `car_boost` is optional. A provider can return compact `simulation_indices` to override only part of the reset mask. Returning `None` keeps the normal kickoff state.
-
-On explicit reset, every mask value is true. During same step reset, the mask marks completed simulations. Terminal custom rewards use the transition before reset. Returned observations use the provider state.
-
-## API
-
-The native environment accepts CUDA arrays through DLPack.
-
-```python
-import carl
-import torch
-
-
-env = carl.Env(n_sim=1024, n_blue=1, n_orange=1, seed=0, frameskip=8)
-actions = torch.zeros((1024, 2, 7), dtype=torch.int32, device="cuda:0")
-observation = torch.from_dlpack(env.step(actions))
-```
