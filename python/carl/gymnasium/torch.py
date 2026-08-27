@@ -13,6 +13,7 @@ import carl
 from .action import CARLActionCodec
 from .state import (
     BOOST_PAD_POSITIONS,
+    CARLObservation,
     REGULATION_TICKS,
     CarlEvents,
     CarlState,
@@ -27,6 +28,7 @@ ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
 def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int | None:
     """Resolve a tick/seconds timeout pair."""
+
     if ticks is not None and seconds is not None:
         raise ValueError("Specify ticks or seconds, not both")
     if seconds is not None:
@@ -35,6 +37,7 @@ def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int
         ticks = math.ceil(seconds * 120)
     if ticks is not None and ticks < 1:
         raise ValueError("Timeout ticks must be positive")
+
     return default if ticks is None else ticks
 
 
@@ -78,6 +81,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
         self._state: CarlState | None = None
+        self._observation: CARLObservation | None = None
 
         self._env = carl.Env(
             n_sim=n_sim,
@@ -144,11 +148,13 @@ class CARLTorchVectorEnv(VectorEnv):
             self._team_sign,
         )
 
-    def _observe(self) -> th.Tensor:
+    def _observe(self) -> CARLObservation:
         self._sync()
         obs = self._tensor(self._env.get_obs()).view(self.n_envs, self._env.obs_dim)
+        observation = CARLObservation.from_tensor(obs, self.n_cars)
         self._state = self._carl_state(self._env.get_state()) if self.reward_funcs else None
-        return obs
+        self._observation = observation if self.reward_funcs else None
+        return observation
 
     def _apply_reset_state(self, reset_mask: th.Tensor) -> None:
         if self.reset_state_provider is None or not reset_mask.any():
@@ -163,19 +169,22 @@ class CARLTorchVectorEnv(VectorEnv):
             return
 
         self._env.set_ball(
-            state["ball_position"],
-            state["ball_velocity"],
-            state["ball_angular_velocity"],
-            simulation_indices=indices,
+            state["ball_position"].contiguous(),
+            state["ball_velocity"].contiguous(),
+            state["ball_angular_velocity"].contiguous(),
+            simulation_indices=indices.contiguous(),
         )
         self._env.set_car(
-            state["car_position"],
-            state["car_rotation"],
-            state["car_velocity"],
-            state["car_angular_velocity"],
-            state["car_demoed"],
-            boost=state.get("car_boost"),
-            simulation_indices=indices,
+            state["car_position"].contiguous(),
+            state["car_rotation"].contiguous(),
+            state["car_velocity"].contiguous(),
+            state["car_angular_velocity"].contiguous(),
+            state["car_demoed"].contiguous(),
+            boost=(
+                state["car_boost"].contiguous()
+                if "car_boost" in state else None
+            ),
+            simulation_indices=indices.contiguous(),
         )
 
         if "blue_score" in state:
@@ -183,7 +192,7 @@ class CARLTorchVectorEnv(VectorEnv):
                 state["blue_score"].contiguous(),
                 state["orange_score"].contiguous(),
                 state["episode_ticks"].contiguous(),
-                simulation_indices=indices,
+                simulation_indices=indices.contiguous(),
             )
 
     def _clear_sim_stats(self, mask: th.Tensor | None = None) -> None:
@@ -216,12 +225,21 @@ class CARLTorchVectorEnv(VectorEnv):
         terminated:  th.Tensor,
         truncated:   th.Tensor,
     ) -> tuple[th.Tensor, dict[str, list[Any]]]:
-        if self._state is None:
+        if self._state is None or self._observation is None:
             raise RuntimeError("reset must be called before using custom rewards")
 
+        current_observation = CARLObservation.from_tensor(
+            self._tensor(self._env.get_obs()).view(
+                self.n_envs,
+                self._env.obs_dim,
+            ),
+            self.n_cars,
+        )
         context = RewardContext(
             current=self._carl_state(self._env.get_transition_state()),
             previous=self._state,
+            current_observation=current_observation,
+            previous_observation=self._observation,
             events=CarlEvents(
                 score_delta=score_delta,
                 done=done,
@@ -275,7 +293,15 @@ class CARLTorchVectorEnv(VectorEnv):
     ) -> th.Tensor:
         self._check_open()
         self._sync()
-        self._env.set_ball(position, velocity, angular_velocity, simulation_indices=simulation_indices)
+        self._env.set_ball(
+            position.contiguous(),
+            velocity.contiguous(),
+            angular_velocity.contiguous(),
+            simulation_indices=(
+                simulation_indices.contiguous()
+                if simulation_indices is not None else None
+            ),
+        )
         return self._observe()
 
     def set_car(
@@ -292,13 +318,16 @@ class CARLTorchVectorEnv(VectorEnv):
         self._check_open()
         self._sync()
         self._env.set_car(
-            position,
-            rotation,
-            velocity,
-            angular_velocity,
-            demoed,
-            boost=boost,
-            simulation_indices=simulation_indices,
+            position.contiguous(),
+            rotation.contiguous(),
+            velocity.contiguous(),
+            angular_velocity.contiguous(),
+            demoed.contiguous(),
+            boost=boost.contiguous() if boost is not None else None,
+            simulation_indices=(
+                simulation_indices.contiguous()
+                if simulation_indices is not None else None
+            ),
         )
         return self._observe()
 
@@ -350,8 +379,11 @@ class CARLTorchVectorEnv(VectorEnv):
             info = {
                 "reward":     self._episode_return[finished].cpu().tolist(),
                 "length":     self._episode_length[finished].cpu().tolist(),
-                "final_obs":  self._tensor(self._env.get_transition_obs()).view(
-                    self.n_envs, self._env.obs_dim
+                "final_obs":  CARLObservation.from_tensor(
+                    self._tensor(self._env.get_transition_obs()).view(
+                        self.n_envs, self._env.obs_dim
+                    ),
+                    self.n_cars,
                 ),
                 "_final_obs": done,
                 **reward_info,

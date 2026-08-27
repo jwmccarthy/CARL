@@ -50,6 +50,300 @@ BOOST_PAD_POSITIONS = (
 REGULATION_TICKS = 5 * 60 * 120
 
 
+class _CARLTensor(th.Tensor):
+
+    @classmethod
+    def from_tensor(cls, tensor: th.Tensor):
+        return tensor.as_subclass(cls)
+
+    @classmethod
+    def __torch_function__(cls, function, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        with th._C.DisableTorchFunctionSubclass():
+            return function(*args, **kwargs)
+
+
+class CARLBall(_CARLTensor):
+
+    @property
+    def position(self) -> th.Tensor:
+        return self[..., :3]
+
+    @property
+    def velocity(self) -> th.Tensor:
+        return self[..., 3:6]
+
+    @property
+    def angular_velocity(self) -> th.Tensor:
+        return self[..., 6:9]
+
+
+class CARLCar(_CARLTensor):
+
+    @property
+    def position(self) -> th.Tensor:
+        return self[..., :3]
+
+    @property
+    def velocity(self) -> th.Tensor:
+        return self[..., 3:6]
+
+    @property
+    def angular_velocity(self) -> th.Tensor:
+        return self[..., 6:9]
+
+    @property
+    def forward(self) -> th.Tensor:
+        return self[..., 9:12]
+
+    @property
+    def up(self) -> th.Tensor:
+        return self[..., 12:15]
+
+    @property
+    def boost(self) -> th.Tensor:
+        return self[..., 15]
+
+    @property
+    def on_ground(self) -> th.Tensor:
+        return self[..., 16].bool()
+
+    @property
+    def demoed(self) -> th.Tensor:
+        return self[..., 17].bool()
+
+    @property
+    def has_flipped(self) -> th.Tensor:
+        return self[..., 18].bool()
+
+    @property
+    def has_double_jumped(self) -> th.Tensor:
+        return self[..., 19].bool()
+
+    @property
+    def is_boosting(self) -> th.Tensor:
+        return self[..., 20].bool()
+
+
+class CARLCars(_CARLTensor):
+
+    @staticmethod
+    def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLCars":
+        cars = tensor.as_subclass(CARLCars)
+        cars._n_cars = n_cars
+        return cars
+
+    @property
+    def n_cars(self) -> int:
+        return self._n_cars
+
+    @property
+    def ego(self) -> CARLCar:
+        return CARLCar.from_tensor(self[..., 0, :])
+
+    @property
+    def position(self) -> th.Tensor:
+        return self[..., :3]
+
+    @property
+    def velocity(self) -> th.Tensor:
+        return self[..., 3:6]
+
+    @property
+    def angular_velocity(self) -> th.Tensor:
+        return self[..., 6:9]
+
+    @property
+    def forward(self) -> th.Tensor:
+        return self[..., 9:12]
+
+    @property
+    def up(self) -> th.Tensor:
+        return self[..., 12:15]
+
+    @property
+    def boost(self) -> th.Tensor:
+        return self[..., 15]
+
+    @property
+    def on_ground(self) -> th.Tensor:
+        return self[..., 16].bool()
+
+    @property
+    def demoed(self) -> th.Tensor:
+        return self[..., 17].bool()
+
+    @property
+    def has_flipped(self) -> th.Tensor:
+        return self[..., 18].bool()
+
+    @property
+    def has_double_jumped(self) -> th.Tensor:
+        return self[..., 19].bool()
+
+    @property
+    def is_boosting(self) -> th.Tensor:
+        return self[..., 20].bool()
+
+    @property
+    def ego_position(self) -> th.Tensor:
+        return self.ego.position
+
+    @property
+    def ego_velocity(self) -> th.Tensor:
+        return self.ego.velocity
+
+    @property
+    def ego_angular_velocity(self) -> th.Tensor:
+        return self.ego.angular_velocity
+
+    @property
+    def ego_forward(self) -> th.Tensor:
+        return self.ego.forward
+
+    @property
+    def ego_up(self) -> th.Tensor:
+        return self.ego.up
+
+    @property
+    def ego_boost(self) -> th.Tensor:
+        return self.ego.boost
+
+
+class CARLObservation(_CARLTensor):
+    """A tensor observation with named views into CARL's packed layout."""
+
+    _n_cars: int
+
+    @staticmethod
+    def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLObservation":
+        observation = tensor.as_subclass(CARLObservation)
+        observation._n_cars = n_cars
+        return observation
+
+    @property
+    def ball(self) -> CARLBall:
+        return CARLBall.from_tensor(self[..., :9])
+
+    @property
+    def n_cars(self) -> int:
+        return self._n_cars
+
+    @property
+    def ball_values(self) -> CARLBall:
+        return self.ball
+
+    @property
+    def ball_position(self) -> th.Tensor:
+        return self.ball.position
+
+    @property
+    def ball_velocity(self) -> th.Tensor:
+        return self.ball.velocity
+
+    @property
+    def ball_angular_velocity(self) -> th.Tensor:
+        return self.ball.angular_velocity
+
+    @property
+    def cars(self) -> CARLCars:
+        values = self[..., 9:self.car_end].view(
+            *self.shape[:-1], self._n_cars, 21
+        )
+        return CARLCars.from_tensor(values, self._n_cars)
+
+    @property
+    def car_values(self) -> CARLCars:
+        return self.cars
+
+    @property
+    def ego_values(self) -> th.Tensor:
+        return self.cars.ego
+
+    @property
+    def car_position(self) -> th.Tensor:
+        return self.cars.position
+
+    @property
+    def car_velocity(self) -> th.Tensor:
+        return self.cars.velocity
+
+    @property
+    def car_angular_velocity(self) -> th.Tensor:
+        return self.cars.angular_velocity
+
+    @property
+    def car_forward(self) -> th.Tensor:
+        return self.cars.forward
+
+    @property
+    def car_up(self) -> th.Tensor:
+        return self.cars.up
+
+    @property
+    def car_boost(self) -> th.Tensor:
+        return self.cars.boost
+
+    @property
+    def car_on_ground(self) -> th.Tensor:
+        return self.cars.on_ground
+
+    @property
+    def car_demoed(self) -> th.Tensor:
+        return self.cars.demoed
+
+    @property
+    def car_has_flipped(self) -> th.Tensor:
+        return self.cars.has_flipped
+
+    @property
+    def car_has_double_jumped(self) -> th.Tensor:
+        return self.cars.has_double_jumped
+
+    @property
+    def car_is_boosting(self) -> th.Tensor:
+        return self.cars.is_boosting
+
+    @property
+    def boost_pad_active(self) -> th.Tensor:
+        end = self.car_end + len(BOOST_PAD_POSITIONS)
+        return self[..., self.car_end:end].bool()
+
+    @property
+    def boost_pad_distance(self) -> th.Tensor:
+        start = self.car_end + len(BOOST_PAD_POSITIONS)
+        return self[..., start:start + len(BOOST_PAD_POSITIONS)]
+
+    @property
+    def ego_ball_relative(self) -> th.Tensor:
+        start = self.car_end + 2 * len(BOOST_PAD_POSITIONS)
+        return self[..., start:start + 6]
+
+    @property
+    def ego_other_relative(self) -> th.Tensor:
+        start = self.car_end + 2 * len(BOOST_PAD_POSITIONS) + 6
+        end = start + 6 * (self._n_cars - 1)
+        return self[..., start:end].view(
+            *self.shape[:-1],
+            self._n_cars - 1,
+            6
+        )
+
+    @property
+    def own_goal_relative(self) -> th.Tensor:
+        return self[..., -6:-3]
+
+    @property
+    def opponent_goal_relative(self) -> th.Tensor:
+        return self[..., -3:]
+
+    @property
+    def car_end(self) -> int:
+        return 9 + 21 * self._n_cars
+
+
 @dataclass(frozen=True)
 class CarlState:
     raw:                 th.Tensor
@@ -164,17 +458,23 @@ class CarlEvents:
 
 @dataclass(frozen=True)
 class RewardContext:
-    current:          CarlState
-    previous:         CarlState
-    events:           CarlEvents
-    actions:          th.Tensor
-    score_difference: th.Tensor
-    episode_ticks:    th.Tensor
-    overtime:         th.Tensor
+    current:              CarlState
+    previous:             CarlState
+    current_observation:  CARLObservation
+    previous_observation: CARLObservation
+    events:               CarlEvents
+    actions:              th.Tensor
+    score_difference:     th.Tensor
+    episode_ticks:        th.Tensor
+    overtime:             th.Tensor
 
 
 __all__ = [
     "BOOST_PAD_POSITIONS",
+    "CARLBall",
+    "CARLCar",
+    "CARLCars",
+    "CARLObservation",
     "REGULATION_TICKS",
     "CarlEvents",
     "CarlState",
