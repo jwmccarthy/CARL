@@ -50,6 +50,7 @@ public:
         int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks);
 
     GameState* getDeviceState() { return d_state; }
+    Workspace* getDeviceWorkspace() { return d_space; }
     cudaStream_t getStream() const { return stream; }
 
     int getNSim()  const { return h_state.nSim; }

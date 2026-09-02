@@ -153,6 +153,7 @@ __global__ void setBallKernel(
 
 __global__ void setCarKernel(
     GameState* __restrict__ state,
+    Workspace* __restrict__ space,
     const float* __restrict__ pos,
     const float* __restrict__ rot,
     const float* __restrict__ vel,
@@ -160,6 +161,7 @@ __global__ void setCarKernel(
     const void* __restrict__ demoed,
     bool byteDemoed,
     const float* __restrict__ boost,
+    const float* __restrict__ internalState,
     const int64_t* __restrict__ simulationIndices,
     int nSelected,
     int nCars,
@@ -178,6 +180,7 @@ __global__ void setCarKernel(
 
     const int vecOffset = sourceCarIdx * 3;
     const int rotOffset = sourceCarIdx * 4;
+    const float previousBoost = state->cars.internal[carIdx].boost;
 
     const Vec3 carPos = {
         pos[vecOffset], pos[vecOffset + 1], pos[vecOffset + 2]
@@ -212,11 +215,88 @@ __global__ void setCarKernel(
     state->cars.isDemoed[carIdx] = isDemoed != 0;
     state->cars.demoRespawnTimer[carIdx] = isDemoed 
         ? DEMO_RESPAWN_TIME + PHYS_DT : 0.f;
+    state->cars.carContactIdx[carIdx] = -1;
+    state->cars.carContactCooldown[carIdx] = 0.f;
+    state->cars.ballHitTick[carIdx] = -1;
+    state->cars.ballContactTick[carIdx] = -1;
+    state->cars.controls[carIdx] = {};
 
-    if (boost)
+    if (internalState)
+    {
+        const int offset = sourceCarIdx * CAR_INTERNAL_SIZE;
+        const float* values = internalState + offset;
+        CarInternalState internal{};
+
+        internal.isOnGround = values[CAR_INT_ON_GROUND] != 0.f;
+        internal.airTimeSinceJump = values[CAR_INT_AIR_TIME_SINCE_JUMP];
+        internal.handbrakeVal = values[CAR_INT_HANDBRAKE];
+        internal.hasJumped = values[CAR_INT_HAS_JUMPED] != 0.f;
+        internal.isJumping = values[CAR_INT_IS_JUMPING] != 0.f;
+        internal.lastJump = values[CAR_INT_LAST_JUMP] != 0.f;
+        internal.jumpTime = values[CAR_INT_JUMP_TIME];
+        internal.hasDoubleJumped = values[CAR_INT_HAS_DOUBLE_JUMPED] != 0.f;
+        internal.hasFlipped = values[CAR_INT_HAS_FLIPPED] != 0.f;
+        internal.isFlipping = values[CAR_INT_IS_FLIPPING] != 0.f;
+        internal.flipTime = values[CAR_INT_FLIP_TIME];
+        internal.isAutoFlipping = values[CAR_INT_IS_AUTO_FLIPPING] != 0.f;
+        internal.autoFlipTimer = values[CAR_INT_AUTO_FLIP_TIMER];
+        internal.autoFlipTorqueScale = values[CAR_INT_AUTO_FLIP_TORQUE_SCALE];
+        internal.flipRelTorque = {
+            values[CAR_INT_FLIP_TORQUE_X],
+            values[CAR_INT_FLIP_TORQUE_Y],
+            values[CAR_INT_FLIP_TORQUE_Z]
+        };
+        internal.isBoosting = values[CAR_INT_IS_BOOSTING] != 0.f;
+        internal.boostingTime = values[CAR_INT_BOOSTING_TIME];
+        internal.boost = boost
+            ? fminf(BOOST_MAX, fmaxf(0.f, boost[sourceCarIdx]))
+            : previousBoost;
+
+        state->cars.internal[carIdx] = internal;
+    }
+
+    else if (boost)
     {
         state->cars.internal[carIdx].boost = fminf(
             BOOST_MAX, fmaxf(0.f, boost[sourceCarIdx]));
+    }
+
+    space->susp.brakeFactor[carIdx] = 0.f;
+    space->susp.brakeFactorPrev[carIdx] = 0.f;
+    space->susp.throttleVal[carIdx] = 0.f;
+    space->susp.rawThrottle[carIdx] = 0.f;
+    space->susp.handbrakeVal[carIdx] = internalState
+        ? internalState[sourceCarIdx * CAR_INTERNAL_SIZE + CAR_INT_HANDBRAKE]
+        : 0.f;
+    space->susp.steerAngle[carIdx] = 0.f;
+    space->susp.jumpImpulse[carIdx] = Vec3::zero();
+    space->susp.engineDrive[carIdx] = 0.f;
+    space->susp.engineDrivePrev[carIdx] = 0.f;
+    space->bp.numTris[carIdx] = 0;
+    space->ctHit.carHitCount[carIdx] = 0;
+    space->ctMan.count[carIdx] = 0;
+
+    for (int pair = 0; pair < MAX_CAR_TRI_PAIRS; pair++)
+    {
+        space->ctNrw.conPairCount[carIdx * MAX_CAR_TRI_PAIRS + pair] = 0;
+    }
+
+    for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
+    {
+        const int wheelIdx = carIdx * NUM_WHEELS + wheel;
+        space->susp.latFrictionPrev[wheelIdx] = 0.f;
+        space->susp.lonFrictionPrev[wheelIdx] = 0.f;
+    }
+
+    if (localCarIdx == 0)
+    {
+        const int pairBase = static_cast<int>(targetSimIdx64)
+            * space->ccMan.maxPairsPerSim;
+
+        for (int pair = 0; pair < space->ccMan.maxPairsPerSim; pair++)
+        {
+            space->ccMan.count[pairBase + pair] = 0;
+        }
     }
 }
 
@@ -472,6 +552,7 @@ void EnvIO::setBall(
 
 void EnvIO::setCar(
     GameState* d_state,
+    Workspace* d_space,
     const float* pos,
     const float* rot,
     const float* vel,
@@ -479,6 +560,7 @@ void EnvIO::setCar(
     const void* demoed,
     bool byteDemoed,
     const float* boost,
+    const float* internalState,
     const int64_t* simulationIndices,
     int nSelected)
 {
@@ -492,8 +574,8 @@ void EnvIO::setCar(
 
     setCarKernel<<<perCarConfig.gridDim,
         perCarConfig.blockDim, 0, stream>>>(
-        d_state, pos, rot, vel, ang, demoed, byteDemoed,
-        boost, simulationIndices, nSelected, nCars, nSim);
+        d_state, d_space, pos, rot, vel, ang, demoed, byteDemoed,
+        boost, internalState, simulationIndices, nSelected, nCars, nSim);
         
     CUDA_CHECK(cudaGetLastError());
 }

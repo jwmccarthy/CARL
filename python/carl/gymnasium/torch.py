@@ -184,6 +184,10 @@ class CARLTorchVectorEnv(VectorEnv):
                 state["car_boost"].contiguous()
                 if "car_boost" in state else None
             ),
+            internal_state=(
+                state["car_internal_state"].contiguous()
+                if "car_internal_state" in state else None
+            ),
             simulation_indices=indices.contiguous(),
         )
 
@@ -313,6 +317,7 @@ class CARLTorchVectorEnv(VectorEnv):
         demoed:             th.Tensor,
         *,
         boost:              th.Tensor | None = None,
+        internal_state:     th.Tensor | None = None,
         simulation_indices: th.Tensor | None = None,
     ) -> th.Tensor:
         self._check_open()
@@ -324,6 +329,10 @@ class CARLTorchVectorEnv(VectorEnv):
             angular_velocity.contiguous(),
             demoed.contiguous(),
             boost=boost.contiguous() if boost is not None else None,
+            internal_state=(
+                internal_state.contiguous()
+                if internal_state is not None else None
+            ),
             simulation_indices=(
                 simulation_indices.contiguous()
                 if simulation_indices is not None else None

@@ -3,6 +3,7 @@
 #include "Cuda/DLPack.h"
 #include "Cuda/KernelConfig.cuh"
 #include "State/GameState.cuh"
+#include "State/Workspace.cuh"
 
 // --- DLPack capsule helpers ---
 
@@ -118,6 +119,7 @@ public:
 
     void setCar(
         GameState* d_state,
+        Workspace* d_space,
         const float* pos,
         const float* rot,
         const float* vel,
@@ -125,6 +127,7 @@ public:
         const void* demoed,
         bool byteDemoed,
         const float* boost = nullptr,
+        const float* internalState = nullptr,
         const int64_t* simulationIndices = nullptr,
         int nSelected = -1);
     void setMatchState(GameState* d_state, const int32_t* blueScore,

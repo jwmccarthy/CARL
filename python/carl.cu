@@ -311,6 +311,7 @@ public:
         py::object angularVelocity,
         py::object demoed,
         py::object boost,
+        py::object internalState,
         py::object simulationIndices)
     {
         int nSelected = env.getNSim();
@@ -367,12 +368,21 @@ public:
             boostData = static_cast<const float*>(data(boostTensor->tensor));
         }
 
-        io.setCar(env.getDeviceState(),
+        const float* internalData = nullptr;
+        std::optional<TensorView> internalTensor;
+        if (!internalState.is_none())
+        {
+            internalTensor.emplace(tensorData(internalState, "internal_state",
+                { nSelected, env.getNCars(), CAR_INTERNAL_SIZE }, kDLFloat, 32));
+            internalData = static_cast<const float*>(data(internalTensor->tensor));
+        }
+
+        io.setCar(env.getDeviceState(), env.getDeviceWorkspace(),
             static_cast<const float*>(data(pos.tensor)),
             static_cast<const float*>(data(rot.tensor)),
             static_cast<const float*>(data(vel.tensor)),
             static_cast<const float*>(data(ang.tensor)),
-            data(demo), byteDemoed, boostData, selected, nSelected);
+            data(demo), byteDemoed, boostData, internalData, selected, nSelected);
 
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
@@ -540,6 +550,7 @@ PYBIND11_MODULE(_carl, m)
              py::arg("angular_velocity"),
              py::arg("demoed"),
              py::arg("boost") = py::none(),
+             py::arg("internal_state") = py::none(),
              py::arg("simulation_indices") = py::none())
 
         .def("get_obs",              &EnvWrapper::getObs)
