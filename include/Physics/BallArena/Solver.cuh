@@ -8,6 +8,7 @@ struct BallArenaSolverBody
 {
     Vec3 pos;
     Vec3 vel;
+    Vec3 velNoExt;
     Vec3 ang;
     Vec3 deltaVel;
     Vec3 deltaAng;
@@ -66,9 +67,11 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaNormalRow(
     BallArenaSolverRow row = makeBallArenaAxisRow(contact.normal, relPos);
 
     const float relVel = ballArenaRowVelocity(row, body.vel, body.ang);
+    const float restitutionVel = ballArenaRowVelocity(
+        row, body.velNoExt, body.ang);
 
-    float bounce = fabsf(relVel) > CAR_RESTITUTION_VEL_THRESH
-        ? BALL_WORLD_RESTITUTION * -relVel
+    float bounce = fabsf(restitutionVel) >= CAR_RESTITUTION_VEL_THRESH
+        ? BALL_WORLD_RESTITUTION * -restitutionVel
         : 0.f;
     bounce = fmaxf(bounce, 0.f);
 

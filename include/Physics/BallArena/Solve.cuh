@@ -11,11 +11,13 @@ CARL_D __noinline__ Vec3 solveBallArena(
     GameState* state,
     ArenaMesh* arena,
     int ballIdx,
-    const Vec3& preSolveVel)
+    const Vec3& preSolveVel,
+    const Vec3& velNoExt)
 {
     BallArenaSolverBody body = {
         Vec3::ldg(state->ball.pos[ballIdx]),
         preSolveVel,
+        velNoExt,
         Vec3::ldg(state->ball.ang[ballIdx]),
         Vec3::zero(),
         Vec3::zero(),
@@ -51,16 +53,19 @@ CARL_D CARL_FI void solveBallForSim(
     const bool sleeping = ballVel.lenSq() == 0.f && ballAng.lenSq() == 0.f;
 
     // Damped velocity: exponential drag then gravity, matching Bullet
+    const Vec3 velNoExt = sleeping
+        ? ballVel
+        : ballVel * powf(1.f - BALL_DRAG, PHYS_DT);
     const Vec3 preSolveVel = sleeping
         ? ballVel
-        : ballVel * powf(1.f - BALL_DRAG, PHYS_DT)
-        + WORLD_GRAVITY * PHYS_DT;
+        : velNoExt + WORLD_GRAVITY * PHYS_DT;
 
     Vec3 pushVel = Vec3::zero();
     
     if (!sleeping)
     {
-        pushVel = solveBallArena(state, arena, ballIdx, preSolveVel);
+        pushVel = solveBallArena(
+            state, arena, ballIdx, preSolveVel, velNoExt);
     }
 
     solveBallCarForSim(state, simIdx, preSolveVel);
