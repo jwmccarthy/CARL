@@ -71,17 +71,23 @@ CARL_D CARL_FI void finishBallTick(
     int ballIdx)
 {
     const Vec3 impulse = Vec3::ldg(state->ball.imp[ballIdx]);
-    if (impulse.lenSq() <= 1e-12f) return;
-
     Vec3 vel = Vec3::ldg(state->ball.vel[ballIdx]) + impulse;
-    const float speedSq = vel.lenSq();
+    Vec3 ang = Vec3::ldg(state->ball.ang[ballIdx]);
+    float speedSq = vel.lenSq();
 
     if (speedSq > BALL_MAX_SPEED * BALL_MAX_SPEED)
     {
         vel = vel * (BALL_MAX_SPEED * rsqrtf(speedSq));
     }
 
+    speedSq = ang.lenSq();
+    if (speedSq > BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED)
+    {
+        ang = ang * (BALL_MAX_ANG_SPEED * rsqrtf(speedSq));
+    }
+
     state->ball.vel[ballIdx] = vel;
+    state->ball.ang[ballIdx] = ang;
     state->ball.imp[ballIdx] = Vec3::zero();
 }
 

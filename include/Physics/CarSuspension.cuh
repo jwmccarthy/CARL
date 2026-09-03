@@ -202,7 +202,7 @@ CARL_D CARL_FI SuspensionWheelContribution computeSuspWheel(
 
     const float longitudinalVel = forwardDir.dot(pointVel);
 
-    // Scale retained from RocketSim's rolling-friction calculation
+    // Rolling-friction calibration scale.
     constexpr float ROLLING_FRICTION_SCALE_MAGIC = 113.73963f;
     const float engineDrive = __ldg(&susp.engineDrivePrev[frame.carIdx]);
     const float rollingFriction = engineDrive != 0.f
@@ -237,8 +237,7 @@ CARL_D CARL_FI void applySuspAggregate(
     Vec3 upwardsDir;
     bool applyAutoroll = false;
 
-    // Sticky force: applied whenever any wheel has contact (suspension ray hit),
-    // matching RocketSim's wheelsHaveWorldContact gate
+    // Apply sticky force whenever any suspension ray has contact.
     if (contacts.count > 0)
     {
         upwardsDir = contacts.normalSum
@@ -248,8 +247,8 @@ CARL_D CARL_FI void applySuspAggregate(
         const bool fullStick =
             throttle != 0.f || forwardSpeed > CAR_STOPPING_VEL;
 
-        // Base sticky is 0 when fully grounded (3+ wheels), 0.5 otherwise
-        float stickyScale = contacts.count >= 3 ? 0.f : 0.5f;
+        // Apply the base sticky force for the four-wheel Octane.
+        float stickyScale = 0.5f;
         if (fullStick) stickyScale += 1.f - fabsf(upwardsDir.z);
 
         body.extVel = body.extVel

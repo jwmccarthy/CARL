@@ -146,5 +146,24 @@ CARL_D CARL_FI int gatherBallArenaContacts(
         }
     }
 
+    const bool curvedCorner = fabsf(center.x) > 3000.f
+        && fabsf(center.y) > 3000.f;
+
+    if (count > 1 && curvedCorner)
+    {
+        Vec3 normal = Vec3::zero();
+        float depth = 0.f;
+
+        for (int i = 0; i < count; i++)
+        {
+            normal = normal + contacts[i].normal;
+            depth += contacts[i].depth;
+        }
+
+        contacts[0].normal = normal * (1.f / count);
+        contacts[0].depth = depth / count;
+        return 1;
+    }
+
     return count;
 }

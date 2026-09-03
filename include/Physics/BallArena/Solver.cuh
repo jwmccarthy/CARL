@@ -60,7 +60,8 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaAxisRow(
 CARL_D CARL_FI BallArenaSolverRow makeBallArenaNormalRow(
     const BallArenaSolverBody& body,
     const BallArenaContact& contact,
-    const Vec3& relPos)
+    const Vec3& relPos,
+    bool splitCorrection)
 {
     BallArenaSolverRow row = makeBallArenaAxisRow(contact.normal, relPos);
 
@@ -75,7 +76,11 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaNormalRow(
     const float posImpulse = posError * row.jacInv;
     const float velImpulse = (bounce - relVel) * row.jacInv;
 
-    if (-contact.depth > CAR_SPLIT_PENETRATION_THRESH)
+    if (!splitCorrection)
+    {
+        row.rhs = velImpulse;
+    }
+    else if (-contact.depth > CAR_SPLIT_PENETRATION_THRESH)
     {
         row.rhs = posImpulse + velImpulse;
     }
@@ -187,15 +192,21 @@ CARL_D CARL_FI void clampBallArenaVelocity(BallArenaSolverBody& body)
 CARL_D CARL_FI void solveBallArenaContacts(
     BallArenaSolverBody& body,
     const BallArenaContact* contacts,
-    int count)
+    int count,
+    bool ballWasHit)
 {
     BallArenaSolverContact rows[4]{};
+    // Omit split correction for isolated floor contacts after a car hit.
+    const bool splitCorrection = !ballWasHit
+        || count != 1
+        || contacts[0].normal.z < 0.999f;
 
     #pragma unroll
     for (int i = 0; i < count; i++)
     {
         const Vec3 relPos = contacts[i].normal * (-BALL_COLLISION_RADIUS);
-        rows[i].normal = makeBallArenaNormalRow(body, contacts[i], relPos);
+        rows[i].normal = makeBallArenaNormalRow(
+            body, contacts[i], relPos, splitCorrection);
         rows[i].friction = makeBallArenaFrictionRow(body, contacts[i], relPos);
     }
 

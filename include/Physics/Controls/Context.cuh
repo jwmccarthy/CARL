@@ -68,7 +68,7 @@ CARL_D CARL_FI ControlCtx makeControlCtx(
     ctx.fwdSpeed = Vec3::ldg(state->cars.vel[carIdx]).dot(ctx.fwd);
     ctx.absFwdSpeed = fabsf(ctx.fwdSpeed);
 
-    // RocketSim treats three suspension contacts as fully grounded
+    // Three suspension contacts count as fully grounded.
     ctx.wheelConCount = countWheelContacts(ctx);
     ctx.onGround = ctx.wheelConCount >= 3;
 

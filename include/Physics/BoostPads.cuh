@@ -86,7 +86,7 @@ CARL_D CARL_FI void processBoostPad(
     const int carBase = simIdx * state->nCars;
     int lockedCar = -1;
 
-    // The last colliding car owns the pad, matching RocketSim's lock update
+    // The last colliding car owns the pad.
     for (int carOffset = 0; carOffset < state->nCars; carOffset++)
     {
         const int carIdx = carBase + carOffset;
