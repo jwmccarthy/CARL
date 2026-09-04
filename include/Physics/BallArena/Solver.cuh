@@ -207,7 +207,7 @@ CARL_D CARL_FI void solveBallArenaContacts(
     #pragma unroll
     for (int i = 0; i < count; i++)
     {
-        const Vec3 relPos = contacts[i].normal * (-BALL_COLLISION_RADIUS);
+        const Vec3 relPos = contacts[i].relPos;
         rows[i].normal = makeBallArenaNormalRow(
             body, contacts[i], relPos, splitCorrection);
         rows[i].friction = makeBallArenaFrictionRow(body, contacts[i], relPos);
