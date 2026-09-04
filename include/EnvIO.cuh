@@ -133,6 +133,8 @@ public:
     void setMatchState(GameState* d_state, const int32_t* blueScore,
         const int32_t* orangeScore, const int32_t* episodeTicks,
         const int64_t* simulationIndices = nullptr, int nSelected = -1);
+    void resetBoostPads(GameState* d_state,
+        const int64_t* simulationIndices = nullptr, int nSelected = -1);
 
     // Properties
     int getObsDim() const { return obsDim; }

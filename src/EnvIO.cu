@@ -317,6 +317,25 @@ __global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
     state->episodeTicks[target] = ticks[source];
 }
 
+__global__ void resetBoostPadsKernel(
+    GameState* __restrict__ state,
+    const int64_t* __restrict__ simulationIndices,
+    int nSelected,
+    int nSim)
+{
+    const int source = blockIdx.x * blockDim.x + threadIdx.x;
+    if (source >= nSelected) return;
+
+    const int64_t target = simulationIndices ? simulationIndices[source] : source;
+    if (target < 0 || target >= nSim) return;
+
+    const int offset = static_cast<int>(target) * NUM_BOOST_PADS;
+    for (int pad = 0; pad < NUM_BOOST_PADS; pad++)
+    {
+        state->boostPadCooldowns[offset + pad] = 0.f;
+    }
+}
+
 // --- EnvIO ---
 
 EnvIO::EnvIO(
@@ -594,5 +613,24 @@ void EnvIO::setMatchState(GameState* d_state, const int32_t* blueScore,
         d_state, blueScore, orangeScore, episodeTicks,
         simulationIndices, nSelected);
         
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void EnvIO::resetBoostPads(
+    GameState* d_state,
+    const int64_t* simulationIndices,
+    int nSelected)
+{
+    if (nSelected < 0) nSelected = nSim;
+    if (nSelected == 0) return;
+
+    const KernelConfig config = KernelConfig{}
+        .setBlockDim(32)
+        .setGridFromThreads(nSelected)
+        .setStream(stream);
+
+    resetBoostPadsKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
+        d_state, simulationIndices, nSelected, nSim);
+
     CUDA_CHECK(cudaGetLastError());
 }

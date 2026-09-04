@@ -414,6 +414,22 @@ public:
             static_cast<const int32_t*>(data(ticks.tensor)), selected, nSelected);
     }
 
+    void resetBoostPads(py::object simulationIndices)
+    {
+        int nSelected = env.getNSim();
+        std::optional<TensorView> selection;
+        const int64_t* selected = nullptr;
+        if (!simulationIndices.is_none())
+        {
+            selection.emplace(selectionData(simulationIndices, nSelected));
+            selected = static_cast<const int64_t*>(data(selection->tensor));
+            nSelected = static_cast<int>(selection->tensor.shape[0]);
+        }
+
+        io.resetBoostPads(env.getDeviceState(), selected, nSelected);
+        CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
+    }
+
     py::object getObs()
     {
         return tensorToCapsule(io.getObsTensor());
@@ -560,8 +576,10 @@ PYBIND11_MODULE(_carl, m)
         .def("get_rewards",          &EnvWrapper::getRewards)
         .def("get_dones",            &EnvWrapper::getDones)
         .def("set_match_state",      &EnvWrapper::setMatchState,
-             py::arg("blue_score"), py::arg("orange_score"),
-             py::arg("episode_ticks"), py::arg("simulation_indices") = py::none())
+              py::arg("blue_score"), py::arg("orange_score"),
+              py::arg("episode_ticks"), py::arg("simulation_indices") = py::none())
+        .def("reset_boost_pads", &EnvWrapper::resetBoostPads,
+             py::arg("simulation_indices") = py::none())
 
         .def("get_score_difference",            &EnvWrapper::getScoreDifference)
         .def("get_episode_ticks",               &EnvWrapper::getEpisodeTicks)
