@@ -100,6 +100,8 @@ CARL_D CARL_FI int gatherBallArenaContacts(
     const Int3 cellHi = arena->aabbToCell3D(center + extent);
 
     int count = 0;
+    const bool curvedCorner = fabsf(center.x) > 3000.f
+        && fabsf(center.y) > 3000.f;
 
     for (int z = cellLo.z; z <= cellHi.z; z++)
     for (int y = cellLo.y; y <= cellHi.y; y++)
@@ -125,7 +127,7 @@ CARL_D CARL_FI int gatherBallArenaContacts(
 
             for (int c = 0; c < count; c++)
             {
-                if (contacts[c].normal.dot(contact.normal) > 0.999f)
+                if (contacts[c].normal.dot(contact.normal) > 0.9999f)
                 {
                     slot = c;
                     break;
@@ -145,9 +147,6 @@ CARL_D CARL_FI int gatherBallArenaContacts(
             }
         }
     }
-
-    const bool curvedCorner = fabsf(center.x) > 3000.f
-        && fabsf(center.y) > 3000.f;
 
     if (count > 1 && curvedCorner)
     {
