@@ -49,7 +49,7 @@ struct Scenario
 
 bool isTraceTarget(const Scenario& s)
 {
-    return g_traceMode && std::strcmp(s.name, "isolated car-ball ground") == 0;
+    return g_traceMode;
 }
 
 struct StateSnapshot
@@ -914,6 +914,102 @@ int main(int argc, char** argv)
                 1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
             },
             {
+                "replay curved corner bounce",
+                4, 0, false,
+                {-3951.9f, 3513.9f, 1261.1f},
+                {-2262.8f, -666.1f, -100.8f},
+                {-2.403f, -4.358f, -3.351f},
+                {0.f, -2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "replay back wall bounce",
+                4, 0, false,
+                {-289.9683f, 5009.8071f, 653.5578f},
+                {-295.8386f, 1130.0035f, 626.5620f},
+                {-5.2210f, 1.3350f, -1.7778f},
+                {0.f, -2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "replay back wall no spin",
+                4, 0, false,
+                {-289.9683f, 5009.8071f, 653.5578f},
+                {-295.8386f, 1130.0035f, 626.5620f},
+                Vec3::zero(),
+                {0.f, -2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "diaz side wall bounce",
+                4, 0, false,
+                {3978.2136f, 1290.3167f, 676.5325f},
+                {2019.3026f, 461.3783f, -299.4360f},
+                {-3.2065f, 0.5611f, 5.0401f},
+                {0.f, -2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "diaz back wall pre-bounce",
+                4, 0, false,
+                {89.3319f, 4963.0225f, 776.7418f},
+                {1495.0435f, 1606.4583f, -389.4022f},
+                {-0.2003f, -2.7157f, 2.6681f},
+                {0.f, -2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "diaz corner pre-bounce",
+                4, 0, false,
+                {3345.5166f, 4502.4385f, 191.9960f},
+                {1922.9760f, -994.6473f, -310.8632f},
+                {1.8175f, 1.0434f, 5.5744f},
+                {0.f, -2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "diaz g04 floor bounce",
+                4, 0, false,
+                {3952.5571f, -1806.1447f, 197.6181f},
+                {-63.5163f, -519.1342f, -1879.7622f},
+                {-1.0243f, -5.5882f, 1.9293f},
+                {0.f, 2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "diaz g04 side wall bounce",
+                4, 0, false,
+                {-3961.3650f, 363.8687f, 237.0670f},
+                {-764.7848f, 575.5236f, 268.7508f},
+                {-0.1331f, -5.2124f, 1.5843f},
+                {0.f, 2000.f, CAR_REST_Z},
+                Quat::angle(0.f),
+                Vec3::zero(),
+                Vec3::zero(),
+                1, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
                 "ball rolling on floor",
                 600, 0, false,
                 {-2000.f, 0.f, BALL_REST_Z},
@@ -1018,6 +1114,30 @@ int main(int argc, char** argv)
                 {0.f, -100.f, 479.245f},
                 Quat::angle(PI / 2.f),
                 {0.f, 15000.f, 0.f},
+                Vec3::zero(),
+                0, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "moderate head-on car-ball",
+                4, 0, false,
+                {0.f, 0.f, 500.f},
+                Vec3::zero(),
+                Vec3::zero(),
+                {0.f, -100.f, 479.245f},
+                Quat::angle(PI / 2.f),
+                {0.f, 1000.f, 0.f},
+                Vec3::zero(),
+                0, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
+            },
+            {
+                "moderate grazing car-ball",
+                4, 0, false,
+                {0.f, 0.f, 500.f},
+                Vec3::zero(),
+                Vec3::zero(),
+                {50.f, -100.f, 479.245f},
+                Quat::angle(PI / 2.f),
+                {0.f, 1000.f, 0.f},
                 Vec3::zero(),
                 0, 0.f, 0.f, 0.f, 0.f, 0.f, false, false, false
             },

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Physics/Collision/Solver.cuh"
+#include "Physics/Integration.cuh"
 #include "RLConstants.cuh"
 #include "State/GameState.cuh"
 #include "Contact.cuh"
@@ -31,7 +32,6 @@ struct BallCarConstraint
     Vec3 ballOffset;
     Vec3 carOffset;
     float restitution;
-    bool hasFriction;
 };
 
 CARL_D CARL_FI BallCarBody loadBallCarBody(
@@ -126,15 +126,12 @@ CARL_D CARL_FI BallCarConstraint makeBallCarConstraint(
     constraint.restitution = fabsf(relNormal) > CAR_RESTITUTION_VEL_THRESH
         ? CAR_BALL_RESTITUTION * -relNormal
         : 0.f;
-    constraint.hasFriction = tangentLenSq > 1e-8f;
-
-    if (constraint.hasFriction)
-    {
-        tangent = tangent * rsqrtf(tangentLenSq);
-        constraint.friction = makeBallCarRow(
-            car, tangent, constraint.ballOffset, 
-            constraint.carOffset);
-    }
+    tangent = tangentLenSq > 1.192092896e-07f
+        ? tangent * rsqrtf(tangentLenSq)
+        : fallbackTangent(contact.normal);
+    constraint.friction = makeBallCarRow(
+        car, tangent, constraint.ballOffset,
+        constraint.carOffset);
 
     return constraint;
 }
@@ -160,8 +157,6 @@ CARL_D CARL_FI void solveBallCarConstraint(
 
         applyBallCarRow(
             ballVel, ballAng, car, normal, normalImpulse);
-
-        if (!constraint.hasFriction) continue;
 
         BallCarRow& friction = constraint.friction;
         const float relTangent = ballCarRowVelocity(
@@ -196,10 +191,16 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
         * (pushImpulse * BALL_INV_MASS * PHYS_DT);
     const Vec3 carCorrection = contact.normal
         * (-pushImpulse * CAR_INV_MASS * PHYS_DT);
+    const Vec3 carTurnVelocity = normal.carAngular * -pushImpulse;
 
     state->ball.pos[ballIdx] = Vec3::ldg(state->ball.pos[ballIdx]) + ballCorrection;
-    state->cars.pos[carIdx] = Vec3::ldg(state->cars.pos[carIdx]) + carCorrection;
-    state->cars.cen[carIdx] = Vec3::ldg(state->cars.cen[carIdx]) + carCorrection;
+    const Vec3 carPos = Vec3::ldg(state->cars.pos[carIdx]) + carCorrection;
+    state->cars.pos[carIdx] = carPos;
+    const Quat carRot = integrateQuat(
+        Quat::ldg(state->cars.rot[carIdx]),
+        carTurnVelocity * CAR_SPLIT_IMPULSE_TURN_ERP);
+    state->cars.rot[carIdx] = carRot;
+    state->cars.cen[carIdx] = carPos + carRot.toWorld(CAR_OFFSETS);
 }
 
 CARL_D CARL_FI void solveBallCarPair(
@@ -231,7 +232,7 @@ CARL_D CARL_FI void solveBallCarPair(
     state->cars.ang[carIdx] = car.ang;
 
     applyBallCarSplitCorrection(
-        state, ballIdx, carIdx, 
+        state, ballIdx, carIdx,
         contact, constraint.normal);
 
     applyBallCarExtraImpulse(
