@@ -58,3 +58,37 @@ struct DiscreteControls
 };
 
 static_assert(sizeof(DiscreteControls) == ACT_PER_CAR * sizeof(int32_t));
+
+struct ContinuousControls
+{
+    float horizontal;
+    float vertical;
+    float throttle;
+    float powerslide;
+    float boost;
+    float airRoll;
+    float jump;
+
+    CARL_D CARL_FI static float axis(float action)
+    {
+        return action < -1.f ? -1.f : action > 1.f ? 1.f : action;
+    }
+
+    CARL_D CARL_FI CarControls decode() const
+    {
+        const float horizontalAxis = axis(horizontal);
+
+        return {
+            axis(throttle),
+            horizontalAxis,
+            horizontalAxis,
+            axis(vertical),
+            axis(airRoll),
+            jump >= .5f,
+            boost >= .5f,
+            powerslide >= .5f
+        };
+    }
+};
+
+static_assert(sizeof(ContinuousControls) == ACT_PER_CAR * sizeof(float));

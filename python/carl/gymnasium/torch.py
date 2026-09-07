@@ -65,6 +65,7 @@ class CARLTorchVectorEnv(VectorEnv):
         reward_funcs:             Iterable[RewardFunction] | None = None,
         reward_scale:             float = 1.0,
         reset_state_provider:     ResetStateProvider | None = None,
+        discrete_actions:         bool = False,
     ) -> None:
         super().__init__()
         
@@ -80,6 +81,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
+        self.discrete_actions = discrete_actions
         self._state: CarlState | None = None
         self._observation: CARLObservation | None = None
 
@@ -110,7 +112,9 @@ class CARLTorchVectorEnv(VectorEnv):
         self._boost_pad_positions = th.tensor(
             BOOST_PAD_POSITIONS, dtype=th.float32, device=self.device
         )
-        self.action_codec = CARLActionCodec().to(self.device)
+        self.action_codec = (
+            CARLActionCodec().to(self.device) if discrete_actions else None
+        )
 
         self._episode_return = th.zeros(self.n_envs, device=self.device)
         self._episode_length = th.zeros(self.n_envs, dtype=th.int64, device=self.device)
@@ -121,9 +125,15 @@ class CARLTorchVectorEnv(VectorEnv):
         self.single_observation_space = gym.spaces.Box(
             -np.inf, np.inf, (self._env.obs_dim,), np.float32
         )
-        self.single_action_space = gym.spaces.MultiDiscrete(
-            np.asarray(self._env.action_nvec[0], dtype=np.int64)
-        )
+        if discrete_actions:
+            self.single_action_space = gym.spaces.MultiDiscrete(
+                np.asarray(self._env.action_nvec[0], dtype=np.int64)
+            )
+        else:
+            self.single_action_space = gym.spaces.Box(
+                low=np.asarray([-1, -1, -1, 0, 0, -1, 0], dtype=np.float32),
+                high=np.ones(7, dtype=np.float32),
+            )
         self.observation_space = batch_space(self.single_observation_space, self.n_envs)
         self.action_space = batch_space(self.single_action_space, self.n_envs)
 
@@ -219,6 +229,8 @@ class CARLTorchVectorEnv(VectorEnv):
         return reward_function
 
     def action_mask(self, observation: th.Tensor) -> th.Tensor:
+        if self.action_codec is None:
+            raise RuntimeError("continuous controls do not use a categorical action mask")
         return self.action_codec.mask(observation)
 
     def _custom_reward(
@@ -345,13 +357,17 @@ class CARLTorchVectorEnv(VectorEnv):
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor, dict[str, Any]]:
         self._check_open()
 
-        actions = th.as_tensor(actions, dtype=th.int32, device=self.device).contiguous()
+        dtype = th.int32 if self.discrete_actions else th.float32
+        actions = th.as_tensor(actions, dtype=dtype, device=self.device).contiguous()
         if actions.shape != (self.n_envs, 7):
             raise ValueError(f"Expected actions shaped {(self.n_envs, 7)}")
         actions = actions.view(self.n_sim, self.n_cars, 7)
 
         self._sync()
-        self._env.step(actions)
+        if self.discrete_actions:
+            self._env.step(actions)
+        else:
+            self._env.step_continuous(actions)
         self._sync()
 
         score_delta = self._tensor(self._env.get_rewards())

@@ -45,6 +45,7 @@ private:
     bool*  d_transitionOvertime = nullptr;
 
     DiscreteControls* d_actions = nullptr;
+    ContinuousControls* d_continuousActions = nullptr;
 
     int64_t obsShape[3];
     int64_t stateShape[2];
@@ -105,8 +106,13 @@ public:
 
     // Copy external actions into internal buffer
     void setActions(const int32_t* src);
+    void setContinuousActions(const float* src);
 
     const DiscreteControls* getActions() const { return d_actions; }
+    const ContinuousControls* getContinuousActions() const
+    {
+        return d_continuousActions;
+    }
 
     // Set state from contiguous device buffers
     void setBall(

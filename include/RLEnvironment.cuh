@@ -31,6 +31,7 @@ private:
     void beginStep();
     void stepBroadSusp();
     void stepControls(const DiscreteControls* actions);
+    void stepControls(const ContinuousControls* actions);
     void stepNarrow();
     void stepCarManifoldSolve();
     void stepCarCarSolve();
@@ -45,6 +46,7 @@ public:
     ~RLEnvironment();
 
     void step(const DiscreteControls* actions);
+    void step(const ContinuousControls* actions);
     void reset();
     void resetDones(
         int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks);

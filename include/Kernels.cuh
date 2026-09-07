@@ -22,6 +22,11 @@ __global__ void carControlsKernel(
     Workspace* __restrict__ space,
     const DiscreteControls* __restrict__ actions);
 
+__global__ void carContinuousControlsKernel(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    const ContinuousControls* __restrict__ actions);
+
 __global__ void carArenaBroadPhaseKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,

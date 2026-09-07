@@ -99,6 +99,12 @@ void RLEnvironment::stepControls(const DiscreteControls* actions)
         carControlsKernel, d_state, d_space, actions);
 }
 
+void RLEnvironment::stepControls(const ContinuousControls* actions)
+{
+    threadPerCarKernelConfig.launch(
+        carContinuousControlsKernel, d_state, d_space, actions);
+}
+
 void RLEnvironment::stepNarrow()
 {
     carTriPairKernelConfig.launch(
@@ -139,6 +145,19 @@ void RLEnvironment::stepBoostPad()
 }
 
 void RLEnvironment::step(const DiscreteControls* actions)
+{
+    PROFILE("init step",      beginStep());
+    PROFILE("broad+susp",     stepBroadSusp());
+    PROFILE("controls",       stepControls(actions));
+    PROFILE("narrow",         stepNarrow());
+    PROFILE("manifold+solve", stepCarManifoldSolve());
+    PROFILE("car-car+ball",   stepCarCarSolve());
+    PROFILE("integrate-cars", integrateCars());
+    PROFILE("impulse-cache",  applyImpulseCache());
+    PROFILE("boost-pads",     stepBoostPad());
+}
+
+void RLEnvironment::step(const ContinuousControls* actions)
 {
     PROFILE("init step",      beginStep());
     PROFILE("broad+susp",     stepBroadSusp());

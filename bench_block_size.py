@@ -31,7 +31,8 @@ def measure(args: argparse.Namespace, block_size: int) -> float:
         max_ticks=1_000_000,
         normalize=True,
     )
-    action = th.randint(0, 2, (env.n_envs, 7), dtype=th.int32, device=env.device)
+    action = th.rand((env.n_envs, 7), dtype=th.float32, device=env.device) * 2 - 1
+    action[:, [3, 4, 6]] = action[:, [3, 4, 6]].ge(0).float()
 
     try:
         env.reset()

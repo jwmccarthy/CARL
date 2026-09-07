@@ -353,6 +353,8 @@ EnvIO::EnvIO(
     CUDA_CHECK(cudaMalloc(&d_state, nSim * stateDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_transitionState, nSim * stateDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_actions, nSim * nCars * sizeof(DiscreteControls)));
+    CUDA_CHECK(cudaMalloc(&d_continuousActions,
+        nSim * nCars * sizeof(ContinuousControls)));
     CUDA_CHECK(cudaMalloc(&d_rewards, nSim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_dones, nSim * sizeof(bool)));
     CUDA_CHECK(cudaMalloc(&d_scoreDifference, nSim * sizeof(int)));
@@ -380,6 +382,7 @@ EnvIO::~EnvIO()
     CUDA_CHECK(cudaFree(d_state));
     CUDA_CHECK(cudaFree(d_transitionState));
     CUDA_CHECK(cudaFree(d_actions));
+    CUDA_CHECK(cudaFree(d_continuousActions));
     CUDA_CHECK(cudaFree(d_rewards));
     CUDA_CHECK(cudaFree(d_dones));
     CUDA_CHECK(cudaFree(d_scoreDifference));
@@ -525,6 +528,13 @@ void EnvIO::setActions(const int32_t* src)
 {
     CUDA_CHECK(cudaMemcpyAsync(d_actions, src,
         nSim * actDim * sizeof(int32_t),
+        cudaMemcpyDeviceToDevice, stream));
+}
+
+void EnvIO::setContinuousActions(const float* src)
+{
+    CUDA_CHECK(cudaMemcpyAsync(d_continuousActions, src,
+        nSim * actDim * sizeof(float),
         cudaMemcpyDeviceToDevice, stream));
 }
 

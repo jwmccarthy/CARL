@@ -31,7 +31,7 @@ env = CARLTorchVectorEnv(
 )
 
 observation = env.reset()
-actions = torch.zeros((env.n_envs, 7), dtype=torch.int32, device="cuda:0")
+actions = torch.zeros((env.n_envs, 7), dtype=torch.float32, device="cuda:0")
 observation, reward, terminated, truncated, info = env.step(actions)
 ```
 
@@ -47,7 +47,9 @@ The Torch action shape is `[n_envs, 7]`. The native action shape is `[n_sim, n_c
 [horizontal, vertical, throttle, powerslide, boost, air_roll, jump]
 ```
 
-Horizontal, vertical, throttle, and air roll use `0` for neutral, `1` for the first direction, and `2` for the opposite direction. Powerslide, boost, and jump use `0` for off and `1` for on.
+Horizontal, vertical, throttle, and air roll are continuous values in `[-1, 1]`. Powerslide, boost, and jump use `0` for off and `1` for on; values at least `0.5` are active.
+
+Pass `discrete_actions=True` to retain the legacy `MultiDiscrete` action space. In that mode, analog controls use `0` for neutral, `1` for negative, and `2` for positive.
 
 Controls are held for every tick in `frameskip`. Episode completion is checked after those ticks.
 

@@ -73,9 +73,9 @@ class EnvWrapper
             throw py::type_error("actions must have dtype int32");
         }
 
-        if (t.device.device_type != kDLCUDA)
+        if (t.device.device_type != kDLCUDA || t.device.device_id != 0)
         {
-            throw py::value_error("actions must be on a CUDA device");
+            throw py::value_error("actions must be on cuda:0");
         }
 
         bool dimMismatch = t.ndim != 3
@@ -100,6 +100,44 @@ class EnvWrapper
         }
 
         return reinterpret_cast<const int32_t*>(
+            static_cast<const char*>(t.data) + t.byte_offset);
+    }
+
+    const float* continuousActionData(const DLManagedTensor* tensor) const
+    {
+        if (!tensor) throw py::value_error("invalid DLPack tensor");
+
+        const DLTensor& t = tensor->dl_tensor;
+        const bool validType = t.dtype.code == kDLFloat
+            && t.dtype.bits == 32 && t.dtype.lanes == 1;
+        if (!validType)
+        {
+            throw py::type_error("continuous actions must have dtype float32");
+        }
+        if (t.device.device_type != kDLCUDA || t.device.device_id != 0)
+        {
+            throw py::value_error("continuous actions must be on cuda:0");
+        }
+        const bool dimMismatch = t.ndim != 3
+            || t.shape[0] != env.getNSim()
+            || t.shape[1] != env.getNCars()
+            || t.shape[2] != ACT_PER_CAR;
+        if (dimMismatch)
+        {
+            throw py::value_error(
+                "continuous actions must have shape [n_sim, n_cars, 7]");
+        }
+        const bool strideMismatch = t.strides && (
+               t.strides[2] != 1
+            || t.strides[1] != ACT_PER_CAR
+            || t.strides[0] != env.getNCars() * ACT_PER_CAR
+        );
+        if (strideMismatch)
+        {
+            throw py::value_error("continuous actions must be contiguous");
+        }
+
+        return reinterpret_cast<const float*>(
             static_cast<const char*>(t.data) + t.byte_offset);
     }
 
@@ -243,6 +281,30 @@ public:
             env.step(io.getActions());
         }
         
+        io.packRewardsDones(env.getDeviceState());
+        io.packTransitionState(env.getDeviceState(), frameskip);
+        io.packTransitionObs(env.getDeviceState());
+        env.resetDones(
+            io.getMaxTicks(), io.getOvertimeTimeoutTicks(),
+            io.getNoTouchTimeoutTicks());
+        io.packRawMatchState(env.getDeviceState());
+        io.packObs(env.getDeviceState());
+        io.packState(env.getDeviceState());
+
+        return tensorToCapsule(io.getObsTensor());
+    }
+
+    py::object stepContinuous(py::object actions)
+    {
+        py::capsule capsule = toCapsule(actions, env.getStream());
+        const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
+        io.setContinuousActions(continuousActionData(actTensor));
+
+        for (int tick = 0; tick < frameskip; tick++)
+        {
+            env.step(io.getContinuousActions());
+        }
+
         io.packRewardsDones(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), frameskip);
         io.packTransitionObs(env.getDeviceState());
@@ -536,6 +598,7 @@ PYBIND11_MODULE(_carl, m)
              py::arg("normalize") = false)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
+        .def("step_continuous", &EnvWrapper::stepContinuous, py::arg("actions"))
         .def("reset", &EnvWrapper::reset)
 
         .def("set_ball", &EnvWrapper::setBall,
