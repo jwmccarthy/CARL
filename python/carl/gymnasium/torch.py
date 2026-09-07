@@ -178,6 +178,7 @@ class CARLTorchVectorEnv(VectorEnv):
         if not indices.numel():
             return
 
+        self._env.reset_boost_pads(indices.contiguous())
         self._env.set_ball(
             state["ball_position"].contiguous(),
             state["ball_velocity"].contiguous(),
