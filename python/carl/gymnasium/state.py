@@ -49,6 +49,13 @@ BOOST_PAD_POSITIONS = (
 )
 REGULATION_TICKS = 5 * 60 * 120
 
+_POSITION_SCALE = (4108.0, 6000.0, 2076.0)
+_BALL_MAX_SPEED = 6000.0
+_BALL_MAX_ANG_SPEED = 6.0
+_CAR_MAX_SPEED = 2300.0
+_CAR_MAX_ANG_SPEED = 5.5
+_BOOST_MAX = 100.0
+
 
 class _CARLTensor(th.Tensor):
 
@@ -345,6 +352,56 @@ class CARLObservation(_CARLTensor):
 
 
 @dataclass(frozen=True)
+class CARLMatchReset:
+    """Match state for the simulations selected by a reset provider."""
+
+    blue_score:    th.Tensor
+    orange_score:  th.Tensor
+    episode_ticks: th.Tensor
+
+
+@dataclass(frozen=True)
+class CARLResetState:
+    """Ball and cars use physics units unless ``normalized`` is true."""
+
+    simulation_indices: th.Tensor
+    ball:               CARLBall
+    cars:               CARLCars
+    car_internal_state: th.Tensor | None = None
+    match:              CARLMatchReset | None = None
+    normalized:         bool = False
+
+    def validate(self, reset_mask: th.Tensor, n_cars: int) -> None:
+        indices = self.simulation_indices
+        if (indices.ndim != 1 or indices.dtype != th.int64
+                or indices.device != reset_mask.device):
+            raise ValueError("simulation_indices must be int64 on the environment device")
+        if ((indices < 0) | (indices >= len(reset_mask))).any():
+            raise ValueError("simulation_indices are out of range")
+        if not reset_mask[indices].all() or th.unique(indices).numel() != len(indices):
+            raise ValueError("simulation_indices must be unique and selected for reset")
+        if (self.ball.shape != (len(indices), 9)
+                or self.cars.shape != (len(indices), n_cars, 21)):
+            raise ValueError("ball or cars have the wrong shape")
+
+    def physical(self) -> tuple[CARLBall, CARLCars]:
+        if not self.normalized:
+            return self.ball, self.cars
+
+        ball = CARLBall.from_tensor(self.ball.clone())
+        cars = CARLCars.from_tensor(self.cars.clone(), self.cars.n_cars)
+        position_scale = ball.position.new_tensor(_POSITION_SCALE)
+        ball.position.mul_(position_scale)
+        ball.velocity.mul_(_BALL_MAX_SPEED)
+        ball.angular_velocity.mul_(_BALL_MAX_ANG_SPEED)
+        cars.position.mul_(position_scale)
+        cars.velocity.mul_(_CAR_MAX_SPEED)
+        cars.angular_velocity.mul_(_CAR_MAX_ANG_SPEED)
+        cars.boost.mul_(_BOOST_MAX)
+        return ball, cars
+
+
+@dataclass(frozen=True)
 class CarlState:
     raw:                 th.Tensor
     n_cars:              int
@@ -474,7 +531,9 @@ __all__ = [
     "CARLBall",
     "CARLCar",
     "CARLCars",
+    "CARLMatchReset",
     "CARLObservation",
+    "CARLResetState",
     "REGULATION_TICKS",
     "CarlEvents",
     "CarlState",

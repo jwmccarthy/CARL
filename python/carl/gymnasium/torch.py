@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import torch as th
+import torch.nn.functional as F
 
 from typing import Any
 from collections.abc import Callable, Iterable, Mapping
@@ -14,6 +15,7 @@ from .action import CARLActionCodec
 from .state import (
     BOOST_PAD_POSITIONS,
     CARLObservation,
+    CARLResetState,
     REGULATION_TICKS,
     CarlEvents,
     CarlState,
@@ -22,8 +24,35 @@ from .state import (
 )
 
 RewardFunction = Callable[[RewardContext], th.Tensor | RewardResult]
-ResetState = Mapping[str, th.Tensor]
+ResetState = CARLResetState | Mapping[str, th.Tensor]
 ResetStateProvider = Callable[[th.Tensor], ResetState | None]
+
+
+def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
+    """Convert car axes to [x, y, z, w] quaternions."""
+    if not th.isfinite(forward).all() or not th.isfinite(up).all():
+        raise ValueError("car forward and up directions must be finite")
+    right = th.linalg.cross(up, forward, dim=-1)
+    if (forward.square().sum(dim=-1) < 1e-8).any() or (
+        right.square().sum(dim=-1) < 1e-8
+    ).any():
+        raise ValueError("car forward and up directions must define a rotation")
+
+    forward = F.normalize(forward, dim=-1)
+    right = F.normalize(right, dim=-1)
+    up = th.linalg.cross(forward, right, dim=-1)
+    matrix = th.stack((forward, right, up), dim=-1)
+
+    xx, yy, zz = matrix[..., 0, 0], matrix[..., 1, 1], matrix[..., 2, 2]
+    xy, yz, zx = matrix[..., 0, 1], matrix[..., 1, 2], matrix[..., 2, 0]
+    yx, zy, xz = matrix[..., 1, 0], matrix[..., 2, 1], matrix[..., 0, 2]
+    quat = th.stack((
+        (1 + xx + yy + zz).clamp_min(0).sqrt(),
+        th.copysign((1 + xx - yy - zz).clamp_min(0).sqrt(), zy - yz),
+        th.copysign((1 - xx + yy - zz).clamp_min(0).sqrt(), xz - zx),
+        th.copysign((1 - xx - yy + zz).clamp_min(0).sqrt(), yx - xy),
+    ), dim=-1)
+    return F.normalize(quat, dim=-1)[..., (1, 2, 3, 0)]
 
 
 def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int | None:
@@ -173,6 +202,9 @@ class CARLTorchVectorEnv(VectorEnv):
         state = self.reset_state_provider(reset_mask)
         if state is None:
             return
+        if isinstance(state, CARLResetState):
+            self._apply_typed_reset_state(state, reset_mask)
+            return
 
         indices = state.get("simulation_indices", reset_mask.nonzero(as_tuple=True)[0])
         if not indices.numel():
@@ -208,6 +240,39 @@ class CARLTorchVectorEnv(VectorEnv):
                 state["orange_score"].contiguous(),
                 state["episode_ticks"].contiguous(),
                 simulation_indices=indices.contiguous(),
+            )
+
+    def _apply_typed_reset_state(
+        self, state: CARLResetState, reset_mask: th.Tensor,
+    ) -> None:
+        state.validate(reset_mask, self.n_cars)
+        if not state.simulation_indices.numel():
+            return
+
+        ball, cars = state.physical()
+        rotation = _forward_up_to_quat(cars.forward, cars.up).contiguous()
+        indices = state.simulation_indices.contiguous()
+        self._env.reset_boost_pads(indices)
+        self._env.set_ball(
+            ball.position.contiguous(), ball.velocity.contiguous(),
+            ball.angular_velocity.contiguous(), simulation_indices=indices,
+        )
+        self._env.set_car(
+            cars.position.contiguous(), rotation, cars.velocity.contiguous(),
+            cars.angular_velocity.contiguous(), cars.demoed.contiguous(),
+            boost=cars.boost.contiguous(),
+            internal_state=(
+                state.car_internal_state.contiguous()
+                if state.car_internal_state is not None else None
+            ),
+            simulation_indices=indices,
+        )
+        if state.match is not None:
+            self._env.set_match_state(
+                state.match.blue_score.contiguous(),
+                state.match.orange_score.contiguous(),
+                state.match.episode_ticks.contiguous(),
+                simulation_indices=indices,
             )
 
     def _clear_sim_stats(self, mask: th.Tensor | None = None) -> None:
