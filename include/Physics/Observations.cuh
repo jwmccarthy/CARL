@@ -2,6 +2,7 @@
 
 #include "../State/GameState.cuh"
 #include "BoostPads.cuh"
+#include "Controls/Aerial.cuh"
 
 // --- Observation packing ---
 
@@ -203,6 +204,15 @@ CARL_D CARL_FI void packObservations(
     obs[o++] = ballToOpponentGoal.x;
     obs[o++] = ballToOpponentGoal.y;
     obs[o++] = ballToOpponentGoal.z;
+
+    // The dodge window is an internal control state, not inferable from the
+    // visible flipped/double-jumped flags after its timer expires.
+    const CarInternalState egoInternal = state->cars.internal[carBase + observerIdx];
+    const bool flipAvailable = hasFlipOrJump(egoInternal);
+    obs[o++] = (float)flipAvailable;
+    obs[o++] = flipAvailable
+        ? fmaxf(0.f, DOUBLEJUMP_MAX_DELAY - egoInternal.airTimeSinceJump)
+        : 0.f;
 }
 
 CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)

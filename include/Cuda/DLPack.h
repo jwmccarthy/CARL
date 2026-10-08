@@ -56,4 +56,5 @@ constexpr int OBS_BOOST_PADS = 2 * 34;  // active flags + distances
 constexpr int OBS_RELATIVE_EGO_BALL = 6;  // relative pos + vel
 constexpr int OBS_RELATIVE_PER_OTHER_CAR = 6;  // relative pos + vel
 constexpr int OBS_RELATIVE_GOALS = 6;  // ball-to-own + ball-to-opponent
+constexpr int OBS_EGO_DODGE = 2;  // hasFlipOrJump + seconds remaining
 constexpr int STATE_PER_CAR = OBS_PER_CAR + 1;  // observation fields + ball touch

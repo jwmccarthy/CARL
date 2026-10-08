@@ -63,7 +63,7 @@ Set `normalize=True` to normalize observations during CUDA packing using arena, 
 
 Each observation contains ball position, velocity, and angular velocity. It then contains position, velocity, angular velocity, forward direction, up direction, boost, and state flags for every car, followed by boost pad state and distance. These existing fields retain their original ordering.
 
-The appended fields contain self-to-ball relative position and velocity, then self-to-car relative position and velocity for every other car in the same teammate/opponent order, then ball-to-own-goal and ball-to-opponent-goal vectors. Goal identity is relative to the observing team, and orange vectors use the same optional rotation as the base observation.
+The appended fields contain self-to-ball relative position and velocity, then self-to-car relative position and velocity for every other car in the same teammate/opponent order, then ball-to-own-goal and ball-to-opponent-goal vectors. Goal identity is relative to the observing team, and orange vectors use the same optional rotation as the base observation. Two final ego fields give `hasFlipOrJump()` (0 or 1) and the remaining dodge-window time in seconds (0 after the flip is spent or the window expires). The categorical jump mask also accounts for the first physics tick before a dodge press is checked.
 
 Car blocks start with the observing car, followed by teammates and opponents. Orange observations can be rotated into the blue frame with `invert_orange=True`.
 

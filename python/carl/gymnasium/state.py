@@ -340,11 +340,21 @@ class CARLObservation(_CARLTensor):
 
     @property
     def own_goal_relative(self) -> th.Tensor:
-        return self[..., -6:-3]
+        start = self.car_end + 2 * len(BOOST_PAD_POSITIONS) + 6 * self._n_cars
+        return self[..., start:start + 3]
 
     @property
     def opponent_goal_relative(self) -> th.Tensor:
-        return self[..., -3:]
+        start = self.car_end + 2 * len(BOOST_PAD_POSITIONS) + 6 * self._n_cars + 3
+        return self[..., start:start + 3]
+
+    @property
+    def ego_has_flip_or_jump(self) -> th.Tensor:
+        return self[..., -2].bool()
+
+    @property
+    def ego_flip_window_remaining(self) -> th.Tensor:
+        return self[..., -1]
 
     @property
     def car_end(self) -> int:
