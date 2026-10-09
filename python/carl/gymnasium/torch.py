@@ -30,6 +30,13 @@ ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
 def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
     """Convert car axes to [x, y, z, w] quaternions."""
+    if not th.isfinite(forward).all() or not th.isfinite(up).all():
+        raise ValueError("car forward and up directions must be finite")
+
+    right = th.linalg.cross(up, forward, dim=-1)
+    for axis in (forward, right):
+        if (axis.square().sum(dim=-1) < 1e-8).any():
+            raise ValueError("car forward and up directions must define a rotation")
 
     forward = F.normalize(forward, dim=-1)
     right = F.normalize(right, dim=-1)
