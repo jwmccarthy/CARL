@@ -53,8 +53,10 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaAxisRow(
 
     const float denom = BALL_INV_MASS
         + BALL_INV_INERTIA * row.relCross.lenSq();
+        
     row.jacInv = 1.f / fmaxf(denom, 1e-8f);
     row.upper = 1e10f;
+
     return row;
 }
 

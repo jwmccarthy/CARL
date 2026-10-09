@@ -18,6 +18,9 @@ constexpr CARL_HD Vec3 WORLD_AXES[3] = { WORLD_X, WORLD_Y, WORLD_Z };
 
 constexpr CARL_HD Vec3 ARENA_MIN = { -4108.f, -6000.f,  -14.f };
 constexpr CARL_HD Vec3 ARENA_MAX = {  4108.f,  6000.f, 2076.f };
+constexpr CARL_HD Vec3 OBS_POSITION_SCALE = {
+    ARENA_MAX.x, ARENA_MAX.y, ARENA_MAX.z
+};
 
 // --- Car dimensions ---
 
@@ -95,7 +98,9 @@ constexpr float CAR_CONTACT_BREAK = 2.03425f;
 
 // --- Rigid body ---
 
-constexpr float PHYS_DT = 1.f / 120.f;
+constexpr int PHYS_TICKS_PER_SECOND = 120;
+constexpr float PHYS_DT = 1.f / PHYS_TICKS_PER_SECOND;
+constexpr int REGULATION_TICKS = 5 * 60 * PHYS_TICKS_PER_SECOND;
 constexpr float CAR_MASS = 180.f;
 constexpr float CAR_INV_MASS = 1.f / CAR_MASS;
 constexpr float CAR_MAX_SPEED = 2300.f;

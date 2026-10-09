@@ -343,6 +343,7 @@ CARL_D CARL_FI void carArenaClipPair(
             space->ctCon, contact, pairIdx * MAX_PAIR_CONTACTS);
 
         space->ctNrw.conPairCount[pairIdx] = 1;
+        
         return;
     }
 

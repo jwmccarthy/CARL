@@ -30,13 +30,6 @@ ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
 def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
     """Convert car axes to [x, y, z, w] quaternions."""
-    if not th.isfinite(forward).all() or not th.isfinite(up).all():
-        raise ValueError("car forward and up directions must be finite")
-    right = th.linalg.cross(up, forward, dim=-1)
-    if (forward.square().sum(dim=-1) < 1e-8).any() or (
-        right.square().sum(dim=-1) < 1e-8
-    ).any():
-        raise ValueError("car forward and up directions must define a rotation")
 
     forward = F.normalize(forward, dim=-1)
     right = F.normalize(right, dim=-1)
@@ -46,12 +39,14 @@ def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
     xx, yy, zz = matrix[..., 0, 0], matrix[..., 1, 1], matrix[..., 2, 2]
     xy, yz, zx = matrix[..., 0, 1], matrix[..., 1, 2], matrix[..., 2, 0]
     yx, zy, xz = matrix[..., 1, 0], matrix[..., 2, 1], matrix[..., 0, 2]
+
     quat = th.stack((
         (1 + xx + yy + zz).clamp_min(0).sqrt(),
         th.copysign((1 + xx - yy - zz).clamp_min(0).sqrt(), zy - yz),
         th.copysign((1 - xx + yy - zz).clamp_min(0).sqrt(), xz - zx),
         th.copysign((1 - xx - yy + zz).clamp_min(0).sqrt(), yx - xy),
     ), dim=-1)
+
     return F.normalize(quat, dim=-1)[..., (1, 2, 3, 0)]
 
 
@@ -63,7 +58,7 @@ def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int
     if seconds is not None:
         if not math.isfinite(seconds) or seconds <= 0:
             raise ValueError("Timeout seconds must be positive and finite")
-        ticks = math.ceil(seconds * 120)
+        ticks = math.ceil(seconds * carl.PHYS_TICKS_PER_SECOND)
     if ticks is not None and ticks < 1:
         raise ValueError("Timeout ticks must be positive")
 
@@ -154,15 +149,17 @@ class CARLTorchVectorEnv(VectorEnv):
         self.single_observation_space = gym.spaces.Box(
             -np.inf, np.inf, (self._env.obs_dim,), np.float32
         )
+
         if discrete_actions:
             self.single_action_space = gym.spaces.MultiDiscrete(
-                np.asarray(self._env.action_nvec[0], dtype=np.int64)
+                np.asarray(carl.ACTION_NVECS, dtype=np.int64)
             )
         else:
             self.single_action_space = gym.spaces.Box(
-                low=np.asarray([-1, -1, -1, 0, 0, -1, 0], dtype=np.float32),
-                high=np.ones(7, dtype=np.float32),
+                low=np.asarray(carl.CONTINUOUS_ACTION_LOW, dtype=np.float32),
+                high=np.asarray(carl.CONTINUOUS_ACTION_HIGH, dtype=np.float32),
             )
+            
         self.observation_space = batch_space(self.single_observation_space, self.n_envs)
         self.action_space = batch_space(self.single_action_space, self.n_envs)
 
@@ -425,9 +422,10 @@ class CARLTorchVectorEnv(VectorEnv):
 
         dtype = th.int32 if self.discrete_actions else th.float32
         actions = th.as_tensor(actions, dtype=dtype, device=self.device).contiguous()
-        if actions.shape != (self.n_envs, 7):
-            raise ValueError(f"Expected actions shaped {(self.n_envs, 7)}")
-        actions = actions.view(self.n_sim, self.n_cars, 7)
+        action_dim = len(carl.ACTION_NVECS)
+        if actions.shape != (self.n_envs, action_dim):
+            raise ValueError(f"Expected actions shaped {(self.n_envs, action_dim)}")
+        actions = actions.view(self.n_sim, self.n_cars, action_dim)
 
         self._sync()
         if self.discrete_actions:
@@ -488,7 +486,8 @@ class CARLTorchVectorEnv(VectorEnv):
         return None
 
     def close(self, **_: Any) -> None:
-        if not self.closed:
-            self._sync()
-            del self._env
-            self.closed = True
+        if self.closed:
+            return
+        self._sync()
+        del self._env
+        self.closed = True

@@ -17,6 +17,7 @@ uv sync --extra gymnasium
 `CARLTorchVectorEnv` exposes each car as one actor. Cars remain grouped inside each physics simulation.
 
 ```python
+import carl
 import torch
 from carl.gymnasium import CARLTorchVectorEnv
 
@@ -31,7 +32,7 @@ env = CARLTorchVectorEnv(
 )
 
 observation = env.reset()
-actions = torch.zeros((env.n_envs, 7), dtype=torch.float32, device="cuda:0")
+actions = torch.zeros((env.n_envs, len(carl.ACTION_NVECS)), dtype=torch.float32, device="cuda:0")
 observation, reward, terminated, truncated, info = env.step(actions)
 ```
 
@@ -67,6 +68,8 @@ The appended fields contain self-to-ball relative position and velocity, then se
 
 Car blocks start with the observing car, followed by teammates and opponents. Orange observations can be rotated into the blue frame with `invert_orange=True`.
 
+The native layout and physics constants are available directly from `carl`, including `carl.OBS_BALL`, `carl.OBS_PER_CAR`, `carl.BOOST_PAD_POSITIONS`, `carl.PHYS_DT`, and `carl.REGULATION_TICKS`. The Torch wrapper reads those values from the same C++ definitions as the simulator.
+
 ## Custom Rewards
 
 The environment carries a default, zero-sum reward tied to goals, but rewards are customizable via the exposed `RewardContext`.
@@ -75,7 +78,7 @@ Reward functions receive a `RewardContext` and return `[n_sim, n_cars]`.
 
 ```python
 def speed_reward(context):
-    return context.current.car_velocity.norm(dim=-1) / 2300.0
+    return context.current.car_velocity.norm(dim=-1) / carl.CAR_MAX_SPEED
 
 env = CARLTorchVectorEnv(1024, 1, 1, reward_funcs=[speed_reward])
 ```

@@ -217,20 +217,19 @@ CARL_D CARL_FI void packObservations(
 
 CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
 {
-    constexpr float positionScale[3] = { 4108.f, 6000.f, 2076.f };
     constexpr float arenaDiagonal = 14692.54f;
 
-    for (int axis = 0; axis < 3; axis++)
+    for (int axis = OBS_POS; axis < OBS_VEL; axis++)
     {
-        obs[axis] /= positionScale[axis];
+        obs[axis] /= OBS_POSITION_SCALE[axis];
     }
 
-    for (int axis = 3; axis < 6; axis++)
+    for (int axis = OBS_VEL; axis < OBS_ANG; axis++)
     {
         obs[axis] /= BALL_MAX_SPEED;
     }
 
-    for (int axis = 6; axis < 9; axis++)
+    for (int axis = OBS_ANG; axis < OBS_BALL; axis++)
     {
         obs[axis] /= BALL_MAX_ANG_SPEED;
     }
@@ -239,22 +238,22 @@ CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
     {
         const int offset = OBS_BALL + car * OBS_PER_CAR;
 
-        for (int axis = 0; axis < 3; axis++)
+        for (int axis = OBS_POS; axis < OBS_VEL; axis++)
         {
-            obs[offset + axis] /= positionScale[axis];
+            obs[offset + axis] /= OBS_POSITION_SCALE[axis];
         }
 
-        for (int axis = 3; axis < 6; axis++)
+        for (int axis = OBS_VEL; axis < OBS_ANG; axis++)
         {
             obs[offset + axis] /= CAR_MAX_SPEED;
         }
 
-        for (int axis = 6; axis < 9; axis++)
+        for (int axis = OBS_ANG; axis < OBS_BALL; axis++)
         {
             obs[offset + axis] /= CAR_MAX_ANG_SPEED;
         }
 
-        obs[offset + 15] /= BOOST_MAX;
+        obs[offset + OBS_BOOST] /= BOOST_MAX;
     }
 
     const int distanceOffset = OBS_BALL + nCars * OBS_PER_CAR + NUM_BOOST_PADS;
@@ -266,31 +265,31 @@ CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
 
     int relativeOffset = distanceOffset + NUM_BOOST_PADS;
 
-    for (int axis = 0; axis < 3; axis++)
+    for (int axis = 0; axis < OBS_VECTOR_SIZE; axis++)
     {
-        obs[relativeOffset + axis] /= 2.f * positionScale[axis];
-        obs[relativeOffset + 3 + axis] /= BALL_MAX_SPEED + CAR_MAX_SPEED;
+        obs[relativeOffset + axis] /= 2.f * OBS_POSITION_SCALE[axis];
+        obs[relativeOffset + OBS_VECTOR_SIZE + axis] /= BALL_MAX_SPEED + CAR_MAX_SPEED;
     }
 
     relativeOffset += OBS_RELATIVE_EGO_BALL;
 
     for (int car = 1; car < nCars; car++)
     {
-        for (int axis = 0; axis < 3; axis++)
+        for (int axis = 0; axis < OBS_VECTOR_SIZE; axis++)
         {
-            obs[relativeOffset + axis] /= 2.f * positionScale[axis];
-            obs[relativeOffset + 3 + axis] /= 2.f * CAR_MAX_SPEED;
+            obs[relativeOffset + axis] /= 2.f * OBS_POSITION_SCALE[axis];
+            obs[relativeOffset + OBS_VECTOR_SIZE + axis] /= 2.f * CAR_MAX_SPEED;
         }
 
         relativeOffset += OBS_RELATIVE_PER_OTHER_CAR;
     }
 
-    for (int goal = 0; goal < 2; goal++)
+    for (int goal = 0; goal < OBS_RELATIVE_GOALS / OBS_VECTOR_SIZE; goal++)
     {
-        for (int axis = 0; axis < 3; axis++)
+        for (int axis = 0; axis < OBS_VECTOR_SIZE; axis++)
         {
-            obs[relativeOffset + goal * 3 + axis]
-                /= 2.f * positionScale[axis];
+            obs[relativeOffset + goal * OBS_VECTOR_SIZE + axis]
+                /= 2.f * OBS_POSITION_SCALE[axis];
         }
     }
 }

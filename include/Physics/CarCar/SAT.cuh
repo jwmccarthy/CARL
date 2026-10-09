@@ -81,8 +81,7 @@ CARL_D CARL_FI SATResult carCarSAT(
         for (int j = 0; j < 3; j++)
         {
             const int axisIdx = 6 + i * 3 + j;
-            testCarCarAxis(
-                axesA[i].cross(axesB[j]), boxA, boxB, axisIdx, result);
+            testCarCarAxis(axesA[i].cross(axesB[j]), boxA, boxB, axisIdx, result);
             if (!result.overlap) return result;
         }
     }

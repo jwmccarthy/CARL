@@ -18,7 +18,7 @@ constexpr float BIG_PAD_AMOUNT = 100.f;
 constexpr float SMALL_PAD_COOLDOWN = 4.f;
 constexpr float BIG_PAD_COOLDOWN = 10.f;
 
-constexpr CARL_D BoostPad BOOST_PADS[NUM_BOOST_PADS] = {
+constexpr CARL_HD BoostPad BOOST_PADS[NUM_BOOST_PADS] = {
     {{ -3584.f,     0.f, 73.f }, BIG_PAD_RADIUS, BIG_PAD_AMOUNT, BIG_PAD_COOLDOWN},
     {{  3584.f,     0.f, 73.f }, BIG_PAD_RADIUS, BIG_PAD_AMOUNT, BIG_PAD_COOLDOWN},
     {{ -3072.f,  4096.f, 73.f }, BIG_PAD_RADIUS, BIG_PAD_AMOUNT, BIG_PAD_COOLDOWN},

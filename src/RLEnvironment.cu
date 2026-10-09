@@ -9,20 +9,6 @@
 #include "Cuda/DeviceArray.cuh"
 
 
-namespace {
-
-int blockSize()
-{
-    const char* value = std::getenv("CARL_BLOCK_SIZE");
-    if (!value) return 256;
-
-    const int size = std::atoi(value);
-    return size >= 32 && size <= 1024 && size % 32 == 0 ? size : 256;
-}
-
-}
-
-
 RLEnvironment::RLEnvironment(
     const int nSim, const int nBlue,
     const int nOrange, const int seed)
@@ -33,7 +19,7 @@ RLEnvironment::RLEnvironment(
         h_space.bp.triPrefix,
         h_state.nTotalCars + 1)
 {
-    const int blockDim = blockSize();
+    const int blockDim = 256;
 
     cudaMallocCopy(d_state, h_state);
     cudaMallocCopy(d_space, h_space);

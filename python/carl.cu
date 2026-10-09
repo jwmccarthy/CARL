@@ -7,6 +7,7 @@
 
 #include "RLEnvironment.cuh"
 #include "EnvIO.cuh"
+#include "Physics/BoostPads.cuh"
 
 namespace py = pybind11;
 
@@ -604,6 +605,88 @@ public:
 PYBIND11_MODULE(_carl, m)
 {
     m.doc() = "CARL: CUDA Rocket League simulation";
+
+    const int actionFields = ACT_PER_CAR;
+    py::tuple actionNvec(actionFields);
+    py::tuple continuousLow(actionFields);
+    py::tuple continuousHigh(actionFields);
+
+    for (int field = 0; field < ACT_PER_CAR; field++)
+    {
+        actionNvec[field] = ACTION_NVECS[field];
+        continuousLow[field] = CONTINUOUS_ACTION_LOW[field];
+        continuousHigh[field] = CONTINUOUS_ACTION_MAX;
+    }
+
+    m.attr("ACTION_NVECS") = actionNvec;
+    m.attr("ACTION_LOGITS") = ACTION_LOGITS;
+    m.attr("CONTINUOUS_ACTION_LOW") = continuousLow;
+    m.attr("CONTINUOUS_ACTION_HIGH") = continuousHigh;
+
+    const auto nonNeutralLogits = [](ActionField field)
+    {
+        const int start = actionLogitOffset(field);
+        return py::slice(py::int_(start + ACT_NON_NEUTRAL),
+                         py::int_(start + ACTION_NVECS[field]), py::none());
+    };
+
+    const auto activeLogit = [](ActionField field)
+    {
+        return actionLogitOffset(field) + ACT_NON_NEUTRAL;
+    };
+
+    m.attr("ACTION_PITCH_LOGITS") = nonNeutralLogits(ACT_VERTICAL);
+    m.attr("ACTION_AIR_ROLL_LOGITS") = nonNeutralLogits(ACT_AIR_ROLL);
+    m.attr("ACTION_POWERSLIDE_LOGIT") = activeLogit(ACT_POWERSLIDE);
+    m.attr("ACTION_BOOST_LOGIT") = activeLogit(ACT_BOOST);
+    m.attr("ACTION_JUMP_LOGIT") = activeLogit(ACT_JUMP);
+
+    m.attr("OBS_VECTOR_SIZE") = OBS_VECTOR_SIZE;
+    m.attr("OBS_POS") = static_cast<int>(OBS_POS);
+    m.attr("OBS_VEL") = static_cast<int>(OBS_VEL);
+    m.attr("OBS_ANG") = static_cast<int>(OBS_ANG);
+    m.attr("OBS_FORWARD") = static_cast<int>(OBS_FORWARD);
+    m.attr("OBS_UP") = static_cast<int>(OBS_UP);
+    m.attr("OBS_BOOST") = static_cast<int>(OBS_BOOST);
+    m.attr("OBS_ON_GROUND") = static_cast<int>(OBS_ON_GROUND);
+    m.attr("OBS_DEMOED") = static_cast<int>(OBS_DEMOED);
+    m.attr("OBS_HAS_FLIPPED") = static_cast<int>(OBS_HAS_FLIPPED);
+    m.attr("OBS_HAS_DOUBLE_JUMPED") = static_cast<int>(OBS_HAS_DOUBLE_JUMPED);
+    m.attr("OBS_IS_BOOSTING") = static_cast<int>(OBS_IS_BOOSTING);
+    m.attr("STATE_BALL_TOUCH") = static_cast<int>(STATE_BALL_TOUCH);
+    m.attr("OBS_BALL") = OBS_BALL;
+    m.attr("OBS_PER_CAR") = OBS_PER_CAR;
+    m.attr("STATE_PER_CAR") = STATE_PER_CAR;
+    m.attr("NUM_BOOST_PADS") = NUM_BOOST_PADS;
+    m.attr("OBS_BOOST_PADS") = OBS_BOOST_PADS;
+    m.attr("OBS_RELATIVE_EGO_BALL") = OBS_RELATIVE_EGO_BALL;
+    m.attr("OBS_RELATIVE_PER_OTHER_CAR") = OBS_RELATIVE_PER_OTHER_CAR;
+    m.attr("OBS_RELATIVE_GOALS") = OBS_RELATIVE_GOALS;
+    m.attr("OBS_EGO_DODGE") = OBS_EGO_DODGE;
+    m.attr("OBS_EGO_BOOST_INDEX") = OBS_BALL + OBS_BOOST;
+    m.attr("OBS_EGO_ON_GROUND_INDEX") = OBS_BALL + OBS_ON_GROUND;
+    m.attr("OBS_EGO_FLIP_INDEX") = OBS_EGO_FLIP_INDEX;
+    m.attr("OBS_EGO_DODGE_TIME_INDEX") = OBS_EGO_DODGE_TIME_INDEX;
+
+    m.attr("PHYS_TICKS_PER_SECOND") = PHYS_TICKS_PER_SECOND;
+    m.attr("PHYS_DT") = PHYS_DT;
+    m.attr("DOUBLEJUMP_MAX_DELAY") = DOUBLEJUMP_MAX_DELAY;
+    m.attr("REGULATION_TICKS") = REGULATION_TICKS;
+    m.attr("OBS_POSITION_SCALE") = py::make_tuple(
+        OBS_POSITION_SCALE.x, OBS_POSITION_SCALE.y, OBS_POSITION_SCALE.z);
+    m.attr("BALL_MAX_SPEED") = BALL_MAX_SPEED;
+    m.attr("BALL_MAX_ANG_SPEED") = BALL_MAX_ANG_SPEED;
+    m.attr("CAR_MAX_SPEED") = CAR_MAX_SPEED;
+    m.attr("CAR_MAX_ANG_SPEED") = CAR_MAX_ANG_SPEED;
+    m.attr("BOOST_MAX") = BOOST_MAX;
+
+    py::tuple boostPadPositions(NUM_BOOST_PADS);
+    for (int pad = 0; pad < NUM_BOOST_PADS; pad++)
+    {
+        const Vec3& pos = BOOST_PADS[pad].pos;
+        boostPadPositions[pad] = py::make_tuple(pos.x, pos.y, pos.z);
+    }
+    m.attr("BOOST_PAD_POSITIONS") = boostPadPositions;
 
     py::class_<EnvWrapper>(m, "Env")
         .def(py::init<int, int, int, int, int, bool, bool>(),

@@ -33,6 +33,7 @@ CARL_D __noinline__ Vec3 solveBallArena(
     {
         ballWasHit |= __ldg(&state->cars.ballHitTick[carBase + carOffset]) >= 0;
     }
+    
     solveBallArenaContacts(body, contacts, count, ballWasHit);
 
     state->ball.vel[ballIdx] = body.vel;

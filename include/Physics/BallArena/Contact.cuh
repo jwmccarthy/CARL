@@ -19,6 +19,7 @@ CARL_D CARL_FI Vec3 closestPointOnBallArenaEdge(
 {
     const Vec3 edge = end - start;
     const float t = clampf((point - start).dot(edge) / edge.lenSq(), 0.f, 1.f);
+
     return start + edge * t;
 }
 
@@ -31,19 +32,23 @@ CARL_D CARL_FI bool clampBallArenaNormal(
 {
     Vec3 edgeCross = edgeAxis.cross(faceNormal);
     const float crossLenSq = edgeCross.lenSq();
+
     if (crossLenSq <= 1e-12f) return false;
 
     edgeCross = edgeCross * rsqrtf(crossLenSq);
+
     const float currentAngle = atan2f(
         contactNormal.dot(edgeCross),
         contactNormal.dot(faceNormal));
     const bool outside = edgeAngle < 0.f
         ? currentAngle < edgeAngle
         : currentAngle > edgeAngle;
+
     if (!outside) return false;
 
     clampedNormal = rotateAroundAxis(
         contactNormal, edgeAxis, edgeAngle - currentAngle);
+
     return true;
 }
 
@@ -60,9 +65,11 @@ CARL_D CARL_FI void adjustBallArenaEdgeNormal(
     for (int edge = 0; edge < 3; edge++)
     {
         if (fabsf(angles[edge]) >= BOUNDARY_EDGE_ANGLE) continue;
+
         const Vec3 nearest = closestPointOnBallArenaEdge(
             point, verts[edge], verts[(edge + 1) % 3]);
         const float distSq = (point - nearest).lenSq();
+
         if (distSq < bestDistSq)
         {
             bestDistSq = distSq;
@@ -159,11 +166,13 @@ CARL_D CARL_FI bool sphereTriangleContact(
         center, tri.v0, tri.v1, tri.v2);
     const Vec3 delta = center - point;
     const float distSq = delta.lenSq();
+
     if (distSq >= radius * radius) return false;
 
     // Use face normals by default to avoid tessellation-edge contacts.
     Vec3 normal = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0);
     const float normalLenSq = normal.lenSq();
+    
     if (normalLenSq < 1e-12f) return false;
 
     normal = normal * rsqrtf(normalLenSq);

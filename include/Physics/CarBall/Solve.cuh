@@ -81,6 +81,7 @@ CARL_D CARL_FI float ballCarRowVelocity(
 {
     const Vec3 ballPoint = ballVel + ballAng.cross(ballOffset);
     const Vec3 carPoint = car.vel + car.ang.cross(carOffset);
+    
     return row.axis.dot(ballPoint - carPoint);
 }
 

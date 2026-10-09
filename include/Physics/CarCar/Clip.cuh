@@ -178,6 +178,7 @@ CARL_D CARL_FI int faceContacts(
         sat.minAxis,
         sat.minPen
     };
+    
     return 1;
 }
 

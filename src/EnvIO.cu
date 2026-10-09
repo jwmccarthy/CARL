@@ -63,10 +63,7 @@ __global__ void packObsKernel(
         return;
     }
     const int observerIdx = agentIdx % nCars;
-    const int obsDim = OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS
-        + OBS_RELATIVE_EGO_BALL
-        + (nCars - 1) * OBS_RELATIVE_PER_OTHER_CAR
-        + OBS_RELATIVE_GOALS + OBS_EGO_DODGE;
+    const int obsDim = observationDim(nCars);
 
     packObservations(
         state, simIdx, observerIdx,
@@ -89,7 +86,7 @@ __global__ void packStateKernel(
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= nSim) return;
 
-    const int stateDim = OBS_BALL + nCars * STATE_PER_CAR + NUM_BOOST_PADS;
+    const int stateDim = packedStateDim(nCars);
     packState(state, simIdx, nCars, touchWindow, output + simIdx * stateDim);
 }
 
@@ -346,11 +343,8 @@ EnvIO::EnvIO(
     bool normalize)
     : nSim(nSim)
     , nCars(nCars)
-    , obsDim(OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS
-        + OBS_RELATIVE_EGO_BALL
-        + (nCars - 1) * OBS_RELATIVE_PER_OTHER_CAR
-        + OBS_RELATIVE_GOALS + OBS_EGO_DODGE)
-    , stateDim(OBS_BALL + nCars * STATE_PER_CAR + NUM_BOOST_PADS)
+    , obsDim(observationDim(nCars))
+    , stateDim(packedStateDim(nCars))
     , actDim(nCars * ACT_PER_CAR)
     , invertOrange(invertOrange)
     , normalize(normalize)
@@ -609,7 +603,8 @@ void EnvIO::setCar(
     CUDA_CHECK(cudaGetLastError());
 }
 
-void EnvIO::setMatchState(GameState* d_state, const int32_t* blueScore,
+void EnvIO::setMatchState(
+    GameState* d_state, const int32_t* blueScore,
     const int32_t* orangeScore, const int32_t* episodeTicks,
     const int64_t* simulationIndices, int nSelected)
 {

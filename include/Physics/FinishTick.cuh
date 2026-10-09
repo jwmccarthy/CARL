@@ -109,6 +109,7 @@ CARL_D CARL_FI void finishCarTick(
         state->cars.demoRespawnTimer[carIdx] = timer;
 
         if (timer <= 0.f) respawnCar(state, carIdx);
+        
         return;
     }
 

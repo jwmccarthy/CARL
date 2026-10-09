@@ -58,8 +58,8 @@ private:
     int  obsDim;
     int  stateDim;
     int  actDim;
-    int  maxTicks = 5 * 60 * 120;
-    int  overtimeTimeoutTicks = 5 * 60 * 120;
+    int  maxTicks = REGULATION_TICKS;
+    int  overtimeTimeoutTicks = REGULATION_TICKS;
     int  noTouchTimeoutTicks = 0;
     bool invertOrange;
     bool normalize;

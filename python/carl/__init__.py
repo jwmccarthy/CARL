@@ -7,6 +7,8 @@ os.environ.setdefault(
     str(Path(__file__).with_name("assets") / "arena.obj"),
 )
 
-from ._carl import Env
+from . import _carl
 
-__all__ = ["Env"]
+# Re-export the native layout and physics constants without copying their values
+__all__ = [name for name in vars(_carl) if name == "Env" or name.isupper()]
+globals().update({name: getattr(_carl, name) for name in __all__})
