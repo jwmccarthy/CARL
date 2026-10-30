@@ -224,6 +224,8 @@ CARL_D __noinline__ void solvePairContacts(
         for (int i = 0; i < count; i++)
         {
             const float maxImpulse = CARCAR_COLLISION_FRICTION * rows[i].normal.applied;
+            if (maxImpulse <= 0.f)
+                continue;
 
             resolvePairRow(
                 bodyA, bodyB, rows[i].friction,

@@ -128,7 +128,7 @@ CARL_D CARL_FI void updateSteer(ControlCtx& ctx)
         angle += (slideAngle - angle) * s.handbrakeVal;
     }
 
-    susp.steerAngle[ctx.carIdx] = angle * c.steer;
+    stageLagged(susp.steerAngle[ctx.carIdx], susp.steerAnglePrev[ctx.carIdx], angle * c.steer);
 }
 
 CARL_D CARL_FI void tryStartAutoFlip(ControlCtx& ctx)

@@ -24,7 +24,7 @@ CARL_D __noinline__ Vec3 solveBallArena(
         Vec3::zero(),
         Vec3::zero()
     };
-    BallArenaContact contacts[4];
+    BallArenaContact contacts[MAX_BALL_ARENA_CONTACTS];
     const int count = gatherBallArenaContacts(contacts, body.pos, arena);
 
     bool ballWasHit = false;
@@ -53,13 +53,20 @@ CARL_D CARL_FI void solveBallForSim(
     const Vec3 ballAng = Vec3::ldg(state->ball.ang[ballIdx]);
     const bool sleeping = ballVel.lenSq() == 0.f && ballAng.lenSq() == 0.f;
 
+    auto &ball = state->ball;
+    const Vec3 exportedPos = Vec3::ldg(ball.pos[ballIdx]);
+    const bool valid = ball.integrationValid[ballIdx] != 0;
+    Vec3 posBT = valid && (exportedPos - Vec3::ldg(ball.exportedPos[ballIdx])).lenSq() == 0.f
+                     ? Vec3::ldg(ball.integrationPos[ballIdx])
+                     : exportedPos * .02f;
+    Vec3 velBT = valid && (ballVel - Vec3::ldg(ball.exportedVel[ballIdx])).lenSq() == 0.f
+                     ? Vec3::ldg(ball.integrationVel[ballIdx])
+                     : ballVel * .02f;
+
     // Damped velocity: exponential drag then gravity, matching Bullet
-    const Vec3 velNoExt = sleeping
-        ? ballVel
-        : ballVel * powf(1.f - BALL_DRAG, PHYS_DT);
-    const Vec3 preSolveVel = sleeping
-        ? ballVel
-        : velNoExt + WORLD_GRAVITY * PHYS_DT;
+    const Vec3 dampedBT = sleeping ? velBT : velBT * powf(1.f - BALL_DRAG, PHYS_DT);
+    const Vec3 preSolveBT = sleeping ? velBT : dampedBT + (WORLD_GRAVITY * .02f) * PHYS_DT;
+    const Vec3 velNoExt = dampedBT * 50.f, preSolveVel = preSolveBT * 50.f;
 
     Vec3 pushVel = Vec3::zero();
     
@@ -72,10 +79,20 @@ CARL_D CARL_FI void solveBallForSim(
     solveBallCarForSim(state, simIdx, preSolveVel);
 
     // Integrate position after all collision solves
-    Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
-    ballPos = ballPos + pushVel * PHYS_DT;
-    ballPos = ballPos + Vec3::ldg(state->ball.vel[ballIdx]) * PHYS_DT;
+    const Vec3 correctedPos = ball.pos[ballIdx];
+    if ((correctedPos - exportedPos).lenSq() != 0.f)
+        posBT = correctedPos * .02f;
+    const Vec3 finalVel = ball.vel[ballIdx];
+    velBT = (finalVel - preSolveVel).lenSq() == 0.f ? preSolveBT : finalVel * .02f;
+    posBT = posBT + (pushVel * .02f) * PHYS_DT;
+    posBT = posBT + velBT * PHYS_DT;
+    const Vec3 ballPos = posBT * 50.f;
     state->ball.pos[ballIdx] = ballPos;
+    ball.integrationPos[ballIdx] = posBT;
+    ball.integrationVel[ballIdx] = velBT;
+    ball.exportedPos[ballIdx] = ballPos;
+    ball.exportedVel[ballIdx] = finalVel;
+    ball.integrationValid[ballIdx] = 1;
 
     detectGoal(state, simIdx, ballPos);
 }

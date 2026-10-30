@@ -34,7 +34,9 @@ CARL_HD CARL_FI Quat integrateQuat(
     }
 
     const Quat delta = { axis.x, axis.y, axis.z, cosf(0.5f * angSpeed * dt) };
-    return delta.comp(rot).norm();
+    const Quat basisRot =
+        Quat::fromAxes(rot.toWorld(WORLD_X), rot.toWorld(WORLD_Y), rot.toWorld(WORLD_Z));
+    return delta.comp(basisRot).norm();
 }
 
 CARL_D CARL_FI void integrateCarState(

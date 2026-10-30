@@ -133,7 +133,7 @@ CARL_D CARL_FI SuspensionWheelContribution computeSuspWheel(
     Vec3 lateralAxle = frame.right;
     if (wheel < 2)
     {
-        const float steerAngle = __ldg(&susp.steerAngle[frame.carIdx]);
+        const float steerAngle = __ldg(&susp.steerAnglePrev[frame.carIdx]);
         if (fabsf(steerAngle) > 1e-6f)
         {
             float sinAngle, cosAngle;
@@ -334,4 +334,6 @@ CARL_D __noinline__ void applyCarSuspension(
     const Vec3 jumpImpulse = Vec3::ldg(space->susp.jumpImpulse[carIdx]);
     body.extVel = body.extVel + jumpImpulse;
     space->susp.jumpImpulse[carIdx] = Vec3::zero();
+    body.extAng = body.extAng + Vec3::ldg(space->susp.angularImpulse[carIdx]);
+    space->susp.angularImpulse[carIdx] = Vec3::zero();
 }

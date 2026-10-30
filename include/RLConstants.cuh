@@ -25,8 +25,9 @@ constexpr CARL_HD Vec3 OBS_POSITION_SCALE = {
 // --- Car dimensions ---
 
 constexpr CARL_HD Vec3 CAR_EXTENTS = { 120.507f, 86.6994f,  38.6591f };
-constexpr CARL_HD Vec3 CAR_HALF_EX = { 60.2535f, 43.3497f, 19.32955f };
-constexpr CARL_HD Vec3 CAR_OFFSETS = { 13.8757f,      0.f,   20.755f };
+constexpr float CAR_SHAPE_MARGIN = 1.932955f;
+constexpr CARL_HD Vec3 CAR_HALF_EX = {60.186455f, 43.282655f, 19.262505f};
+constexpr CARL_HD Vec3 CAR_OFFSETS = {13.87566f, 0.f, 20.755f};
 
 constexpr float CAR_REST_Z = 17.f;
 constexpr float CAR_RESPAWN_Z = 36.f;
@@ -102,7 +103,7 @@ constexpr int MAX_CAR_MANIFOLD_POINTS = 4;
 constexpr float CAR_ANGULAR_MOTION_THRESH = PI_4;
 constexpr float CAR_WORLD_RESTITUTION = 0.3f;
 constexpr float CAR_WORLD_FRICTION = 0.3f;
-constexpr float CAR_CONTACT_BREAK = 2.03425f;
+constexpr float CAR_CONTACT_BREAK = 2.03122735f;
 
 // --- Rigid body ---
 
@@ -114,11 +115,7 @@ constexpr float CAR_INV_MASS = 1.f / CAR_MASS;
 constexpr float CAR_MAX_SPEED = 2300.f;
 constexpr float CAR_MAX_ANG_SPEED = 5.5f;
 
-constexpr CARL_D Vec3 CAR_INV_INERTIA = {
-    1.f / 135169.80f,
-    1.f / 240247.05f,
-    1.f / 330580.95f
-};
+constexpr CARL_D Vec3 CAR_INV_INERTIA = {1.f / 134665.94f, 1.f / 239607.22f, 1.f / 329747.90f};
 constexpr CARL_D Vec3 WORLD_GRAVITY = { 0.f, 0.f, -650.f };
 
 // --- Solver ---
@@ -224,7 +221,7 @@ constexpr float BALL_INV_INERTIA = 1.f / BALL_INERTIA;
 constexpr float CAR_BALL_RESTITUTION = 0.f;
 constexpr float CAR_BALL_FRICTION = 2.f;
 constexpr float CAR_BALL_CONTACT_BREAK = 1.825f;
-constexpr float CAR_BALL_SHAPE_MARGIN = 2.f;
+constexpr float CAR_BALL_SHAPE_MARGIN = CAR_SHAPE_MARGIN;
 constexpr CARL_D Vec3 CAR_BALL_SOLVER_HALF_EX = {
     CAR_HALF_EX.x + CAR_BALL_SHAPE_MARGIN,
     CAR_HALF_EX.y + CAR_BALL_SHAPE_MARGIN,

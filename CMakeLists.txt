@@ -40,6 +40,7 @@ target_link_libraries(carl PUBLIC
 )
 
 target_compile_options(carl PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
     $<$<COMPILE_LANGUAGE:CXX>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>

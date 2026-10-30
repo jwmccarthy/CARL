@@ -77,7 +77,7 @@ CARL_D CARL_FI BallArenaSolverRow makeBallArenaNormalRow(
         : 0.f;
     bounce = fmaxf(bounce, 0.f);
 
-    const float posError = contact.depth * CAR_CONTACT_ERP / PHYS_DT;
+    const float posError = fmaxf(contact.depth, 0.f) * CAR_CONTACT_ERP / PHYS_DT;
     const float posImpulse = posError * row.jacInv;
     const float velImpulse = (bounce - relVel) * row.jacInv;
 
@@ -200,7 +200,11 @@ CARL_D CARL_FI void solveBallArenaContacts(
     int count,
     bool ballWasHit)
 {
-    BallArenaSolverContact rows[4]{};
+    if (count == 0)
+        return;
+    BallArenaSolverRow splitRows[MAX_BALL_ARENA_CONTACTS];
+    Vec3 totalNormal = Vec3::zero();
+    float totalRadius = 0.f;
     // Omit split correction for isolated floor contacts after a car hit.
     const bool splitCorrection = !ballWasHit
         || count != 1
@@ -210,37 +214,32 @@ CARL_D CARL_FI void solveBallArenaContacts(
     for (int i = 0; i < count; i++)
     {
         const Vec3 relPos = contacts[i].relPos;
-        rows[i].normal = makeBallArenaNormalRow(
-            body, contacts[i], relPos, splitCorrection);
-        rows[i].friction = makeBallArenaFrictionRow(body, contacts[i], relPos);
+        splitRows[i] = makeBallArenaNormalRow(body, contacts[i], relPos, splitCorrection);
+        totalNormal = totalNormal + contacts[i].normal;
+        totalRadius += sqrtf(relPos.lenSq());
     }
+    BallArenaContact special{};
+    special.normal = totalNormal * (1.f / count);
+    special.relPos = special.normal * (-totalRadius / count);
+    special.depth = -totalRadius / count;
+    auto normalRow = makeBallArenaNormalRow(body, special, special.relPos, false);
+    auto frictionRow = makeBallArenaFrictionRow(body, special, special.relPos);
 
     for (int iter = 0; iter < CAR_SOLVER_ITERS; iter++)
     {
         #pragma unroll
         for (int i = 0; i < count; i++)
         {
-            resolveBallArenaSplit(body, rows[i].normal);
+            resolveBallArenaSplit(body, splitRows[i]);
         }
     }
 
     for (int iter = 0; iter < CAR_SOLVER_ITERS; iter++)
     {
-        #pragma unroll
-        for (int i = 0; i < count; i++)
-        {
-            resolveBallArenaNormal(body, rows[i].normal);
-        }
-
-        #pragma unroll
-        for (int i = 0; i < count; i++)
-        {
-            const float maxImpulse = BALL_WORLD_FRICTION * rows[i].normal.applied;
-            
-            if (maxImpulse <= 0.f) continue;
-
-            resolveBallArenaFriction(body, rows[i].friction, maxImpulse);
-        }
+        resolveBallArenaNormal(body, normalRow);
+        const float maxImpulse = BALL_WORLD_FRICTION * normalRow.applied;
+        if (maxImpulse > 0.f)
+            resolveBallArenaFriction(body, frictionRow, maxImpulse);
     }
 
     body.vel = body.vel + body.deltaVel;

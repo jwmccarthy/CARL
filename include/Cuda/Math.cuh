@@ -35,8 +35,7 @@ struct __align__(16) Vec3
     
     static CARL_D CARL_FI Vec3 ldg(const Vec3& v)
     {
-        float4 tmp = __ldg(reinterpret_cast<const float4*>(&v));
-        return { tmp.x, tmp.y, tmp.z, tmp.w };
+        return v;
     }
 
     static constexpr CARL_HD CARL_FI Vec3 zero()
@@ -232,13 +231,39 @@ struct __align__(16) Quat
 
     static CARL_D CARL_FI Quat ldg(const Quat& i)
     {
-        float4 tmp = __ldg(reinterpret_cast<const float4*>(&i));
-        return { tmp.x, tmp.y, tmp.z, tmp.w };
+        return i;
     }
 
     static constexpr CARL_HD CARL_FI Quat angle(float a)
     {
         return { 0.f, 0.f, sinf(a / 2), cosf(a / 2) };
+    }
+
+    static CARL_HD CARL_FI Quat fromAxes(const Vec3 &f, const Vec3 &r, const Vec3 &u)
+    {
+        const float m[3][3] = {{f.x, r.x, u.x}, {f.y, r.y, u.y}, {f.z, r.z, u.z}};
+        const float trace = m[0][0] + m[1][1] + m[2][2];
+        float q[4];
+        if (trace > 0.f)
+        {
+            const float x = trace + 1.f, s = .5f / sqrtf(x);
+            q[3] = x * s;
+            q[0] = (m[2][1] - m[1][2]) * s;
+            q[1] = (m[0][2] - m[2][0]) * s;
+            q[2] = (m[1][0] - m[0][1]) * s;
+        }
+        else
+        {
+            const int i =
+                m[0][0] < m[1][1] ? (m[1][1] < m[2][2] ? 2 : 1) : (m[0][0] < m[2][2] ? 2 : 0);
+            const int j = (i + 1) % 3, k = (i + 2) % 3;
+            const float x = m[i][i] - m[j][j] - m[k][k] + 1.f, s = .5f / sqrtf(x);
+            q[i] = x * s;
+            q[3] = (m[k][j] - m[j][k]) * s;
+            q[j] = (m[j][i] + m[i][j]) * s;
+            q[k] = (m[k][i] + m[i][k]) * s;
+        }
+        return {q[0], q[1], q[2], q[3]};
     }
 
     CARL_SCALAR_OP(Quat, float, +)
@@ -253,7 +278,7 @@ struct __align__(16) Quat
 
     CARL_HD CARL_FI float dot(const Quat& q) const
     {
-        return x * q.x + y * q.y + z * q.z + w * q.w;
+        return (x * q.x + z * q.z) + (y * q.y + w * q.w);
     }
 
     CARL_HD CARL_FI float lenSq() const
@@ -285,18 +310,18 @@ struct __align__(16) Quat
     CARL_HD CARL_FI Quat comp(const Quat& q) const
     {
         return {
-            w * q.x + x * q.w + y * q.z - z * q.y,
-            w * q.y - x * q.z + y * q.w + z * q.x,
-            w * q.z + x * q.y - y * q.x + z * q.w,
-            w * q.w - x * q.x - y * q.y - z * q.z
-        };
+            (w * q.x - z * q.y) + (x * q.w + y * q.z), (w * q.y - x * q.z) + (y * q.w + z * q.x),
+            (w * q.z - y * q.x) + (z * q.w + x * q.y), (w * q.w - z * q.z) - (x * q.x + y * q.y)};
     }
 
     CARL_HD CARL_FI Vec3 toWorld(const Vec3& v) const
     {
-        Vec3 qv = toVec3();
-        Vec3 t = qv.cross(v) * 2.f;
-        return v + t * w + qv.cross(t);
+        const float s = 2.f / lenSq();
+        const float wx = w * x, wy = w * y, wz = w * z;
+        const float xx = x * x, xy = x * y, xz = x * z, yy = y * y, yz = y * z, zz = z * z;
+        return {(1.f - (yy + zz) * s) * v.x + ((xy - wz) * s) * v.y + ((xz + wy) * s) * v.z,
+                ((xy + wz) * s) * v.x + (1.f - (xx + zz) * s) * v.y + ((yz - wx) * s) * v.z,
+                ((xz - wy) * s) * v.x + ((yz + wx) * s) * v.y + (1.f - (xx + yy) * s) * v.z};
     }
 
     CARL_HD CARL_FI Vec3 toLocal(const Vec3& v) const

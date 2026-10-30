@@ -1,8 +1,32 @@
 #pragma once
 
+/* Collision routines below contain altered CUDA adaptations of Bullet's
+   sphere/triangle, internal-edge, and manifold algorithms.
+
+   Bullet Continuous Collision Detection and Physics Library
+   Copyright (c) 2003-2009 Erwin Coumans http://bulletphysics.org
+
+   This software is provided 'as-is', without any express or implied warranty.
+   In no event will the authors be held liable for any damages arising from the
+   use of this software. Permission is granted to anyone to use this software
+   for any purpose, including commercial applications, and to alter it and
+   redistribute it freely, subject to the following restrictions:
+   1. The origin of this software must not be misrepresented; you must not claim
+      that you wrote the original software. If you use this software in a
+      product, an acknowledgment in the product documentation would be
+      appreciated but is not required.
+   2. Altered source versions must be plainly marked as such, and must not be
+      misrepresented as being the original software.
+   3. This notice may not be removed or altered from any source distribution.
+*/
+
 #include "Arena/ArenaMesh.cuh"
 #include "Cuda/Math.cuh"
 #include "RLConstants.cuh"
+#include <cassert>
+
+constexpr int MAX_BALL_ARENA_CONTACTS = 68; // 16 native meshes x 4, plus planes.
+constexpr float BALL_ARENA_CONTACT_BREAK = 1.905f;
 
 struct BallArenaContact
 {
@@ -10,6 +34,8 @@ struct BallArenaContact
     Vec3 relPos;
     Vec3 normal;
     float depth;
+    int triangle = -1;
+    Vec3 reductionPos;
 };
 
 CARL_D CARL_FI Vec3 closestPointOnBallArenaEdge(
@@ -59,7 +85,7 @@ CARL_D CARL_FI void adjustBallArenaEdgeNormal(
     const Vec3& angles)
 {
     int bestEdge = -1;
-    float bestDistSq = 100.f;
+    float bestDistSq = 25.f; // Bullet's 0.1 m edge-distance threshold, in UU.
 
     const Vec3 verts[3] = { tri.v0, tri.v1, tri.v2 };
     for (int edge = 0; edge < 3; edge++)
@@ -80,12 +106,12 @@ CARL_D CARL_FI void adjustBallArenaEdgeNormal(
     if (bestEdge < 0) return;
 
     Vec3 faceNormal = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).norm();
-    if (faceNormal.dot(contact.normal) < 0.f) faceNormal = faceNormal.neg();
 
     const float angle = angles[bestEdge];
     if (angle == 0.f)
     {
-        contact.normal = faceNormal;
+        if (faceNormal.dot(contact.normal) >= 0.f)
+            contact.normal = faceNormal;
         return;
     }
 
@@ -97,7 +123,8 @@ CARL_D CARL_FI void adjustBallArenaEdgeNormal(
     if (contact.normal.dot(normalA) < 0.f
         && contact.normal.dot(normalB) < 0.f)
     {
-        contact.normal = faceNormal;
+        if (faceNormal.dot(contact.normal) >= 0.f)
+            contact.normal = faceNormal;
         return;
     }
 
@@ -108,6 +135,50 @@ CARL_D CARL_FI void adjustBallArenaEdgeNormal(
     {
         contact.normal = clamped.norm();
     }
+}
+
+CARL_D CARL_FI void adjustNativeBallEdgeNormal(BallArenaContact &contact, const Tri &tri,
+                                               const Vec3 &angles, int flags,
+                                               float edgeDistance = 5.f)
+{
+    const Vec3 verts[3] = {tri.v0, tri.v1, tri.v2};
+    int best = -1;
+    float bestSq = edgeDistance * edgeDistance;
+    for (int e = 0; e < 3; e++)
+    {
+        if (fabsf(angles[e]) >= 2.f * PI)
+            continue;
+        const Vec3 near = closestPointOnBallArenaEdge(contact.point, verts[e], verts[(e + 1) % 3]);
+        const float dist = (contact.point - near).lenSq();
+        if (dist < bestSq)
+        {
+            best = e;
+            bestSq = dist;
+        }
+    }
+    if (best < 0)
+        return;
+    const Vec3 face = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).norm();
+    const Vec3 edge = (verts[best] - verts[(best + 1) % 3]).norm();
+    const float angle = angles[best];
+    bool concave = angle == 0.f;
+    if (!concave)
+    {
+        const float sign = (flags & (1 << best)) ? 1.f : -1.f;
+        Vec3 other = rotateAroundAxis(face, edge, angle);
+        if (flags & (1 << (best + 3)))
+            other = other.neg();
+        concave = contact.normal.dot(face * sign) < 0.f && contact.normal.dot(other * sign) < 0.f;
+        if (!concave)
+        {
+            Vec3 clamped;
+            if (clampBallArenaNormal(edge, face * sign, contact.normal, angle, clamped) &&
+                clamped.dot(face) > 0.f)
+                contact.normal = clamped;
+        }
+    }
+    if (concave && face.dot(contact.normal) >= 0.f)
+        contact.normal = face;
 }
 
 CARL_D CARL_FI Vec3 closestPointOnTriangle(
@@ -167,9 +238,10 @@ CARL_D CARL_FI bool sphereTriangleContact(
     const Vec3 delta = center - point;
     const float distSq = delta.lenSq();
 
-    if (distSq >= radius * radius) return false;
+    const float contactRadius = radius + BALL_ARENA_CONTACT_BREAK;
+    if (distSq >= contactRadius * contactRadius)
+        return false;
 
-    // Use face normals by default to avoid tessellation-edge contacts.
     Vec3 normal = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0);
     const float normalLenSq = normal.lenSq();
     
@@ -180,9 +252,11 @@ CARL_D CARL_FI bool sphereTriangleContact(
     {
         normal = normal.neg();
     }
+    if (distSq > 1e-8f)
+        normal = delta * rsqrtf(distSq);
 
     contact.point = point;
-    contact.relPos = normal * -BALL_COLLISION_RADIUS;
+    contact.relPos = normal * -radius;
     contact.normal = normal;
     contact.depth = distSq > 1e-8f
         ? radius - sqrtf(distSq)
@@ -191,111 +265,185 @@ CARL_D CARL_FI bool sphereTriangleContact(
     return true;
 }
 
+CARL_D CARL_FI bool nativeSphereTriangleContact(BallArenaContact &c, const Vec3 &center,
+                                                const Tri &t)
+{
+    constexpr float radius = BALL_COLLISION_RADIUS * .02f;
+    constexpr float extent = radius + BALL_ARENA_CONTACT_BREAK * .02f;
+    const Vec3 u = t.v1 - t.v0, v = t.v2 - t.v0, w = center - t.v0, n = u.cross(v);
+    const float n2 = n.lenSq();
+    if (n2 < 1e-14f)
+        return false;
+    Vec3 normal = n * (1.f / sqrtf(n2));
+    float plane = w.dot(normal);
+    if (plane < 0.f)
+    {
+        plane = -plane;
+        normal = normal.neg();
+    }
+    if (plane >= extent)
+        return false;
+    const float gamma = u.cross(w).dot(n) / n2, beta = w.cross(v).dot(n) / n2,
+                alpha = 1.f - gamma - beta;
+    const bool inside =
+        alpha >= 0.f && alpha <= 1.f && beta >= 0.f && beta <= 1.f && gamma >= 0.f && gamma <= 1.f;
+    c.point = inside ? center - normal * plane : closestPointOnTriangle(center, t.v0, t.v1, t.v2);
+    const Vec3 delta = center - c.point;
+    const float d2 = delta.lenSq();
+    if (d2 >= extent * extent)
+        return false;
+    const float distance = sqrtf(d2);
+    c.normal = d2 > 1.1920929e-7f ? delta * (1.f / distance) : normal;
+    c.depth = d2 > 1.1920929e-7f ? radius - distance : radius;
+    c.relPos = (c.point - c.normal * c.depth) - center;
+    c.reductionPos = c.relPos;
+    return true;
+}
+
+CARL_D CARL_FI int ballContactReplacement(const BallArenaContact *p, const BallArenaContact &c)
+{
+    int deepest = -1;
+    float depth = c.depth;
+    for (int i = 0; i < 4; i++)
+        if (p[i].depth > depth)
+        {
+            deepest = i;
+            depth = p[i].depth;
+        }
+    float area[4] = {0, 0, 0, 0};
+    const Vec3 x = c.reductionPos;
+    if (deepest != 0)
+        area[0] = (x - p[1].reductionPos).cross(p[3].reductionPos - p[2].reductionPos).lenSq();
+    if (deepest != 1)
+        area[1] = (x - p[0].reductionPos).cross(p[3].reductionPos - p[2].reductionPos).lenSq();
+    if (deepest != 2)
+        area[2] = (x - p[0].reductionPos).cross(p[3].reductionPos - p[1].reductionPos).lenSq();
+    if (deepest != 3)
+        area[3] = (x - p[0].reductionPos).cross(p[2].reductionPos - p[1].reductionPos).lenSq();
+    int best = 0;
+    for (int i = 1; i < 4; i++)
+        if (area[i] > area[best])
+            best = i;
+    return best;
+}
+
 CARL_D CARL_FI int gatherBallArenaContacts(
     BallArenaContact* contacts,
     const Vec3& center,
     ArenaMesh* arena)
 {
-    constexpr float radius = BALL_REST_Z;
-    const Vec3 extent = Vec3::fill(radius);
+    constexpr float radius = BALL_COLLISION_RADIUS;
+    const Vec3 extent = Vec3::fill(radius + BALL_ARENA_CONTACT_BREAK);
     const Int3 cellLo = arena->aabbToCell3D(center - extent);
     const Int3 cellHi = arena->aabbToCell3D(center + extent);
 
-    int count = 0;
-    int rawCount = 0;
-    Vec3 rawRelPosSum = Vec3::zero();
-    Vec3 rawNormalSum = Vec3::zero();
-    float rawDepthSum = 0.f;
-    const bool curvedCorner = fabsf(center.x) > 3000.f
-        && fabsf(center.y) > 3000.f;
-    const bool backWallSeam = fabsf(center.y) > 4900.f;
-
+    constexpr int maxCells = 27;
+    static_assert(2.f * (BALL_COLLISION_RADIUS + BALL_ARENA_CONTACT_BREAK) <= 2.f * CELL_SIZE.x &&
+                  2.f * (BALL_COLLISION_RADIUS + BALL_ARENA_CONTACT_BREAK) <= 2.f * CELL_SIZE.y &&
+                  2.f * (BALL_COLLISION_RADIUS + BALL_ARENA_CONTACT_BREAK) <= 2.f * CELL_SIZE.z);
+    int cursor[maxCells], end[maxCells], cells = 0;
     for (int z = cellLo.z; z <= cellHi.z; z++)
     for (int y = cellLo.y; y <= cellHi.y; y++)
     for (int x = cellLo.x; x <= cellHi.x; x++)
     {
         const Int3 cell = { x, y, z };
         const int cellIdx = arena->cell3DToFlatIdx(cell);
-        const int begin = __ldg(&arena->prefix[cellIdx]);
-        const int end = __ldg(&arena->prefix[cellIdx + 1]);
-
-        for (int i = begin; i < end; i++)
+        cursor[cells] = arena->prefix[cellIdx];
+        end[cells] = arena->prefix[cellIdx + 1];
+        cells++;
+    }
+    int count = 0, mesh = -1, base = 0, localCount = 0, lastTri = -1;
+    while (true)
+    {
+        int selected = -1, triIdx = -1, key = 2147483647;
+        for (int cell = 0; cell < cells; cell++)
         {
-            const int triIdx = __ldg(&arena->triIdx[i]);
-            const Int3 owner = Int3::ldg(arena->cellLow[triIdx]).max(cellLo);
-            if (owner.x != x || owner.y != y || owner.z != z) continue;
-
-            BallArenaContact contact;
-
-            const Tri tri = arena->ldg(triIdx);
-            if (!sphereTriangleContact(contact, center, radius, tri)) continue;
-
-            if (backWallSeam)
+            if (cursor[cell] >= end[cell])
+                continue;
+            const int tri = arena->ballTriIdx[cursor[cell]];
+            const int candidate = arena->nativeMesh[tri] * 10000 + arena->nativeOrder[tri];
+            if (candidate < key)
             {
-                const Vec3 delta = center - contact.point;
-                contact.normal = delta.norm();
-                contact.relPos = contact.normal * -radius;
-                adjustBallArenaEdgeNormal(
-                    contact, contact.point,
-                    tri, Vec3::ldg(arena->triAngs[triIdx]));
-            }
-
-            if (backWallSeam)
-            {
-                rawCount++;
-                rawRelPosSum = rawRelPosSum + contact.relPos;
-                rawNormalSum = rawNormalSum + contact.normal;
-                rawDepthSum += contact.depth;
-            }
-
-            int slot = -1;
-
-            for (int c = 0; c < count; c++)
-            {
-                if (contacts[c].normal.dot(contact.normal) > 0.9999f)
-                {
-                    slot = c;
-                    break;
-                }
-            }
-
-            if (slot >= 0)
-            {
-                if (contact.depth > contacts[slot].depth)
-                {
-                    contacts[slot] = contact;
-                }
-            }
-            else if (count < 4)
-            {
-                contacts[count++] = contact;
+                key = candidate;
+                selected = cell;
+                triIdx = tri;
             }
         }
+        if (selected < 0)
+            break;
+        cursor[selected]++;
+        if (triIdx == lastTri)
+            continue;
+        lastTri = triIdx;
+        const int current = arena->nativeMesh[triIdx];
+        if (arena->hasNativeMetadata && current < 0)
+            continue;
+        BallArenaContact contact;
+        if (arena->hasNativeMetadata)
+        {
+            const Tri tri = {arena->nativeV0[triIdx], arena->nativeV1[triIdx],
+                             arena->nativeV2[triIdx]};
+            if (!nativeSphereTriangleContact(contact, center * .02f, tri))
+                continue;
+        }
+        else
+        {
+            if (!sphereTriangleContact(contact, center, radius, arena->ldg(triIdx)))
+                continue;
+            contact.reductionPos = contact.relPos;
+        }
+        contact.triangle = triIdx;
+        if (current != mesh)
+        {
+            base = count;
+            localCount = 0;
+            mesh = current;
+        }
+        int slot;
+        if (localCount < 4)
+        {
+            slot = localCount++;
+            count++;
+        }
+        else
+            slot = ballContactReplacement(contacts + base, contact);
+        if (arena->hasNativeMetadata)
+        {
+            const Tri tri = {arena->nativeV0[triIdx], arena->nativeV1[triIdx],
+                             arena->nativeV2[triIdx]};
+            adjustNativeBallEdgeNormal(contact, tri, arena->nativeEdgeAngles[triIdx],
+                                       arena->nativeEdgeFlags[triIdx], .1f);
+            contact.point = center * .02f + contact.relPos + contact.normal * contact.depth;
+        }
+        else
+        {
+            adjustBallArenaEdgeNormal(contact, contact.point, arena->ldg(triIdx),
+                                      arena->triAngs[triIdx]);
+            contact.point = center + contact.relPos + contact.normal * contact.depth;
+        }
+        contacts[base + slot] = contact;
     }
-
-    if (count > 1 && backWallSeam)
+    if (arena->hasNativeMetadata)
     {
-        contacts[0].relPos = rawRelPosSum * (1.f / rawCount);
-        contacts[0].normal = rawNormalSum * (1.f / rawCount);
-        contacts[0].depth = rawDepthSum / rawCount;
-        return 1;
-    }
-
-    if (count > 1 && curvedCorner)
-    {
-        Vec3 normal = Vec3::zero();
-        float depth = 0.f;
-
         for (int i = 0; i < count; i++)
         {
-            normal = normal + contacts[i].normal;
-            depth += contacts[i].depth;
+            contacts[i].point = contacts[i].point * 50.f;
+            contacts[i].relPos = contacts[i].relPos * 50.f;
+            contacts[i].depth *= 50.f;
         }
-
-        contacts[0].normal = normal * (1.f / count);
-        contacts[0].relPos = contacts[0].normal * -BALL_COLLISION_RADIUS;
-        contacts[0].depth = depth / count;
-        return 1;
+        const Vec3 normals[4] = {{0, 0, 1}, {0, 0, -1}, {1, 0, 0}, {-1, 0, 0}};
+        const float offsets[4] = {0.f, -2044.f, -4096.f, -4096.f};
+        for (int p = 0; p < 4; p++)
+        {
+            const Vec3 normal = normals[p];
+            const float depth = radius - (normal.dot(center) - offsets[p]);
+            if (depth > -BALL_ARENA_CONTACT_BREAK)
+            {
+                assert(count < MAX_BALL_ARENA_CONTACTS);
+                contacts[count++] = {center - normal * (radius - depth), normal * -radius, normal,
+                                     depth};
+            }
+        }
     }
 
     return count;

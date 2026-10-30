@@ -38,7 +38,8 @@ CARL_D CARL_FI void testCarCarAxis(
     const float depthAB = projA.max - projB.min;
     const float depthBA = projB.max - projA.min;
     const float depth = fminf(depthAB, depthBA);
-    if (depth >= result.minPen) return;
+    if (depth * (axisIdx >= 6 ? 1.05f : 1.f) >= result.minPen)
+        return;
 
     result.minPen = depth;
     result.minAxis = depthAB < depthBA ? axis.neg() : axis;
@@ -60,18 +61,51 @@ CARL_D CARL_FI SATResult carCarSAT(
         axesB[i] = boxB.axis(i);
     }
 
-    #pragma unroll
+    const Vec3 delta = boxB.cen * .02f - boxA.cen * .02f;
+    const Vec3 half = CAR_HALF_EX * .02f;
+    float alignment[3][3];
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            alignment[i][j] = fabsf(axesA[i].dot(axesB[j]));
+
+#pragma unroll
     for (int i = 0; i < 3; i++)
     {
-        testCarCarAxis(axesA[i], boxA, boxB, i, result);
-        if (!result.overlap) return result;
+        const float distance = delta.dot(axesA[i]);
+        const float radius = half[i] + half.x * alignment[i][0] + half.y * alignment[i][1] +
+                             half.z * alignment[i][2];
+        const float depth = (radius - fabsf(distance)) * 50.f;
+        if (depth < 0.f)
+        {
+            result.overlap = false;
+            return result;
+        }
+        if (depth < result.minPen)
+        {
+            result.minPen = depth;
+            result.minAxis = distance > 0 ? axesA[i].neg() : axesA[i];
+            result.axisIdx = i;
+        }
     }
 
     #pragma unroll
     for (int i = 0; i < 3; i++)
     {
-        testCarCarAxis(axesB[i], boxA, boxB, 3 + i, result);
-        if (!result.overlap) return result;
+        const float distance = delta.dot(axesB[i]);
+        const float radius = half.x * alignment[0][i] + half.y * alignment[1][i] +
+                             half.z * alignment[2][i] + half[i];
+        const float depth = (radius - fabsf(distance)) * 50.f;
+        if (depth < 0.f)
+        {
+            result.overlap = false;
+            return result;
+        }
+        if (depth < result.minPen)
+        {
+            result.minPen = depth;
+            result.minAxis = distance > 0 ? axesB[i].neg() : axesB[i];
+            result.axisIdx = 3 + i;
+        }
     }
 
     #pragma unroll

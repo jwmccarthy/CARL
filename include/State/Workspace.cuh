@@ -162,28 +162,22 @@ struct CarSuspension
     DeviceArray<float> rawThrottle;
     DeviceArray<float> handbrakeVal;
     DeviceArray<float> steerAngle;
+    DeviceArray<float> steerAnglePrev;
     DeviceArray<float> latFrictionPrev;
     DeviceArray<float> lonFrictionPrev;
 
     DeviceArray<Vec3>  jumpImpulse;
+    DeviceArray<Vec3> angularImpulse;
     DeviceArray<float> engineDrive;
     DeviceArray<float> engineDrivePrev;
 
     CarSuspension(int nTotalCars)
-        : totalWheels(nTotalCars * NUM_WHEELS)
-        , rayDist(totalWheels)
-        , rayNormal(totalWheels)
-        , brakeFactor(nTotalCars)
-        , brakeFactorPrev(nTotalCars)
-        , throttleVal(nTotalCars)
-        , rawThrottle(nTotalCars)
-        , handbrakeVal(nTotalCars)
-        , steerAngle(nTotalCars)
-        , latFrictionPrev(totalWheels)
-        , lonFrictionPrev(totalWheels)
-        , jumpImpulse(nTotalCars)
-        , engineDrive(nTotalCars)
-        , engineDrivePrev(nTotalCars)
+        : totalWheels(nTotalCars * NUM_WHEELS), rayDist(totalWheels), rayNormal(totalWheels),
+          brakeFactor(nTotalCars), brakeFactorPrev(nTotalCars), throttleVal(nTotalCars),
+          rawThrottle(nTotalCars), handbrakeVal(nTotalCars), steerAngle(nTotalCars),
+          steerAnglePrev(nTotalCars), latFrictionPrev(totalWheels), lonFrictionPrev(totalWheels),
+          jumpImpulse(nTotalCars), angularImpulse(nTotalCars), engineDrive(nTotalCars),
+          engineDrivePrev(nTotalCars)
     {}
 
     void reset()
@@ -197,8 +191,10 @@ struct CarSuspension
         rawThrottle.fill(0);
         handbrakeVal.fill(0);
         steerAngle.fill(0);
+        steerAnglePrev.fill(0);
 
         jumpImpulse.fill(0);
+        angularImpulse.fill(0);
         engineDrive.fill(0);
         engineDrivePrev.fill(0);
     }

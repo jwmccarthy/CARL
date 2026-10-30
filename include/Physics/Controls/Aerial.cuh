@@ -125,7 +125,10 @@ CARL_D CARL_FI void startFlip(ControlCtx& ctx, Vec3 dodge)
     s.hasFlipped = true;
     s.isFlipping = true;
 
-    dodge = dodge * rsqrtf(dodge.lenSq());
+    if (fabsf(dodge.x) < 0.1f && fabsf(dodge.y) < 0.1f)
+        dodge = Vec3::zero();
+    else
+        dodge = dodge * rsqrtf(dodge.lenSq());
     s.flipRelTorque = { -dodge.y, dodge.x, 0.f };
 
     const Vec3 localVel = scaledDodgeVel(ctx, dodge);
@@ -175,7 +178,8 @@ CARL_D CARL_FI void tryStartDodge(ControlCtx& ctx)
 
     // Large directional input starts a flip, otherwise double jump
     const Vec3 dodge = { -c.pitch, c.yaw + c.roll, 0.f };
-    if (dodge.lenSq() >= DODGE_DEADZONE * DODGE_DEADZONE)
+    const float inputMagnitude = fabsf(c.yaw) + fabsf(c.pitch) + fabsf(c.roll);
+    if (inputMagnitude >= DODGE_DEADZONE)
     {
         startFlip(ctx, dodge);
         return;
@@ -269,8 +273,8 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
     };
     const Vec3 worldTorque = ctx.rot.toWorld(relTorque);
 
-    ctx.state->cars.ang[ctx.carIdx] = Vec3::ldg(ctx.state->cars.ang[ctx.carIdx])
-        + worldTorque * PHYS_DT;
+    ctx.susp().angularImpulse[ctx.carIdx] =
+        Vec3::ldg(ctx.susp().angularImpulse[ctx.carIdx]) + worldTorque * PHYS_DT;
 
     return useAir;
 }
@@ -313,8 +317,8 @@ CARL_D CARL_FI void applyAirTorque(ControlCtx& ctx)
         damping = damping + dir * damp;
     }
 
-    ctx.state->cars.ang[ctx.carIdx] =
-        ang + (torque - damping) * (CAR_TORQUE_SCALE * PHYS_DT);
+    ctx.susp().angularImpulse[ctx.carIdx] = Vec3::ldg(ctx.susp().angularImpulse[ctx.carIdx]) +
+                                            (torque - damping) * (CAR_TORQUE_SCALE * PHYS_DT);
 }
 
 CARL_D CARL_FI void updateAirControl(ControlCtx& ctx, bool allowAir)
@@ -322,13 +326,13 @@ CARL_D CARL_FI void updateAirControl(ControlCtx& ctx, bool allowAir)
     const CarControls& c = ctx.input();
     const bool useAir = applyFlipTorque(ctx);
 
-    if (useAir && allowAir)
+    if (useAir && allowAir && !ctx.internal().isAutoFlipping)
     {
         applyAirTorque(ctx);
     }
 
     if (c.throttle != 0.f)
     {
-        addCarVel(ctx, ctx.fwd * (c.throttle * THROTTLE_AIR_ACCEL * PHYS_DT));
+        addDeferredVel(ctx, ctx.fwd * (c.throttle * THROTTLE_AIR_ACCEL * PHYS_DT));
     }
 }

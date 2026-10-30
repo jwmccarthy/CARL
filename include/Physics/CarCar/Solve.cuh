@@ -44,6 +44,8 @@ CARL_D CARL_FI void applyPairResult(
     // Split impulse changes position without leaking into reported velocity
     bodyA.pos = bodyA.pos + bodyA.pushVel * PHYS_DT;
     bodyB.pos = bodyB.pos + bodyB.pushVel * PHYS_DT;
+    bodyA.rot = integrateQuat(bodyA.rot, bodyA.turnVel * CAR_SPLIT_IMPULSE_TURN_ERP);
+    bodyB.rot = integrateQuat(bodyB.rot, bodyB.turnVel * CAR_SPLIT_IMPULSE_TURN_ERP);
     bodyA.cen = bodyA.pos + bodyA.rot.toWorld(CAR_OFFSETS);
     bodyB.cen = bodyB.pos + bodyB.rot.toWorld(CAR_OFFSETS);
 
@@ -70,7 +72,7 @@ CARL_D CARL_FI void solveCarCarForSim(
     {
         for (int b = a + 1; b < state->nCars; b++)
         {
-            solveCarCarPair(state, space, pairIdx, carBase + a, carBase + b);
+            solveCarCarPair(state, space, pairIdx, carBase + b, carBase + a);
             pairIdx++;
         }
     }

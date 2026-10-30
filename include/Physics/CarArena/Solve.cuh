@@ -89,10 +89,6 @@ CARL_D CARL_FI SolverRow makeNormalRow(
     {
         posError = -penetration * CAR_CONTACT_ERP * invDt;
     }
-    else
-    {
-        velError -= penetration * invDt;
-    }
 
     const float posImpulse = posError * row.jacInv;
     const float velImpulse = velError * row.jacInv;
@@ -118,7 +114,7 @@ CARL_D CARL_FI SolverRow makeFrictionRow(
     const Vec3& relPos,
     const SolverMotion& motion)
 {
-    const Vec3 contactVel = motion.totalVel + body.ang.cross(relPos);
+    const Vec3 contactVel = motion.totalVel + motion.totalAng.cross(relPos);
     const float normalVel = point.worldNormal.dot(contactVel);
     Vec3 tangent = contactVel - point.worldNormal * normalVel;
     const float tangentLenSq = tangent.lenSq();
@@ -128,7 +124,7 @@ CARL_D CARL_FI SolverRow makeFrictionRow(
         : fallbackTangent(point.worldNormal);
 
     SolverRow row = makeAxisRow(body, tangent, relPos);
-    const float tangentVel = rowVelocity(row, body.vel, body.ang);
+    const float tangentVel = rowVelocity(row, motion.totalVel, body.ang);
 
     row.rhs = -tangentVel * row.jacInv;
     row.upper = 0.f;
@@ -275,6 +271,8 @@ CARL_D CARL_FI void integrateAndClampCar(SolverBody& body)
 
 CARL_D CARL_FI void integrateSplitCorrection(SolverBody& body)
 {
+    if (body.pushVel.lenSq() == 0.f && body.turnVel.lenSq() == 0.f)
+        return;
     const Vec3 splitAng = body.turnVel * CAR_SPLIT_IMPULSE_TURN_ERP;
 
     integrateCarState(
@@ -297,17 +295,6 @@ CARL_D CARL_FI void solveCarArena(
     const CarPose pose = { body.cen, body.rot };
 
     applyCarSuspension(body, space, carIdx, state->tickCount);
-
-    const int pairCount = carHitPairCount(space, carIdx);
-    const int oldCount = __ldg(&space->ctMan.count[carIdx]);
-    if (oldCount == 0 && pairCount == 0)
-    {
-        body.vel = body.vel + body.extVel + body.deltaVel;
-        body.ang = body.ang + body.extAng + body.deltaAng;
-
-        writeSolverBody(state, body, carIdx);
-        return;
-    }
 
     ManifoldPoint points[MAX_CAR_MANIFOLD_POINTS]{};
     const int count = buildLocalManifold(points, space, arena, carIdx, pose);

@@ -10,6 +10,7 @@ CARL_D CARL_FI void resetBall(BallState* __restrict__ ball, int simIdx)
     ball->pos[simIdx] = { 0.f, 0.f, BALL_REST_Z };
     ball->vel[simIdx] = Vec3::zero();
     ball->ang[simIdx] = Vec3::zero();
+    ball->integrationValid[simIdx] = 0;
 }
 
 CARL_D CARL_FI void resetCar(CarState* __restrict__ cars, int carIdx, int locIdx, bool invert)
@@ -111,11 +112,13 @@ CARL_D CARL_FI void resetAfterDone(
     resetToKickoff(state, simIdx);
     state->episodeTicks[simIdx] = 0;
     state->lastBallTouchTicks[simIdx] = state->tickCount;
+    state->ballArenaContactTick[simIdx] = -1;
 
     const int carBase = simIdx * state->nCars;
     for (int local = 0; local < state->nCars; local++)
     {
         const int carIdx = carBase + local;
+        state->cars.arenaContactTick[carIdx] = -1;
         space->bp.numTris[carIdx] = 0;
         space->ctHit.carHitCount[carIdx] = 0;
         space->ctMan.count[carIdx] = 0;
@@ -131,13 +134,16 @@ CARL_D CARL_FI void resetAfterDone(
         space->susp.rawThrottle[carIdx] = 0.f;
         space->susp.handbrakeVal[carIdx] = 0.f;
         space->susp.steerAngle[carIdx] = 0.f;
+        space->susp.steerAnglePrev[carIdx] = 0.f;
         space->susp.jumpImpulse[carIdx] = Vec3::zero();
+        space->susp.angularImpulse[carIdx] = Vec3::zero();
         space->susp.engineDrive[carIdx] = 0.f;
         space->susp.engineDrivePrev[carIdx] = 0.f;
 
         for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
         {
             const int wheelIdx = carIdx * NUM_WHEELS + wheel;
+            state->cars.wheelSource[wheelIdx] = WHEEL_SOURCE_NONE;
             space->susp.rayDist[wheelIdx] = 0.f;
             space->susp.rayNormal[wheelIdx] = Vec3::zero();
             space->susp.latFrictionPrev[wheelIdx] = 0.f;

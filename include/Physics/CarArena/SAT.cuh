@@ -131,6 +131,11 @@ CARL_D CARL_FI void writeCarTriPairResult(
 
     const TriSAT tri = loadSATContext(
         space, arena, carIdx, offset, pose.cen, pose.rot);
+    const Tri worldTri = arena->ldg(tri.triIdx);
+    const Vec3 a = worldTri.v0, b = worldTri.v1, c = worldTri.v2;
+    if ((a.z == b.z && a.z == c.z && (a.z == 0.f || a.z == 2048.f)) ||
+        (a.x == b.x && a.x == c.x && fabsf(a.x) == 4096.f))
+        return;
     const SATResult sat = carTriSAT(tri);
 
     if (!sat.overlap) return;
