@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 #include <optional>
@@ -550,6 +551,7 @@ public:
     int getActDim() const { return io.getActDim(); }
     int getNSim()   const { return env.getNSim();  }
     int getNCars()  const { return env.getNCars(); }
+    uintptr_t getStream() const { return reinterpret_cast<uintptr_t>(env.getStream()); }
 
     py::list getActionNvec() const
     {
@@ -746,5 +748,6 @@ PYBIND11_MODULE(_carl, m)
         .def_property_readonly("act_dim",     &EnvWrapper::getActDim)
         .def_property_readonly("action_nvec", &EnvWrapper::getActionNvec)
         .def_property_readonly("n_sim",       &EnvWrapper::getNSim)
-        .def_property_readonly("n_cars",      &EnvWrapper::getNCars);
+        .def_property_readonly("n_cars",      &EnvWrapper::getNCars)
+        .def_property_readonly("stream",      &EnvWrapper::getStream);
 }
