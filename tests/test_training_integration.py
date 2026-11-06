@@ -35,6 +35,26 @@ class TargetDrivenPolicy(th.nn.Module):
 @unittest.skipUnless(th.cuda.is_available(), "requires a CUDA GPU")
 class TrainingIntegrationTests(unittest.TestCase):
 
+    def test_goal_is_not_failed_by_reset_ball_height(self):
+        initial = InitialState(ego=CarState(placement=OnSurface(position=(0, -1000))),
+                               ball=BallState(position=(0, 5300, 200)))
+        pack = TrainingPack(name="goal", exercises=[Exercise(
+            name="goal", initial=initial,
+            stages=[Stage(Goal(), fail_on=[StateCondition("ball_height", maximum=95.15)])],
+        )])
+        provider = TrainingPackResetProvider(pack, n_sim=1, seed=1)
+        runtime = TrainingPackRuntime(CompiledTrainingPack.compile(pack), n_sim=1)
+        manager = TrainingPackTerminationManager(runtime, provider)
+        env = CARLTorchVectorEnv(n_sim=1, n_blue=1, n_orange=0, frameskip=4,
+                                 capture_events=True, reset_state_provider=provider,
+                                 termination_manager=manager)
+        self.addCleanup(env.close)
+        env.reset()
+        _, _, terminated, _, info = env.step(th.zeros((1, 7), device="cuda"))
+        self.assertTrue(terminated[0].item())
+        self.assertTrue(info["exercise_success"][0].item())
+        self.assertFalse(info["exercise_failure"][0].item())
+
     def test_target_driven_mixed_pack_loop(self):
         def start(ball_position):
             return InitialState(

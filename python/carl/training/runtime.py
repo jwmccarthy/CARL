@@ -119,6 +119,7 @@ class CompiledTrainingPack:
     minimum:               th.Tensor
     maximum:               th.Tensor
     deadline:              th.Tensor
+    min_ticks:             th.Tensor
     deadline_from_start:   th.Tensor
     repeat_kind:           th.Tensor
     repeat_mask:           th.Tensor
@@ -153,6 +154,7 @@ class CompiledTrainingPack:
         minimum = th.full(shape, -math.inf, dtype=th.float32)
         maximum = th.full(shape, math.inf, dtype=th.float32)
         deadlines = th.full(shape, -1, dtype=th.int64)
+        min_ticks = th.zeros(shape, dtype=th.int64)
         deadline_from_start = th.zeros(shape, dtype=th.bool)
         repeat_kind = th.zeros(shape, dtype=th.int64)
         repeat_mask = th.zeros_like(repeat_kind)
@@ -183,7 +185,13 @@ class CompiledTrainingPack:
                 if stage.within_ticks is not None and stage.within_ticks <= 0:
                     raise ValueError("within_ticks must be positive")
 
+                if (not isinstance(stage.min_ticks, int) or isinstance(stage.min_ticks, bool)
+                        or stage.min_ticks < 0 or (stage.within_ticks is not None
+                                                   and stage.min_ticks >= stage.within_ticks)):
+                    raise ValueError("invalid min_ticks")
+
                 deadlines[index, stage_index] = stage.within_ticks if stage.within_ticks is not None else -1
+                min_ticks[index, stage_index] = stage.min_ticks
                 deadline_from_start[index, stage_index] = stage.from_exercise_start
                 valid[index, stage_index] = True
                 max_total_matches[index, stage_index] = (stage.max_total_matches
@@ -259,6 +267,7 @@ class CompiledTrainingPack:
             minimum               = minimum.to(device),
             maximum               = maximum.to(device),
             deadline              = deadlines.to(device),
+            min_ticks             = min_ticks.to(device),
             deadline_from_start   = deadline_from_start.to(device),
             repeat_kind           = repeat_kind.to(device),
             repeat_mask           = repeat_mask.to(device),
@@ -305,6 +314,7 @@ class TrainingPackRuntime:
         self.stage_index = th.zeros_like(self.exercise_index)
         self.ticks_remaining = th.full_like(self.exercise_index, -1)
         self.elapsed_ticks = th.zeros_like(self.exercise_index)
+        self.stage_elapsed_ticks = th.zeros_like(self.exercise_index)
         self.repeat_count = th.zeros_like(self.exercise_index)
         self.total_matches = th.zeros_like(self.exercise_index)
         self.active = th.zeros(n_sim, dtype=th.bool, device=device)
@@ -328,6 +338,7 @@ class TrainingPackRuntime:
         self.stage_index = th.where(selected, 0, self.stage_index)
         self.ticks_remaining = th.where(selected, deadlines, self.ticks_remaining)
         self.elapsed_ticks = th.where(selected, 0, self.elapsed_ticks)
+        self.stage_elapsed_ticks = th.where(selected, 0, self.stage_elapsed_ticks)
         self.repeat_count = th.where(selected, 0, self.repeat_count)
         self.total_matches = th.where(selected, 0, self.total_matches)
         self.active = self.active | selected
@@ -364,6 +375,10 @@ class TrainingPackRuntime:
         if state_values is not None:
             values = state_values.gather(1, mask.clamp(0, len(STATE_METRICS) - 1))
             state_match = (kind == STATE_VALUE) & (values >= minimum) & (values <= maximum)
+            # Goal detection resets the ball before the transition state is captured.
+            # Its state metrics therefore cannot describe the scoring transition.
+            goal = (ball & int(Event.GOAL)) != 0
+            state_match = state_match & ~(goal & (mask <= STATE_METRICS["ball_speed"]))
 
         return (
             ((kind == CAR_EVENT) & ((car & mask) != 0)) |
@@ -427,6 +442,9 @@ class TrainingPackRuntime:
             kind, mask, parameter, self.pack.minimum[index].unsqueeze(-1),
             self.pack.maximum[index].unsqueeze(-1), events, state_values,
         ).squeeze(-1)
+        elapsed_for_minimum = th.where(self.pack.deadline_from_start[index], self.elapsed_ticks,
+                                       self.stage_elapsed_ticks)
+        matched = matched & (elapsed_for_minimum >= self.pack.min_ticks[index])
         repeat_match = self._matches(
             self.pack.repeat_kind[index].unsqueeze(-1), self.pack.repeat_mask[index].unsqueeze(-1),
             self.pack.repeat_parameter[index].unsqueeze(-1), self.pack.repeat_minimum[index].unsqueeze(-1),
@@ -487,6 +505,8 @@ class TrainingPackRuntime:
         counted = self.active & ~failed & ~timed_out & in_time & (total_limit >= 0)
         self.total_matches = self.total_matches + counted.long() * total_events
         self.elapsed_ticks = th.where(self.active, exercise_elapsed, self.elapsed_ticks)
+        self.stage_elapsed_ticks = th.where(self.active, th.where(advanced, 0, self.stage_elapsed_ticks + frameskip),
+                                            self.stage_elapsed_ticks)
         self.active = self.active & ~failed & ~timed_out & ~succeeded
 
         return TrainingStep(succeeded=succeeded, failed=failed, timed_out=timed_out, advanced=advanced,

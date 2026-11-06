@@ -94,9 +94,19 @@ with wheel-support events for `SurfaceContact(surface=ArenaSurface.CEILING)`.
 For cars, `LeaveSurface()` without a surface matches loss of all wheel support;
 surface-qualified leave conditions also match transitions between surfaces.
 Stage deadlines normally start on stage entry. Set `from_exercise_start=True`
-with `within_ticks` to anchor a deadline to the exercise reset instead. Events
+with `within_ticks` to anchor the deadline and `min_ticks` to the exercise reset
+instead. `min_ticks` defaults to zero and sets the earliest eligible stage event;
+it must be nonnegative and less than `within_ticks` when a deadline is set.
+Failure conditions remain active before the minimum, and repeat conditions retain
+their usual behavior. Events
 are aggregated per frameskip window, so windows crossing a deadline are
-conservatively rejected and consecutive stages cannot advance in one window.
+conservatively rejected, windows must start at or after the minimum, and
+consecutive stages cannot advance in one window.
+
+Goal detection resets the ball before the transition state is captured. Therefore
+ball state conditions are not evaluated in a window containing a goal; use ball
+contact events to detect ground contact in that window. Car state conditions and
+event conditions remain active.
 
 `BallTouch(min_speed_gain=500, max_speed_gain=1500)` optionally restricts the
 signed change in ball speed in game units per second, with inclusive bounds. Either bound

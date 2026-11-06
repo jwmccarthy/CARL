@@ -73,6 +73,35 @@ class TrainingRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.exercise_index.tolist(), [1, 0])
         self.assertEqual(runtime.stage_index.tolist(), [0, 1])
 
+    def test_minimum_ticks_stage_and_exercise_time(self):
+        for device in (["cpu", "cuda"] if th.cuda.is_available() else ["cpu"]):
+            pack = self.make_pack()
+            pack.exercises[0].stages = [
+                Stage(Jump(), min_ticks=4, within_ticks=20, from_exercise_start=True),
+                Stage(Jump(), min_ticks=4),
+            ]
+            compiled = CompiledTrainingPack.compile(pack, device=device)
+            runtime = TrainingPackRuntime(compiled, 1)
+            runtime.reset(th.tensor([True], device=device), th.tensor([0], device=device))
+            event = make_events(device, [Event.JUMP])
+            self.assertEqual(runtime.target_sequence().min_ticks[0, :2].tolist(), [4, 4])
+            self.assertFalse(runtime.step(event, 3).advanced.item())
+            self.assertFalse(runtime.step(event, 2).advanced.item())
+            self.assertTrue(runtime.step(event, 1).advanced.item())
+            self.assertFalse(runtime.step(event, 4).advanced.item())
+            self.assertTrue(runtime.step(event, 1).succeeded.item())
+            runtime.reset(th.tensor([True], device=device), th.tensor([0], device=device))
+            self.assertEqual(runtime.stage_elapsed_ticks.item(), 0)
+
+    def test_invalid_minimum_ticks(self):
+        for minimum in (-1, 1.5, True, 10):
+            with self.subTest(minimum=minimum), self.assertRaises(ValueError):
+                Stage(Jump(), min_ticks=minimum, within_ticks=10)
+        pack = self.make_pack()
+        pack.exercises[0].stages[0].min_ticks = -1
+        with self.assertRaises(ValueError):
+            CompiledTrainingPack.compile(pack, device="cpu")
+
     def test_unsupported_touch_filter_fails_during_compilation(self):
         pack = self.make_pack()
         pack.exercises[0].stages[0].event = BallTouch(min_height=300)

@@ -79,6 +79,7 @@ class TrainingTarget:
     total_matches:         th.Tensor
     failure_exercise_wide: th.Tensor
     deadline_ticks:        th.Tensor
+    min_ticks:             th.Tensor
     has_deadline:          th.Tensor
     deadline_from_start:   th.Tensor
     exercise_index:        th.Tensor
@@ -161,6 +162,7 @@ def training_target(runtime):
         total_matches         = runtime.total_matches.clone(),
         failure_exercise_wide = pack.failure_exercise_wide[index] & failure_valid,
         deadline_ticks        = th.where(has_deadline, deadlines, 0),
+        min_ticks             = th.where(valid, pack.min_ticks[index], 0),
         has_deadline          = has_deadline,
         deadline_from_start   = pack.deadline_from_start[index] & has_deadline,
         exercise_index        = runtime.exercise_index.clone(),

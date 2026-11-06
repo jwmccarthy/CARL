@@ -14,10 +14,17 @@ class Stage:
     repeat_on: Condition | None = None
     max_repeats: int | None = None
     max_total_matches: int | None = None
+    min_ticks: int = 0
 
     def __post_init__(self):
+        if not isinstance(self.min_ticks, int) or isinstance(self.min_ticks, bool) or self.min_ticks < 0:
+            raise ValueError("min_ticks must be a nonnegative integer")
+
         if self.within_ticks is not None and self.within_ticks <= 0:
             raise ValueError("within_ticks must be positive")
+
+        if self.within_ticks is not None and self.min_ticks >= self.within_ticks:
+            raise ValueError("min_ticks must be less than within_ticks")
 
         if self.from_exercise_start and self.within_ticks is None:
             raise ValueError("exercise-start deadline requires within_ticks")
