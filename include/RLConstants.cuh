@@ -8,6 +8,7 @@ constexpr float PI = 3.1415926535897932384626433832795029;
 constexpr float PI_2 = PI / 2;
 constexpr float PI_4 = PI / 4;
 constexpr float SQRT_1_2 = 0.7071067811865475244f;
+constexpr float FLOAT_EPSILON = 1.192092896e-07f;
 
 constexpr CARL_HD Vec3 WORLD_X = { 1.f, 0.f, 0.f };
 constexpr CARL_HD Vec3 WORLD_Y = { 0.f, 1.f, 0.f };
@@ -20,6 +21,9 @@ constexpr CARL_HD Vec3 ARENA_MIN = { -4108.f, -6000.f,  -14.f };
 constexpr CARL_HD Vec3 ARENA_MAX = {  4108.f,  6000.f, 2076.f };
 constexpr CARL_HD Vec3 OBS_POSITION_SCALE = {
     ARENA_MAX.x, ARENA_MAX.y, ARENA_MAX.z
+};
+constexpr CARL_HD Vec3 ARENA_PLANE_NORMALS[4] = {
+    WORLD_Z, { 0.f, 0.f, -1.f }, WORLD_X, { -1.f, 0.f, 0.f }
 };
 
 // --- Car dimensions ---

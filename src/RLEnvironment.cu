@@ -15,14 +15,17 @@ PrefixSum::PrefixSum(int *input, int *output, int count)
     CUDA_CHECK(cub::DeviceScan::ExclusiveSum(nullptr, bytes, input, output, count));
     CUDA_CHECK(cudaMalloc(&buffer, bytes));
 }
+
 PrefixSum::~PrefixSum()
 {
     CUDA_CHECK(cudaFree(buffer));
 }
+
 void PrefixSum::scan()
 {
     CUDA_CHECK(cub::DeviceScan::ExclusiveSum(buffer, bytes, input, output, count));
 }
+
 void PrefixSum::scanOnStream(cudaStream_t stream)
 {
     CUDA_CHECK(cub::DeviceScan::ExclusiveSum(buffer, bytes, input, output, count, stream));

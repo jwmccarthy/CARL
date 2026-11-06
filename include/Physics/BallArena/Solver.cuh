@@ -200,12 +200,13 @@ CARL_D CARL_FI void solveBallArenaContacts(
     int count,
     bool ballWasHit)
 {
-    if (count == 0)
-        return;
+    if (count == 0) return;
+
     BallArenaSolverRow splitRows[MAX_BALL_ARENA_CONTACTS];
     Vec3 totalNormal = Vec3::zero();
     float totalRadius = 0.f;
-    // Omit split correction for isolated floor contacts after a car hit.
+
+    // Omit split correction for isolated floor contacts after a car hit
     const bool splitCorrection = !ballWasHit
         || count != 1
         || contacts[0].normal.z < 0.999f;
@@ -214,17 +215,22 @@ CARL_D CARL_FI void solveBallArenaContacts(
     for (int i = 0; i < count; i++)
     {
         const Vec3 relPos = contacts[i].relPos;
+
         splitRows[i] = makeBallArenaNormalRow(body, contacts[i], relPos, splitCorrection);
         totalNormal = totalNormal + contacts[i].normal;
         totalRadius += sqrtf(relPos.lenSq());
     }
-    BallArenaContact special{};
-    special.normal = totalNormal * (1.f / count);
-    special.relPos = special.normal * (-totalRadius / count);
-    special.depth = -totalRadius / count;
-    auto normalRow = makeBallArenaNormalRow(body, special, special.relPos, false);
-    auto frictionRow = makeBallArenaFrictionRow(body, special, special.relPos);
+    
+    // Use one averaged contact for normal and friction impulses
+    BallArenaContact average{};
+    average.normal = totalNormal * (1.f / count);
+    average.relPos = average.normal * (-totalRadius / count);
+    average.depth = -totalRadius / count;
 
+    auto normalRow = makeBallArenaNormalRow(body, average, average.relPos, false);
+    auto frictionRow = makeBallArenaFrictionRow(body, average, average.relPos);
+
+    // Resolve penetration separately for each contact
     for (int iter = 0; iter < CAR_SOLVER_ITERS; iter++)
     {
         #pragma unroll
@@ -238,8 +244,11 @@ CARL_D CARL_FI void solveBallArenaContacts(
     {
         resolveBallArenaNormal(body, normalRow);
         const float maxImpulse = BALL_WORLD_FRICTION * normalRow.applied;
+
         if (maxImpulse > 0.f)
+        {
             resolveBallArenaFriction(body, frictionRow, maxImpulse);
+        }
     }
 
     body.vel = body.vel + body.deltaVel;

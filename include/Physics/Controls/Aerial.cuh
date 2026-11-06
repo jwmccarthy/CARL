@@ -126,9 +126,13 @@ CARL_D CARL_FI void startFlip(ControlCtx& ctx, Vec3 dodge)
     s.isFlipping = true;
 
     if (fabsf(dodge.x) < 0.1f && fabsf(dodge.y) < 0.1f)
+    {
         dodge = Vec3::zero();
+    }
     else
+    {
         dodge = dodge * rsqrtf(dodge.lenSq());
+    }
     s.flipRelTorque = { -dodge.y, dodge.x, 0.f };
 
     const Vec3 localVel = scaledDodgeVel(ctx, dodge);
@@ -244,8 +248,7 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
 
     if (s.isFlipping)
     {
-        s.isFlipping = s.hasFlipped
-            && s.flipTime < FLIP_TORQUE_TIME;
+        s.isFlipping = s.hasFlipped && s.flipTime < FLIP_TORQUE_TIME;
     }
 
     if (!s.isFlipping) return true;
@@ -292,6 +295,7 @@ CARL_D CARL_FI void applyAirTorque(ControlCtx& ctx)
     const CarInternalState& s = ctx.internal();
     const CarControls& c = ctx.input();
     const float pitchScale = airPitchScale(s);
+
     const Vec3 input = { c.pitch, c.yaw, c.roll };
     const Vec3 controlScale = { pitchScale, 1.f, 1.f };
     const Vec3 dampInput = { c.pitch * pitchScale, c.yaw, 0.f };
@@ -317,8 +321,8 @@ CARL_D CARL_FI void applyAirTorque(ControlCtx& ctx)
         damping = damping + dir * damp;
     }
 
-    ctx.susp().angularImpulse[ctx.carIdx] = ctx.susp().angularImpulse[ctx.carIdx] +
-                                            (torque - damping) * (CAR_TORQUE_SCALE * PHYS_DT);
+    ctx.susp().angularImpulse[ctx.carIdx] = ctx.susp().angularImpulse[ctx.carIdx]
+        + (torque - damping) * (CAR_TORQUE_SCALE * PHYS_DT);
 }
 
 CARL_D CARL_FI void updateAirControl(ControlCtx& ctx, bool allowAir)

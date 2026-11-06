@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from itertools import product
 from pathlib import Path
 from unittest import mock
 
@@ -28,7 +29,7 @@ class BuildConfigurationTests(unittest.TestCase):
 
         setup.assert_called_once()
         cls.find_toolkit = staticmethod(namespace["find_cuda_toolkit"])
-        cls.cmake_args   = staticmethod(namespace["cuda_cmake_args"])
+        cls.cmake_args = staticmethod(namespace["cuda_cmake_args"])
 
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -77,7 +78,7 @@ class BuildConfigurationTests(unittest.TestCase):
         self.output.assert_not_called()
 
     def test_invalid_explicit_cuda_home_does_not_fall_back(self):
-        os.environ["CUDA_HOME"]  = str(self.root)
+        os.environ["CUDA_HOME"] = str(self.root)
         self.which.return_value = "/other/cuda/bin/nvcc"
 
         with self.assertRaisesRegex(
@@ -89,7 +90,7 @@ class BuildConfigurationTests(unittest.TestCase):
 
     def test_path_nvcc_resolves_symlink_to_toolkit(self):
         compiler = self.touch("toolkit/bin/nvcc")
-        link     = self.root / "nvcc"
+        link = self.root / "nvcc"
         link.symlink_to(compiler)
         self.which.return_value = str(link)
 
@@ -102,20 +103,15 @@ class BuildConfigurationTests(unittest.TestCase):
             Path("/usr/local/cuda"),
             Path("/opt/cuda"),
         ]
-        for index, expected in enumerate(roots):
-            with self.subTest(root=expected):
+        with (
+            mock.patch.object(Path, "is_file", autospec=True) as is_file,
+            mock.patch.object(Path, "resolve", autospec=True, side_effect=lambda path: path),
+        ):
+            for index, expected in enumerate(roots):
                 available = {root / "bin/nvcc" for root in roots[index:]}
-                with (
-                    mock.patch.object(
-                        Path,
-                        "is_file",
-                        autospec    = True,
-                        side_effect = lambda path, available=available: path in available,
-                    ),
-                    mock.patch.object(
-                        Path, "resolve", autospec=True, side_effect=lambda path: path
-                    ),
-                ):
+                is_file.side_effect = lambda path: path in available
+
+                with self.subTest(root=expected):
                     self.assertEqual(self.find_toolkit(), expected)
 
     def test_no_toolkit_found(self):
@@ -139,18 +135,20 @@ class BuildConfigurationTests(unittest.TestCase):
     def test_target_specific_headers_and_static_libraries(self):
         self.touch("bin/nvcc")
         os.environ["CUDA_HOME"] = str(self.root)
-        for target in ("targets/x86_64-linux", "targets/aarch64-linux"):
-            for library in ("lib", "lib64"):
-                with self.subTest(target=target, library=library):
-                    header  = self.touch(Path(target) / "include/cuda_runtime.h")
-                    archive = self.touch(Path(target) / library / "libcudart_static.a")
-                    try:
-                        self.assertIn(
-                            f"-DCUDAToolkit_ROOT={self.root}", self.cmake_args()
-                        )
-                    finally:
-                        header.unlink()
-                        archive.unlink()
+        targets = ("targets/x86_64-linux", "targets/aarch64-linux")
+        for target, library in product(targets, ("lib", "lib64")):
+            with self.subTest(target=target, library=library):
+                self.check_target_toolkit(target, library)
+
+    def check_target_toolkit(self, target, library):
+        header = self.touch(Path(target) / "include/cuda_runtime.h")
+        archive = self.touch(Path(target) / library / "libcudart_static.a")
+
+        try:
+            self.assertIn(f"-DCUDAToolkit_ROOT={self.root}", self.cmake_args())
+        finally:
+            header.unlink()
+            archive.unlink()
 
     def test_rejects_cuda_129(self):
         self.toolkit()
@@ -216,12 +214,15 @@ class BuildConfigurationTests(unittest.TestCase):
             subprocess.CalledProcessError(1, "nvcc"),
         ):
             with self.subTest(error=type(error).__name__):
-                self.output.side_effect = error
-                with self.assertRaisesRegex(
-                    RuntimeError, "could not execute.*bin/nvcc"
-                ) as raised:
-                    self.cmake_args()
-                self.assertIs(raised.exception.__cause__, error)
+                self.check_unusable_nvcc(error)
+
+    def check_unusable_nvcc(self, error):
+        self.output.side_effect = error
+
+        with self.assertRaisesRegex(RuntimeError, "could not execute.*bin/nvcc") as raised:
+            self.cmake_args()
+
+        self.assertIs(raised.exception.__cause__, error)
 
 
 if __name__ == "__main__":

@@ -172,12 +172,14 @@ struct CarSuspension
     DeviceArray<float> engineDrivePrev;
 
     CarSuspension(int nTotalCars)
-        : totalWheels(nTotalCars * NUM_WHEELS), rayDist(totalWheels), rayNormal(totalWheels),
-          brakeFactor(nTotalCars), brakeFactorPrev(nTotalCars), throttleVal(nTotalCars),
-          rawThrottle(nTotalCars), handbrakeVal(nTotalCars), steerAngle(nTotalCars),
-          steerAnglePrev(nTotalCars), latFrictionPrev(totalWheels), lonFrictionPrev(totalWheels),
-          jumpImpulse(nTotalCars), angularImpulse(nTotalCars), engineDrive(nTotalCars),
-          engineDrivePrev(nTotalCars)
+        : totalWheels(nTotalCars * NUM_WHEELS), rayDist(totalWheels)
+        , rayNormal(totalWheels), brakeFactor(nTotalCars)
+        , brakeFactorPrev(nTotalCars), throttleVal(nTotalCars)
+        , rawThrottle(nTotalCars), handbrakeVal(nTotalCars)
+        , steerAngle(nTotalCars), steerAnglePrev(nTotalCars)
+        , latFrictionPrev(totalWheels), lonFrictionPrev(totalWheels)
+        , jumpImpulse(nTotalCars), angularImpulse(nTotalCars)
+        , engineDrive(nTotalCars), engineDrivePrev(nTotalCars)
     {}
 
     void reset()

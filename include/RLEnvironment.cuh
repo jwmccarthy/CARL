@@ -30,9 +30,11 @@ private:
 
     void beginStep();
     void stepBroadSusp();
+    
     void stepControls(const DiscreteControls* actions);
     void stepControls(const ContinuousControls* actions);
     void stepControls(const CarControls *actions);
+
     void stepNarrow();
     void stepCarManifoldSolve();
     void stepCarCarSolve();
@@ -49,9 +51,9 @@ public:
     void step(const DiscreteControls* actions);
     void step(const ContinuousControls* actions);
     void step(const CarControls *actions);
+    
     void reset();
-    void resetDones(
-        int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks);
+    void resetDones(int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks);
 
     GameState* getDeviceState() { return d_state; }
     Workspace* getDeviceWorkspace() { return d_space; }

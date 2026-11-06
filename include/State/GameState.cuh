@@ -23,12 +23,18 @@ struct BallState
     DeviceArray<Vec3> vel;
     DeviceArray<Vec3> ang;
     DeviceArray<Vec3> imp;
-    DeviceArray<Vec3> integrationPos, integrationVel, exportedPos, exportedVel;
-    DeviceArray<int> integrationValid;
+
+    DeviceArray<Vec3> integrationPos;
+    DeviceArray<Vec3> integrationVel;
+    DeviceArray<Vec3> exportedPos;
+    DeviceArray<Vec3> exportedVel;
+    DeviceArray<int>  integrationValid;
 
     BallState(const int nBall)
-        : nBall(nBall), pos(nBall), vel(nBall), ang(nBall), imp(nBall), integrationPos(nBall),
-          integrationVel(nBall), exportedPos(nBall), exportedVel(nBall), integrationValid(nBall)
+        : nBall(nBall), pos(nBall), vel(nBall)
+        , ang(nBall), imp(nBall), integrationPos(nBall)
+        , integrationVel(nBall), exportedPos(nBall)
+        , exportedVel(nBall), integrationValid(nBall)
     {}
 
     void reset()

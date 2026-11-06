@@ -68,17 +68,56 @@ if(CARL_BUILD_PYTHON)
     target_link_libraries(carl_module PRIVATE carl)
 endif()
 
-# --- Physics parity harness (optional) ---
+# --- Optional RocketSim tools ---
 
 option(CARL_BUILD_PARITY_HARNESS "Build the CARL vs RocketSim parity harness" OFF)
+option(CARL_BUILD_ARENA_METADATA "Build the RocketSim arena metadata exporter" OFF)
+
+set(CARL_HAS_RLGYM_MESHES OFF)
+if(CARL_BUILD_ARENA_METADATA)
+    find_package(Python COMPONENTS Interpreter QUIET)
+    if(Python_Interpreter_FOUND)
+        execute_process(
+            COMMAND "${Python_EXECUTABLE}" -c
+                "from importlib.metadata import distribution; p = distribution('rlgym-rocket-league').locate_file('rlgym/rocket_league/sim/collision_meshes/soccar'); assert p.is_dir() and any(p.glob('*.cmf'))"
+            RESULT_VARIABLE CARL_RLGYM_RESULT
+            ERROR_QUIET
+        )
+        if(CARL_RLGYM_RESULT STREQUAL "0")
+            set(CARL_HAS_RLGYM_MESHES ON)
+        endif()
+    endif()
+
+    if(NOT CARL_HAS_RLGYM_MESHES)
+        message(STATUS "[carl] RLGym meshes unavailable; skipping metadata exporter and using default arena setup")
+    endif()
+endif()
+
+if(CARL_BUILD_PARITY_HARNESS OR CARL_HAS_RLGYM_MESHES)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/RocketSim/CMakeLists.txt")
+        message(FATAL_ERROR "RocketSim is missing. Run git submodule update --init --recursive")
+    endif()
+
+    add_subdirectory(third_party/RocketSim)
+endif()
+
+if(CARL_HAS_RLGYM_MESHES)
+    add_executable(carl_export_arena_metadata tools/export_arena_metadata.cpp)
+    set_target_properties(carl_export_arena_metadata PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED YES
+    )
+    target_include_directories(carl_export_arena_metadata PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/RocketSim/src"
+    )
+    target_link_libraries(carl_export_arena_metadata PRIVATE RocketSim)
+endif()
 
 if(CARL_BUILD_PARITY_HARNESS)
     if(NOT DEFINED ROCKETSIM_COLLISION_MESH_ROOT)
         message(FATAL_ERROR
             "CARL_BUILD_PARITY_HARNESS requires ROCKETSIM_COLLISION_MESH_ROOT")
     endif()
-
-    add_subdirectory(third_party/RocketSim)
 
     add_executable(carl_parity_harness tools/parity_harness.cu)
 

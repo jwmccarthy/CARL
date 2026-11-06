@@ -270,37 +270,41 @@ CARL_D __noinline__ int buildLocalManifold(
     int carIdx,
     const CarPose& pose)
 {
-    const int base = carIdx * MAX_CAR_MANIFOLD_POINTS;
     int pointCount = 0;
 
-    const Vec3 normals[4] = {{0, 0, 1}, {0, 0, -1}, {1, 0, 0}, {-1, 0, 0}};
-    const float offsets[4] = {0.f, -2044.f, -4096.f, -4096.f};
+    const float offsets[4] = { 0.f, -2044.f, -4096.f, -4096.f };
+
+    // Add contacts against the analytic arena planes
     for (int plane = 0; plane < 4; plane++)
     {
-        const Vec3 normal = normals[plane];
+        const Vec3 normal = ARENA_PLANE_NORMALS[plane];
         const Vec3 direction = pose.rot.toLocal(normal.neg());
         const Vec3 half = CAR_HALF_EX;
-        const Vec3 carPos = {direction.x >= 0 ? half.x : -half.x,
-                             direction.y >= 0 ? half.y : -half.y,
-                             direction.z >= 0 ? half.z : -half.z};
+        const Vec3 carPos = {
+            direction.x >= 0 ? half.x : -half.x,
+            direction.y >= 0 ? half.y : -half.y,
+            direction.z >= 0 ? half.z : -half.z
+        };
         const Vec3 worldCar = pose.cen + pose.rot.toWorld(carPos);
         const float dist = normal.dot(worldCar) - offsets[plane];
+
         if (dist < CAR_CONTACT_BREAK && !hasNearbyManifoldPoint(points, pointCount, carPos))
         {
-            const ManifoldPoint point = {carPos,
-                                         worldCar - normal * dist,
-                                         normal,
-                                         dist,
-                                         CAR_WORLD_FRICTION,
-                                         CAR_WORLD_RESTITUTION,
-                                         0,
-                                         0,
-                                         0};
+            const ManifoldPoint point = {
+                carPos,
+                worldCar - normal * dist,
+                normal,
+                dist,
+                CAR_WORLD_FRICTION,
+                CAR_WORLD_RESTITUTION,
+                0, 0, 0
+            };
+
             addManifoldPoint(points, pointCount, point);
         }
     }
-    insertBestContact(
-        points, pointCount, space, arena, carIdx, pose);
+
+    insertBestContact(points, pointCount, space, arena, carIdx, pose);
 
     return pointCount;
 }

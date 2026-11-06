@@ -38,6 +38,7 @@ CARL_D CARL_FI void testCarCarAxis(
     const float depthAB = projA.max - projB.min;
     const float depthBA = projB.max - projA.min;
     const float depth = fminf(depthAB, depthBA);
+    
     if (depth * (axisIdx >= 6 ? 1.05f : 1.f) >= result.minPen)
         return;
 
@@ -63,12 +64,15 @@ CARL_D CARL_FI SATResult carCarSAT(
 
     const Vec3 delta = boxB.cen * .02f - boxA.cen * .02f;
     const Vec3 half = CAR_HALF_EX * .02f;
+
     float alignment[3][3];
     for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            alignment[i][j] = fabsf(axesA[i].dot(axesB[j]));
+    for (int j = 0; j < 3; j++)
+    {
+        alignment[i][j] = fabsf(axesA[i].dot(axesB[j]));
+    }
 
-#pragma unroll
+    #pragma unroll
     for (int i = 0; i < 3; i++)
     {
         const float distance = delta.dot(axesA[i]);
@@ -110,14 +114,11 @@ CARL_D CARL_FI SATResult carCarSAT(
 
     #pragma unroll
     for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
     {
-        #pragma unroll
-        for (int j = 0; j < 3; j++)
-        {
-            const int axisIdx = 6 + i * 3 + j;
-            testCarCarAxis(axesA[i].cross(axesB[j]), boxA, boxB, axisIdx, result);
-            if (!result.overlap) return result;
-        }
+        const int axisIdx = 6 + i * 3 + j;
+        testCarCarAxis(axesA[i].cross(axesB[j]), boxA, boxB, axisIdx, result);
+        if (!result.overlap) return result;
     }
 
     return result;

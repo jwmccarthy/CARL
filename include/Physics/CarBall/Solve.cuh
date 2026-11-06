@@ -127,7 +127,7 @@ CARL_D CARL_FI BallCarConstraint makeBallCarConstraint(
     constraint.restitution = fabsf(relNormal) > CAR_RESTITUTION_VEL_THRESH
         ? CAR_BALL_RESTITUTION * -relNormal
         : 0.f;
-    tangent = tangentLenSq > 1.192092896e-07f
+    tangent = tangentLenSq > FLOAT_EPSILON
         ? tangent * rsqrtf(tangentLenSq)
         : fallbackTangent(contact.normal);
     constraint.friction = makeBallCarRow(
