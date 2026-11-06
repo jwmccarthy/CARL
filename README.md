@@ -1,23 +1,56 @@
 # CARL
 
-CUDA-Accelerated Rocket League (CARL) is a Rocket League physics simulator based on [RocketSim](https://github.com/ZealanL/RocketSim). Inspired by [PureJaxRL](https://chrislu.page/blog/meta-disco/), it is a vectorized environment for reinforcement learning in Rocket League that resides entirely on the GPU.
+CARL is a GPU-based Rocket League simulator for reinforcement learning, based on
+[RocketSim](https://github.com/ZealanL/RocketSim).
 
-## Requirements
+## Install
 
-- Linux, Python 3.10+, and an NVIDIA GPU with a CUDA 12.8-compatible driver.
-- Source builds require the CUDA 12.8 toolkit and GCC 12.
+You need Linux, Python 3.10+, an NVIDIA GPU, the CUDA 12.8 toolkit, and a
+compatible C++ compiler such as GCC 12. From the repository root:
 
-## Building from Source
+```bash
+uv sync
+```
 
-Prebuilt wheels are not yet published. With CUDA 12.8 and GCC 12 (or an equally compatible compiler) installed, run `uv sync` from the repository root:
+If `nvidia-smi` cannot detect your GPU, set its CUDA architecture first, for
+example `export CARL_CUDA_ARCHITECTURES=89`.
 
-Set `CARL_CUDA_ARCHITECTURES` (for example, `89`) if `nvidia-smi` is unavailable.
+## Run an environment
 
-### RocketSim metadata exporter
+```python
+import torch
+from carl.gymnasium import CARLTorchVectorEnv
 
-RocketSim is an optional submodule used by the arena metadata exporter and
-RocketSim-based parity tooling. Install RLGym, initialize the submodule, and
-build the exporter using the same Python environment:
+env = CARLTorchVectorEnv(n_sim=8192, n_blue=1, n_orange=1)
+observation = env.reset()
+
+actions = torch.zeros(env.action_space.shape, device=env.device)
+observation, reward, terminated, truncated, info = env.step(actions)
+
+env.close()
+```
+
+Each car is an actor. Cars are grouped by simulation.
+
+## Custom rewards
+
+Reward functions return a tensor of shape `[n_sim, n_cars]`:
+
+```python
+import carl
+from carl.gymnasium import CARLTorchVectorEnv
+
+def speed_reward(context):
+    return context.current.car_velocity.norm(dim=-1) / carl.CAR_MAX_SPEED
+
+env = CARLTorchVectorEnv(1024, 1, 1, reward_funcs=[speed_reward])
+```
+
+Custom rewards replace the default score reward.
+
+## Optional arena metadata
+
+To build the RocketSim metadata exporter:
 
 ```bash
 git submodule update --init --recursive
@@ -27,54 +60,14 @@ cmake -S . -B build -DCARL_BUILD_PYTHON=OFF -DCARL_BUILD_ARENA_METADATA=ON \
 cmake --build build --target carl_export_arena_metadata
 ```
 
-The exporter requires RocketSim collision mesh files, which RLGym includes.
-If the selected Python environment does not contain those meshes, CMake skips
-the exporter and CARL continues to use its default arena setup. Locate the mesh
-directory and pass it to the exporter, then match the output to the CARL arena OBJ:
+Generate metadata using the meshes installed by RLGym:
 
 ```bash
 MESHES=$(.venv/bin/python -c 'from importlib.metadata import distribution; print(distribution("rlgym-rocket-league").locate_file("rlgym/rocket_league/sim/collision_meshes"))')
 build/carl_export_arena_metadata "$MESHES" native_triangles.txt
-python tools/arena_metadata.py /path/to/arena.obj native_triangles.txt arena_metadata.txt
+.venv/bin/python tools/arena_metadata.py assets/arena.obj native_triangles.txt arena_metadata.txt
+export CARL_ARENA_METADATA="$PWD/arena_metadata.txt"
 ```
 
-Set `CARL_ARENA_METADATA` to the resulting metadata file when running CARL.
-Normal CARL builds do not require the submodule.
-
-## Torch Environment
-
-`CARLTorchVectorEnv` exposes each car as one actor. Cars remain grouped inside each physics simulation.
-
-```python
-import torch
-from carl.gymnasium import CARLTorchVectorEnv
-
-env = CARLTorchVectorEnv(n_sim=8192, n_blue=1, n_orange=1)
-
-observation = env.reset()
-
-actions = torch.zeros(
-    env.action_space.shape,
-    dtype=torch.float32,
-    device=env.device
-)
-
-observation, reward, terminated, truncated, info = env.step(actions)
-```
-
-## Custom Rewards
-
-Rewards are customizable via the exposed `RewardContext`.
-
-Reward functions receive a `RewardContext` and return `[n_sim, n_cars]`.
-
-```python
-import carl
-
-def speed_reward(context):
-    return context.current.car_velocity.norm(dim=-1) / carl.CAR_MAX_SPEED
-
-env = CARLTorchVectorEnv(1024, 1, 1, reward_funcs=[speed_reward])
-```
-
-The context contains previous state, current transition state, actions, score events, termination flags, and truncation flags. Reward functions are summed and multiplied by `reward_scale`. Custom rewards replace the default score reward.
+Without this file, CARL uses its default arena setup. Normal builds do not need
+RocketSim or RLGym.
