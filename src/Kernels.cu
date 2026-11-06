@@ -45,6 +45,17 @@ __global__ void resetDonesKernel(
     }
 }
 
+__global__ void resetSelectedKernel(
+    GameState* __restrict__ state, Workspace* __restrict__ space,
+    const bool* __restrict__ mask, EventBuffer events)
+{
+    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (simIdx >= state->nSim || !mask[simIdx]) return;
+
+    resetEpisode(state, space, simIdx);
+    events.invalidate(simIdx);
+}
+
 __global__ void beginStepKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space)
@@ -144,14 +155,15 @@ __global__ void carSuspensionRaycastKernel(
 __global__ void carArenaSolveKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    ArenaMesh* __restrict__ arena)
+    ArenaMesh* __restrict__ arena,
+    EventBuffer events)
 {
     const int start = blockIdx.x * blockDim.x + threadIdx.x;
     const int stride = gridDim.x * blockDim.x;
 
     for (int carIdx = start; carIdx < state->nTotalCars; carIdx += stride)
     {
-        solveCarArena(state, space, arena, carIdx);
+        solveCarArena(state, space, arena, carIdx, events);
     }
 }
 

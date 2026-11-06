@@ -34,7 +34,7 @@ private:
     void stepControls(const DiscreteControls* actions, EventBuffer events);
     void stepControls(const ContinuousControls* actions, EventBuffer events);
     void stepNarrow();
-    void stepCarManifoldSolve();
+    void stepCarManifoldSolve(EventBuffer events);
     void stepCarCarSolve(EventBuffer events);
     void integrateCars();
     void applyImpulseCache(EventBuffer events);
@@ -50,6 +50,7 @@ public:
     void step(const ContinuousControls* actions, EventBuffer events = {});
 
     void reset();
+    void resetSelected(const bool* mask, EventBuffer events = {});
     void resetDones(
         int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks,
         EventBuffer events = {});

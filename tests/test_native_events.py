@@ -75,7 +75,7 @@ class NativeEventTests(unittest.TestCase):
 
     def test_reset_and_surface_baselines(self):
         flags = self.step()
-        departures = _carl.EVENT_AIRBORNE | _carl.EVENT_LEAVE_WALL
+        departures = _carl.EVENT_LEAVE_SURFACE
         self.assertFalse((flags & departures).any().item())
 
         self.set_car((0, 0, 1000))
@@ -86,6 +86,20 @@ class NativeEventTests(unittest.TestCase):
         self.assertFalse(self.tensor(self.env.events.get_car_flags).any().item())
         self.assertFalse(self.tensor(self.env.events.get_ball_flags).any().item())
 
+    def test_surface_departure_is_accumulated_for_the_window(self):
+        self.env.frameskip = 32
+        self.step()
+        self.actions[..., -1] = 1
+        flags = self.step()
+        left = self.tensor(self.env.events.get_car_surface_left)
+
+        self.assertTrue(((flags & _carl.EVENT_LEAVE_SURFACE) != 0).all().item())
+        self.assertTrue(((left & _carl.ARENA_FLOOR) != 0).all().item())
+
+        self.actions.zero_()
+        self.step()
+        self.assertFalse(self.tensor(self.env.events.get_car_surface_left).any().item())
+
     def test_ball_floor_contact_changes(self):
         self.env.frameskip = 64
         self.set_ball((0, 0, 300), (0, 0, -1000))
@@ -93,12 +107,8 @@ class NativeEventTests(unittest.TestCase):
 
         entered = self.tensor(self.env.events.get_ball_surface_entered)
         left = self.tensor(self.env.events.get_ball_surface_left)
-        flags = self.tensor(self.env.events.get_ball_flags)
-
         self.assertTrue(((entered & _carl.ARENA_FLOOR) != 0).all().item())
         self.assertTrue(((left & _carl.ARENA_FLOOR) != 0).all().item())
-        self.assertTrue(th.equal(entered != 0, (flags & _carl.EVENT_BALL_SURFACE_ENTER) != 0))
-        self.assertTrue(th.equal(left != 0, (flags & _carl.EVENT_BALL_SURFACE_LEAVE) != 0))
 
     def test_ball_wall_categories(self):
         self.env.frameskip = 32
@@ -113,22 +123,59 @@ class NativeEventTests(unittest.TestCase):
         self.assertTrue((entered[0] & _carl.ARENA_SIDE_WALL).item())
         self.assertTrue((entered[1] & _carl.ARENA_BACK_WALL).item())
 
+    def test_car_side_wall_requires_flat_vertical_surface(self):
+        self.env.frameskip = 1
+        self.env.set_car(
+            position=th.tensor([[[3800, 0, 17]], [[-3800, 0, 17]]], device="cuda", dtype=th.float32),
+            rotation=th.tensor([[[0, 0, 0, 1]], [[0, 0, 1, 0]]], device="cuda", dtype=th.float32),
+            velocity=th.tensor([[[1000, 0, 0]], [[-1000, 0, 0]]], device="cuda", dtype=th.float32),
+            angular_velocity=th.zeros((2, 1, 3), device="cuda"),
+            demoed=th.zeros((2, 1), device="cuda", dtype=th.bool),
+            boost=th.full((2, 1), 100.0, device="cuda"),
+        )
+        self.actions[..., 2] = 1
+        contacted = th.zeros(2, device="cuda", dtype=th.bool)
+
+        for _ in range(150):
+            self.step()
+            surfaces = self.tensor(self.env.events.get_car_surface_contacted)[:, 0]
+            obs = self.tensor(self.env.get_obs)
+            side = (surfaces & _carl.ARENA_SIDE_WALL) != 0
+            height = obs[:, 0, _carl.OBS_BALL + _carl.OBS_POS + 2]
+
+            self.assertFalse((side & (height < 150)).any().item())
+            contacted |= side
+
+            if contacted.all().item():
+                break
+
+        self.assertTrue(contacted.all().item())
+
     def test_ball_touch_flags_share_existing_contact_records(self):
         self.env.frameskip = 24
         self.set_car((0, 0, 17))
         self.set_ball((-300, 0, 90), (1500, 0, 0))
         flags = self.step()
-        counts = self.tensor(self.env.events.get_ball_touch_counts)
-        metadata = self.tensor(self.env.events.get_ball_touch_metadata)
+        surfaces = self.tensor(self.env.events.get_ball_touch_surfaces)
 
-        self.assertEqual(counts.tolist(), [1, 1])
+        self.assertEqual((surfaces != 0).tolist(), [[True], [True]])
         self.assertEqual(((flags & _carl.EVENT_BALL_TOUCH) != 0).sum().item(), 2)
+        tick_surfaces = self.tensor(self.env.events.get_ball_touch_tick_surfaces)
+        tick_speed = self.tensor(self.env.events.get_ball_touch_tick_speed)
+        tick_before = self.tensor(self.env.events.get_ball_touch_tick_speed_before)
+        self.assertEqual(tick_surfaces.shape, (24, 2, 1))
+        self.assertEqual((tick_surfaces != 0).sum(dim=0).tolist(), [[1], [1]])
+        self.assertTrue((tick_speed[tick_surfaces != 0] > 0).all().item())
+        self.assertTrue((tick_before[tick_surfaces != 0] > 0).all().item())
+        self.assertTrue((tick_speed[tick_surfaces == 0] == 0).all().item())
 
-        for sim in range(2):
-            touch_tick = metadata[sim, 0, _carl.TOUCH_TICK].item()
-            self.assertGreater(touch_tick, 0)
-            self.assertLessEqual(touch_tick, 24)
-            self.assertTrue((flags[sim, 0] & _carl.EVENT_BALL_TOUCH).item())
+        self.assertEqual(surfaces.shape, (2, 1))
+        pointer = surfaces.data_ptr()
+        self.env.frameskip = 32
+        resized = self.tensor(self.env.events.get_ball_touch_surfaces)
+        self.assertEqual(resized.shape, (2, 1))
+        self.assertEqual(resized.data_ptr(), pointer)
+        self.assertFalse(resized.any().item())
 
     def test_flip_reset_restores_spent_jump(self):
         self.env.frameskip = 1
@@ -158,6 +205,16 @@ class NativeEventTests(unittest.TestCase):
 
         self.assertEqual(((flags & _carl.EVENT_DEMOED) != 0).sum().item(), 1)
 
+    def test_ceiling_body_contact_is_captured(self):
+        self.env.frameskip = 8
+        self.set_car((0, 0, 1000), velocity=(0, 0, 1000))
+        self.assertFalse((self.step() & _carl.EVENT_CEILING_BODY_CONTACT).any().item())
+
+        self.set_car((0, 0, 1980), velocity=(0, 0, 1000))
+        flags = self.step()
+
+        self.assertTrue(((flags & _carl.EVENT_CEILING_BODY_CONTACT) != 0).all().item())
+
     def test_goal_survives_autoreset(self):
         self.set_ball((0, 5300, 200))
         self.step()
@@ -175,9 +232,8 @@ class NativeEventTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.tensor(env.events.get_car_flags)
 
-        counts = self.tensor(env.events.get_ball_touch_counts)
-        self.assertEqual(counts.tolist(), [0])
-        self.assertEqual(counts.data_ptr(), self.tensor(env.get_ball_touch_counts).data_ptr())
+        surfaces = self.tensor(env.events.get_ball_touch_surfaces)
+        self.assertEqual(surfaces.tolist(), [[0]])
 
     def test_capture_does_not_change_physics(self):
         plain = _carl.Env(2, 1, 0, 7, frameskip=8)

@@ -100,10 +100,10 @@ void RLEnvironment::stepNarrow()
         carArenaClipKernel, d_arena, d_space);
 }
 
-void RLEnvironment::stepCarManifoldSolve()
+void RLEnvironment::stepCarManifoldSolve(EventBuffer events)
 {
     solveKernelConfig.launch(
-        carArenaSolveKernel, d_state, d_space, d_arena);
+        carArenaSolveKernel, d_state, d_space, d_arena, events);
 }
 
 void RLEnvironment::stepCarCarSolve(EventBuffer events)
@@ -136,7 +136,7 @@ void RLEnvironment::step(const DiscreteControls* actions, EventBuffer events)
     PROFILE("broad+susp",     stepBroadSusp());
     PROFILE("controls",       stepControls(actions, events));
     PROFILE("narrow",         stepNarrow());
-    PROFILE("manifold+solve", stepCarManifoldSolve());
+    PROFILE("manifold+solve", stepCarManifoldSolve(events));
     PROFILE("car-car+ball",   stepCarCarSolve(events));
     PROFILE("integrate-cars", integrateCars());
     PROFILE("impulse-cache",  applyImpulseCache(events));
@@ -150,7 +150,7 @@ void RLEnvironment::step(
     PROFILE("broad+susp",     stepBroadSusp());
     PROFILE("controls",       stepControls(actions, events));
     PROFILE("narrow",         stepNarrow());
-    PROFILE("manifold+solve", stepCarManifoldSolve());
+    PROFILE("manifold+solve", stepCarManifoldSolve(events));
     PROFILE("car-car+ball",   stepCarCarSolve(events));
     PROFILE("integrate-cars", integrateCars());
     PROFILE("impulse-cache",  applyImpulseCache(events));
@@ -172,4 +172,10 @@ void RLEnvironment::resetDones(
     PROFILE("reset dones", threadPerSimKernelConfig.launch(
         resetDonesKernel, d_state, d_space,
         maxTicks, overtimeTimeoutTicks, noTouchTimeoutTicks, events));
+}
+
+void RLEnvironment::resetSelected(const bool* mask, EventBuffer events)
+{
+    PROFILE("reset selected", threadPerSimKernelConfig.launch(
+        resetSelectedKernel, d_state, d_space, mask, events));
 }

@@ -36,6 +36,9 @@ class EntityEvents:
 @dataclass
 class CarEvents(EntityEvents):
 
+    surface_contacted: th.Tensor | None = None
+    surface_left:      th.Tensor | None = None
+
     @property
     def ball_touched(self) -> th.Tensor:
         return self._has(Event.BALL_TOUCH)
@@ -53,20 +56,8 @@ class CarEvents(EntityEvents):
         return self._has(Event.DODGE)
 
     @property
-    def grounded(self) -> th.Tensor:
-        return self._has(Event.GROUNDED)
-
-    @property
-    def airborne(self) -> th.Tensor:
-        return self._has(Event.AIRBORNE)
-
-    @property
-    def entered_wall(self) -> th.Tensor:
-        return self._has(Event.ENTER_WALL)
-
-    @property
-    def left_wall(self) -> th.Tensor:
-        return self._has(Event.LEAVE_WALL)
+    def contacted_surface(self) -> th.Tensor:
+        return self._has(Event.CONTACT_SURFACE)
 
     @property
     def flip_reset(self) -> th.Tensor:

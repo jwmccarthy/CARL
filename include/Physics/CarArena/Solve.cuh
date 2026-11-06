@@ -3,6 +3,7 @@
 #include "../../Arena/ArenaMesh.cuh"
 #include "../../RLConstants.cuh"
 #include "../../State/GameState.cuh"
+#include "../../State/Events.cuh"
 #include "../../State/Workspace.cuh"
 #include "../CarSuspension.cuh"
 #include "../Collision/Solver.cuh"
@@ -289,7 +290,8 @@ CARL_D CARL_FI void solveCarArena(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
     ArenaMesh* __restrict__ arena,
-    int carIdx)
+    int carIdx,
+    EventBuffer events = {})
 {
     if (__ldg(&state->cars.isDemoed[carIdx])) return;
 
@@ -314,6 +316,18 @@ CARL_D CARL_FI void solveCarArena(
 
     if (count > 0)
     {
+        if (events.enabled())
+        {
+            for (int index = 0; index < count; index++)
+            {
+                if (points[index].dist <= 0.f && points[index].worldNormal.z < -0.99f)
+                {
+                    events.car(carIdx, EVENT_CEILING_BODY_CONTACT);
+                    break;
+                }
+            }
+        }
+
         solveCarManifold(body, points, count);
         integrateSplitCorrection(body);
     }

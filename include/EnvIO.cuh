@@ -105,9 +105,6 @@ public:
     DLManagedTensor* getTransitionEpisodeTicksTensor();
     DLManagedTensor* getOvertimeTensor();
     DLManagedTensor* getTransitionOvertimeTensor();
-    DLManagedTensor* getBallTouchCountsTensor();
-    DLManagedTensor* getBallTouchMetadataTensor();
-    DLManagedTensor* getBallTouchValuesTensor();
 
     // Copy external actions into internal buffer
     void setActions(const int32_t* src);

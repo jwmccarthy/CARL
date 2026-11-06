@@ -6,6 +6,9 @@
 #include "Arena/ArenaMesh.cuh"
 
 __global__ void resetKernel(GameState* __restrict__ state);
+__global__ void resetSelectedKernel(
+    GameState* __restrict__ state, Workspace* __restrict__ space,
+    const bool* __restrict__ mask, EventBuffer events);
 
 __global__ void resetDonesKernel(
     GameState* __restrict__ state,
@@ -53,7 +56,8 @@ __global__ void carArenaClipKernel(
 __global__ void carArenaSolveKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    ArenaMesh* __restrict__ arena);
+    ArenaMesh* __restrict__ arena,
+    EventBuffer events);
 
 __global__ void carCarBallSolveKernel(
     GameState* __restrict__ state,

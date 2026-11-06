@@ -8,16 +8,12 @@ enum CarlEventType
     EVENT_JUMP = 1 << 1,
     EVENT_DOUBLE_JUMP = 1 << 2,
     EVENT_DODGE = 1 << 3,
-    EVENT_GROUNDED = 1 << 4,
-    EVENT_AIRBORNE = 1 << 5,
-    EVENT_ENTER_WALL = 1 << 6,
-    EVENT_LEAVE_WALL = 1 << 7,
+    EVENT_CONTACT_SURFACE = 1 << 4,
+    EVENT_LEAVE_SURFACE = 1 << 5,
     EVENT_FLIP_RESET = 1 << 8,
     EVENT_DEMOED = 1 << 9,
     EVENT_GOAL = 1 << 10,
-    EVENT_BALL_SURFACE_ENTER = 1 << 11,
-    EVENT_BALL_SURFACE_LEAVE = 1 << 12,
-    EVENT_LEAVE_SURFACE = 1 << 13,
+    EVENT_CEILING_BODY_CONTACT = 1 << 11,
     EVENT_BALL_ACCELERATES = 1 << 14
 };
 
@@ -26,7 +22,8 @@ enum ArenaSurface
     ARENA_FLOOR = 1 << 0,
     ARENA_SIDE_WALL = 1 << 1,
     ARENA_BACK_WALL = 1 << 2,
-    ARENA_CEILING = 1 << 3
+    ARENA_CEILING = 1 << 3,
+    ARENA_OTHER = 1 << 4
 };
 
 CARL_HD CARL_FI int arenaSurface(const Vec3& normal)
@@ -43,6 +40,21 @@ CARL_HD CARL_FI int arenaSurface(const Vec3& normal)
     return x >= y ? ARENA_SIDE_WALL : ARENA_BACK_WALL;
 }
 
+CARL_HD CARL_FI int carArenaSurface(const Vec3& normal)
+{
+    const int surface = arenaSurface(normal);
+
+    if (surface == ARENA_SIDE_WALL
+        && (fabsf(normal.y) > 1e-3f || fabsf(normal.z) > 1e-3f))
+    {
+        if (normal.z > 1e-3f) return ARENA_FLOOR;
+        if (normal.z < -1e-3f) return ARENA_CEILING;
+        return ARENA_OTHER;
+    }
+
+    return surface;
+}
+
 enum BallTouchSurface
 {
     TOUCH_FRONT,
@@ -53,92 +65,20 @@ enum BallTouchSurface
     TOUCH_UNDERSIDE
 };
 
-enum BallTouchMetadataField
-{
-    TOUCH_TICK,
-    TOUCH_CAR,
-    TOUCH_SURFACE,
-    TOUCH_METADATA_SIZE
-};
-
-enum BallTouchValueField
-{
-    TOUCH_POINT_X,
-    TOUCH_POINT_Y,
-    TOUCH_POINT_Z,
-    TOUCH_NORMAL_X,
-    TOUCH_NORMAL_Y,
-    TOUCH_NORMAL_Z,
-    TOUCH_DEPTH,
-    TOUCH_REL_SPEED_BEFORE,
-    TOUCH_REL_SPEED_AFTER,
-    TOUCH_SOLVER_DELTA_X,
-    TOUCH_SOLVER_DELTA_Y,
-    TOUCH_SOLVER_DELTA_Z,
-    TOUCH_EXTRA_DELTA_X,
-    TOUCH_EXTRA_DELTA_Y,
-    TOUCH_EXTRA_DELTA_Z,
-    TOUCH_VALUE_SIZE
-};
-
-struct BallTouchEvent
-{
-    int tick;
-    int car;                    // Per-simulation index, blue first.
-    BallTouchSurface surface;
-    Vec3 pointLocal;            // Relative to car position, before correction.
-    Vec3 normalLocal;           // Points from car toward ball.
-    float depth;                // Can be negative within contact tolerance.
-    float relativeSpeedBefore;
-    float relativeSpeedAfter;   // Before the deferred extra impulse.
-    Vec3 solverBallDelta;       // World-space velocity change.
-    Vec3 extraBallDelta;        // World-space change queued until tick end.
-};
-
-// Non-owning GPU views over [nSim, capacity, fields] arrays.
-// The owner clears counts once per API step.
 struct BallTouchBuffer
 {
-    int* counts = nullptr;
-    int* metadata = nullptr;
-    float* values = nullptr;
-    int capacity = 0;
+    int* surfaces = nullptr;
+    int* tickSurfaces = nullptr;
+    float* tickSpeedBefore = nullptr;
 
-    CARL_HD CARL_FI bool enabled() const { return counts != nullptr; }
+    CARL_HD CARL_FI bool enabled() const { return surfaces != nullptr; }
 
-    CARL_D CARL_FI void record(int simIdx, const BallTouchEvent& event) const
+    CARL_D CARL_FI void record(int carIdx, BallTouchSurface surface, float speedBefore) const
     {
         if (!enabled()) return;
-
-        const int slot = atomicAdd(counts + simIdx, 1);
-
-        // Counts can exceed capacity to signal overflow to consumers.
-        if (slot >= capacity) return;
-
-        const int offset = simIdx * capacity + slot;
-        int* meta = metadata + offset * TOUCH_METADATA_SIZE;
-        float* data = values + offset * TOUCH_VALUE_SIZE;
-
-        meta[TOUCH_TICK] = event.tick;
-        meta[TOUCH_CAR] = event.car;
-        meta[TOUCH_SURFACE] = event.surface;
-
-        data[TOUCH_POINT_X] = event.pointLocal.x;
-        data[TOUCH_POINT_Y] = event.pointLocal.y;
-        data[TOUCH_POINT_Z] = event.pointLocal.z;
-        data[TOUCH_NORMAL_X] = event.normalLocal.x;
-        data[TOUCH_NORMAL_Y] = event.normalLocal.y;
-        data[TOUCH_NORMAL_Z] = event.normalLocal.z;
-        data[TOUCH_DEPTH] = event.depth;
-        data[TOUCH_REL_SPEED_BEFORE] = event.relativeSpeedBefore;
-        data[TOUCH_REL_SPEED_AFTER] = event.relativeSpeedAfter;
-
-        data[TOUCH_SOLVER_DELTA_X] = event.solverBallDelta.x;
-        data[TOUCH_SOLVER_DELTA_Y] = event.solverBallDelta.y;
-        data[TOUCH_SOLVER_DELTA_Z] = event.solverBallDelta.z;
-        data[TOUCH_EXTRA_DELTA_X] = event.extraBallDelta.x;
-        data[TOUCH_EXTRA_DELTA_Y] = event.extraBallDelta.y;
-        data[TOUCH_EXTRA_DELTA_Z] = event.extraBallDelta.z;
+        surfaces[carIdx] |= 1 << static_cast<int>(surface);
+        if (tickSurfaces) tickSurfaces[carIdx] |= 1 << static_cast<int>(surface);
+        if (tickSpeedBefore) tickSpeedBefore[carIdx] = speedBefore;
     }
 };
 
@@ -147,6 +87,8 @@ struct EventBuffer
     int* carFlags = nullptr;
     int* ballFlags = nullptr;
     int* carSurfaces = nullptr;
+    int* carSurfaceContacted = nullptr;
+    int* carSurfaceLeft = nullptr;
     int* ballSurfaces = nullptr;
     int* ballSurfaceEntered = nullptr;
     int* ballSurfaceLeft = nullptr;
@@ -155,6 +97,7 @@ struct EventBuffer
     float* ballSpeedBefore = nullptr;
 
     BallTouchBuffer touches;
+    float* touchSpeed = nullptr;
 
     int nSim = 0;
     int nCars = 0;
@@ -196,31 +139,20 @@ struct EventBuffer
 
         if (previous < 0) return;
 
-        const int walls = ARENA_SIDE_WALL | ARENA_BACK_WALL;
+        carSurfaceContacted[carIdx] |= surfaces & ~previous;
+        carSurfaceLeft[carIdx] |= previous & ~surfaces;
 
         const bool wasGrounded = previous != 0;
         const bool isGrounded = surfaces != 0;
-        const bool wasOnWall = (previous & walls) != 0;
-        const bool isOnWall = (surfaces & walls) != 0;
 
         if (!wasGrounded && isGrounded)
         {
-            car(carIdx, EVENT_GROUNDED);
+            car(carIdx, EVENT_CONTACT_SURFACE);
         }
 
         if (wasGrounded && !isGrounded)
         {
-            car(carIdx, EVENT_AIRBORNE | EVENT_LEAVE_SURFACE);
-        }
-
-        if (!wasOnWall && isOnWall)
-        {
-            car(carIdx, EVENT_ENTER_WALL);
-        }
-
-        if (wasOnWall && !isOnWall)
-        {
-            car(carIdx, EVENT_LEAVE_WALL);
+            car(carIdx, EVENT_LEAVE_SURFACE);
         }
     }
 
@@ -239,14 +171,5 @@ struct EventBuffer
         ballSurfaceEntered[simIdx] |= entered;
         ballSurfaceLeft[simIdx] |= left;
 
-        if (entered)
-        {
-            ball(simIdx, EVENT_BALL_SURFACE_ENTER);
-        }
-
-        if (left)
-        {
-            ball(simIdx, EVENT_BALL_SURFACE_LEAVE);
-        }
     }
 };

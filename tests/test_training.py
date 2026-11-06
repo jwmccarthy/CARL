@@ -3,7 +3,7 @@ import unittest
 from carl.events import ContactSurface
 from carl.training import (
     BallState, BallTouch, Box2D, Box3D, CarState, Euler, Exercise, FlipReset,
-    Grounded, InitialState, InAir, LeaveSurface, OnSurface, Stage, TrainingPack,
+    SurfaceContact, InitialState, InAir, LeaveSurface, OnSurface, Stage, TrainingPack,
     Uniform,
 )
 
@@ -31,14 +31,14 @@ class TrainingDefinitionTests(unittest.TestCase):
                 Stage(
                     BallTouch(surface=ContactSurface.FRONT, min_height=400),
                     within_ticks = 240,
-                    fail_on      = [Grounded()],
+                    fail_on      = [SurfaceContact()],
                 ),
             ],
         )
         pack = TrainingPack(name="Aerials", exercises=[exercise])
 
         self.assertEqual(pack.exercises, [exercise])
-        self.assertEqual(exercise.stages[1].fail_on, [Grounded()])
+        self.assertEqual(exercise.stages[1].fail_on, [SurfaceContact()])
         self.assertEqual(exercise.stages[1].within_ticks, 240)
         self.assertEqual(exercise.initial.ego.boost, Uniform(60, 100))
 
@@ -64,7 +64,7 @@ class TrainingDefinitionTests(unittest.TestCase):
         second = Stage(FlipReset())
 
         first.within_ticks = 120
-        first.fail_on.append(Grounded())
+        first.fail_on.append(SurfaceContact())
 
         self.assertEqual(first.within_ticks, 120)
         self.assertEqual(second.fail_on, [])

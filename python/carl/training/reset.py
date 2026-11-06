@@ -3,8 +3,15 @@ import torch as th
 from carl import _carl
 from carl.gymnasium.state import CARLBall, CARLCars, CARLResetState
 
+from .definitions import Exercise, TrainingPack
 from .initial import Box2D, Box3D, Euler, InAir, InitialState, OnSurface, Uniform
 from ..events import ArenaSurface
+
+
+# Flat Soccar collision planes, distinct from the broader observation bounds.
+SOCCAR_SIDE_WALL = 4096.0
+SOCCAR_BACK_WALL = 5120.0
+SOCCAR_CEILING = 2048.0
 
 
 def _check_side(side):
@@ -30,21 +37,21 @@ def _surface_position(batch, surface, position, side, rest):
         depth = tangent.new_full((batch.count, 1), rest)
         return th.cat((tangent, depth), dim=-1)
     if surface == ArenaSurface.CEILING:
-        depth = tangent.new_full((batch.count, 1), _carl.ARENA_MAX[2] - rest)
+        depth = tangent.new_full((batch.count, 1), SOCCAR_CEILING - rest)
         return th.cat((tangent, depth), dim=-1)
     if surface == ArenaSurface.SIDE_WALL:
-        x = tangent.new_full((batch.count, 1), side * (_carl.ARENA_MAX[0] - rest))
+        x = tangent.new_full((batch.count, 1), side * (SOCCAR_SIDE_WALL - rest))
         return th.cat((x, tangent), dim=-1)
     if surface == ArenaSurface.BACK_WALL:
-        y = tangent.new_full((batch.count, 1), side * (_carl.ARENA_MAX[1] - rest))
+        y = tangent.new_full((batch.count, 1), side * (SOCCAR_BACK_WALL - rest))
         return th.cat((tangent[:, :1], y, tangent[:, 1:]), dim=-1)
     raise ValueError("unsupported arena surface")
 
 
 def _surface_forward(batch, normal, tangent, heading):
     angle = batch._scalar(heading)
-    normal = th.tensor(normal, device=batch.device, dtype=th.float32).expand(batch.count, 3)
-    tangent = th.tensor(tangent, device=batch.device, dtype=th.float32).expand(batch.count, 3)
+    normal = batch._vector(normal)
+    tangent = batch._vector(tangent)
     bitangent = th.linalg.cross(normal, tangent, dim=-1)
     return tangent * angle.cos()[:, None] + bitangent * angle.sin()[:, None]
 
@@ -74,6 +81,95 @@ class ResetSampler:
         counts = self.reset_counts[indices].clone()
         self.reset_counts[indices] += 1
         return ResetBatch(indices, counts, self.seed, self.generator)
+
+
+class ExerciseResetProvider:
+
+    def __init__(
+        self,
+        exercise: Exercise,
+        n_sim:    int,
+        seed:     int = 0,
+        device:   str = "cuda:0",
+    ):
+        if n_sim < 1:
+            raise ValueError("n_sim must be positive")
+
+        self.exercise = exercise
+        self.sampler = ResetSampler(n_sim, seed=seed, device=device)
+        self.indices = th.arange(n_sim, dtype=th.int64, device=device)
+
+    def __call__(self, reset_mask: th.Tensor) -> CARLResetState:
+        if reset_mask.dtype != th.bool or reset_mask.shape != self.sampler.reset_counts.shape:
+            raise ValueError("reset_mask must be a per-simulation boolean mask")
+
+        if reset_mask.device != self.sampler.device:
+            raise ValueError("reset_mask must be on the sampler device")
+
+        indices = th.where(reset_mask, self.indices, -1)
+        self.sampler.reset_counts.add_(reset_mask)
+        batch = ResetBatch(indices, self.sampler.reset_counts, self.sampler.seed, self.sampler.generator)
+
+        return batch.sample(self.exercise.initial)
+
+
+class TrainingPackResetProvider:
+
+    def __init__(
+        self,
+        pack:   TrainingPack,
+        n_sim:  int,
+        seed:   int = 0,
+        device: str = "cuda:0",
+    ):
+        if n_sim < 1:
+            raise ValueError("n_sim must be positive")
+
+        if not pack.exercises:
+            raise ValueError("a training pack needs at least one exercise")
+
+        self.pack = pack
+        self.sampler = ResetSampler(n_sim, seed=seed, device=device)
+        self.indices = th.arange(n_sim, dtype=th.int64, device=device)
+        self.exercise_index = th.zeros(n_sim, dtype=th.int64, device=device)
+
+    def __call__(self, reset_mask: th.Tensor) -> CARLResetState:
+        if reset_mask.dtype != th.bool or reset_mask.shape != self.exercise_index.shape:
+            raise ValueError("reset_mask must be a per-simulation boolean mask")
+
+        if reset_mask.device != self.sampler.device:
+            raise ValueError("reset_mask must be on the sampler device")
+
+        choices = th.randint(
+            len(self.pack.exercises), self.exercise_index.shape,
+            generator = self.sampler.generator,
+            device    = self.sampler.device,
+        )
+        self.exercise_index = th.where(reset_mask, choices, self.exercise_index)
+        indices = th.where(reset_mask, self.indices, -1)
+        self.sampler.reset_counts.add_(reset_mask)
+
+        ball = cars = internal = None
+
+        for index, exercise in enumerate(self.pack.exercises):
+            batch = ResetBatch(indices, self.sampler.reset_counts, self.sampler.seed, self.sampler.generator)
+            state = batch.sample(exercise.initial)
+
+            if ball is None:
+                ball, cars, internal = state.ball, state.cars, state.car_internal_state
+                continue
+
+            selected = (self.exercise_index == index)
+            ball = th.where(selected[:, None], state.ball, ball)
+            cars = th.where(selected[:, None, None], state.cars, cars)
+            internal = th.where(selected[:, None, None], state.car_internal_state, internal)
+
+        return CARLResetState(
+            simulation_indices = indices,
+            ball               = CARLBall.from_tensor(ball),
+            cars               = CARLCars.from_tensor(cars, 1),
+            car_internal_state = internal,
+        )
 
 
 class ResetBatch:
@@ -121,13 +217,17 @@ class ResetBatch:
     def _scalar(self, value) -> th.Tensor:
         if isinstance(value, Uniform):
             return self.uniform(value.low, value.high)
+
+        if not isinstance(value, th.Tensor):
+            return th.full((self.count,), value, device=self.device, dtype=th.float32)
+
         value = th.as_tensor(value, device=self.device, dtype=th.float32)
         return th.broadcast_to(value, (self.count,))
 
     def _vector(self, value, dimensions=3) -> th.Tensor:
         if isinstance(value, (Box2D, Box3D)):
-            low = th.tensor(value.low, device=self.device, dtype=th.float32)
-            high = th.tensor(value.high, device=self.device, dtype=th.float32)
+            low = self._vector(value.low, dimensions)
+            high = self._vector(value.high, dimensions)
             return low + (high - low) * self.uniform(shape=(dimensions,))
         if isinstance(value, th.Tensor):
             value = value.to(device=self.device, dtype=th.float32)
@@ -218,7 +318,7 @@ class CarReset:
 
         self._car.position.copy_(position)
         self._car.forward.copy_(forward)
-        self._car.up.copy_(th.tensor(normal, device=self._batch.device, dtype=th.float32))
+        self._car.up.copy_(self._batch._vector(normal))
         self._car[..., _carl.OBS_ON_GROUND] = int(surface == ArenaSurface.FLOOR)
         return self.set(**physics)
 

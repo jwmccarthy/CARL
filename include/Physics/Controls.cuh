@@ -30,7 +30,7 @@ CARL_D CARL_FI void processCarControls(
             if (source != WHEEL_SOURCE_ARENA) continue;
             if (length > suspRayLength(wheel)) continue;
 
-            surfaces |= arenaSurface(space->susp.rayNormal[index]);
+            surfaces |= carArenaSurface(space->susp.rayNormal[index]);
             arenaWheels++;
         }
 

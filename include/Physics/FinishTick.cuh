@@ -92,6 +92,15 @@ CARL_D CARL_FI void finishBallTick(
     state->ball.ang[ballIdx] = ang;
     state->ball.imp[ballIdx] = Vec3::zero();
 
+    if (events.touchSpeed && events.touches.tickSurfaces)
+    {
+        for (int local = 0; local < events.nCars; local++)
+        {
+            const int carIdx = ballIdx * events.nCars + local;
+            if (events.touches.tickSurfaces[carIdx]) events.touchSpeed[carIdx] = vel.len();
+        }
+    }
+
     if (events.enabled())
     {
         const GoalState& goal = state->goals[ballIdx];

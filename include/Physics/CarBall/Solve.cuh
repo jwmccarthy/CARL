@@ -206,17 +206,6 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
     state->cars.cen[carIdx] = carPos + carRot.toWorld(CAR_OFFSETS);
 }
 
-CARL_D CARL_FI float ballCarRelativeSpeed(
-    const Vec3& ballVel,
-    const Vec3& ballAng,
-    const BallCarBody& car,
-    const BallCarConstraint& constraint)
-{
-    const Vec3 ballPoint = ballVel + ballAng.cross(constraint.ballOffset);
-    const Vec3 carPoint = car.vel + car.ang.cross(constraint.carOffset);
-    return (ballPoint - carPoint).len();
-}
-
 CARL_D CARL_FI BallTouchSurface ballCarSurface(const Vec3& localNormal)
 {
     const Vec3 magnitude = localNormal.abs();
@@ -240,6 +229,7 @@ CARL_D CARL_FI void solveBallCarPair(
     const Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
 
     Vec3 ballVel = Vec3::ldg(state->ball.vel[ballIdx]);
+    const float ballSpeedBefore = ballVel.len();
     Vec3 ballAng = Vec3::ldg(state->ball.ang[ballIdx]);
     BallCarBody car = loadBallCarBody(state, carIdx);
 
@@ -250,15 +240,9 @@ CARL_D CARL_FI void solveBallCarPair(
     BallCarConstraint constraint = makeBallCarConstraint(car, ballVel, ballAng, contact);
     const bool newTouch = (touches.enabled() || events.enabled())
         && __ldg(&state->cars.ballContactTick[carIdx]) < state->tickCount - 1;
-    const float speedBefore = newTouch
-        ? ballCarRelativeSpeed(ballVel, ballAng, car, constraint) : 0.f;
-    const Vec3 ballVelBefore = ballVel;
 
     solveBallCarConstraint(
         ballVel, ballAng, car, constraint);
-
-    const float speedAfter = newTouch
-        ? ballCarRelativeSpeed(ballVel, ballAng, car, constraint) : 0.f;
 
     state->ball.vel[ballIdx] = ballVel;
     state->ball.ang[ballIdx] = ballAng;
@@ -269,7 +253,7 @@ CARL_D CARL_FI void solveBallCarPair(
         state, ballIdx, carIdx,
         contact, constraint.normal);
 
-    const Vec3 extraBallDelta = applyBallCarExtraImpulse(
+    applyBallCarExtraImpulse(
         state, ballIdx, carIdx, ballPos, car.pos,
         preSolveCarVel, car.rot, preSolveBallVel);
 
@@ -279,18 +263,7 @@ CARL_D CARL_FI void solveBallCarPair(
         events.ball(ballIdx, EVENT_BALL_TOUCH);
 
         const Vec3 localNormal = car.rot.toLocal(contact.normal);
-        touches.record(ballIdx, {
-            state->tickCount,
-            carIdx % state->nCars,
-            ballCarSurface(localNormal),
-            car.rot.toLocal(contact.point - car.pos),
-            localNormal,
-            contact.depth,
-            speedBefore,
-            speedAfter,
-            ballVel - ballVelBefore,
-            extraBallDelta
-        });
+        touches.record(carIdx, ballCarSurface(localNormal), ballSpeedBefore);
     }
 }
 

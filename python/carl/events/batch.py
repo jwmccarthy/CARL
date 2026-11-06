@@ -25,7 +25,10 @@ class CarlEvents:
             raise RuntimeError("ego events require capture_events=True")
         if self.cars.flags.shape[1] != 1:
             raise ValueError("ego events require exactly one car per simulation")
-        return CarEvents(self.cars.flags[:, 0], self.cars._native)
+        return CarEvents(
+            self.cars.flags[:, 0], self.cars._native,
+            self.cars.surface_contacted[:, 0], self.cars.surface_left[:, 0],
+        )
 
     @classmethod
     def from_native(cls, native: _carl.EventState, **kwargs):
@@ -33,7 +36,11 @@ class CarlEvents:
         batch = cls(_native=native, **kwargs)
 
         if native.enabled:
-            batch.cars = CarEvents(th.from_dlpack(native.get_car_flags()), native)
+            batch.cars = CarEvents(
+                th.from_dlpack(native.get_car_flags()), native,
+                th.from_dlpack(native.get_car_surface_contacted()),
+                th.from_dlpack(native.get_car_surface_left()),
+            )
             batch.ball = BallEvents(
                 flags           = th.from_dlpack(native.get_ball_flags()),
                 surface_entered = th.from_dlpack(native.get_ball_surface_entered()),
@@ -45,9 +52,10 @@ class CarlEvents:
 
         if native.touches_enabled:
             batch.ball_touches = BallTouchBatch(
-                counts   = th.from_dlpack(native.get_ball_touch_counts()),
-                metadata = th.from_dlpack(native.get_ball_touch_metadata()),
-                values   = th.from_dlpack(native.get_ball_touch_values()),
+                surfaces = th.from_dlpack(native.get_ball_touch_surfaces()),
+                tick_surfaces = th.from_dlpack(native.get_ball_touch_tick_surfaces()),
+                tick_speed = th.from_dlpack(native.get_ball_touch_tick_speed()),
+                tick_speed_before = th.from_dlpack(native.get_ball_touch_tick_speed_before()),
                 _native  = native,
             )
 

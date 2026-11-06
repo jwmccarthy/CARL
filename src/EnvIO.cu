@@ -579,36 +579,6 @@ DLManagedTensor* EnvIO::getTransitionOvertimeTensor()
     return makeBoolTensor(d_transitionOvertime, doneShape, 1);
 }
 
-DLManagedTensor* EnvIO::getBallTouchCountsTensor()
-{
-    if (!events.touchesEnabled())
-    {
-        throw std::runtime_error("ball-touch capture is disabled");
-    }
-
-    return makeIntTensor(events.touchCounts.ptr, events.countShape, 1);
-}
-
-DLManagedTensor* EnvIO::getBallTouchMetadataTensor()
-{
-    if (!events.touchesEnabled())
-    {
-        throw std::runtime_error("ball-touch capture is disabled");
-    }
-
-    return makeIntTensor(events.touchMetadata.ptr, events.touchMetadataShape, 3);
-}
-
-DLManagedTensor* EnvIO::getBallTouchValuesTensor()
-{
-    if (!events.touchesEnabled())
-    {
-        throw std::runtime_error("ball-touch capture is disabled");
-    }
-
-    return makeFloatTensor(events.touchValues.ptr, events.touchValuesShape, 3);
-}
-
 // Copy external device action tensor into internal buffer (D2D, same stream)
 void EnvIO::setActions(const int32_t* src)
 {

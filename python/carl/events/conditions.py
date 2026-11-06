@@ -9,11 +9,20 @@ class Condition:
 
 
 @dataclass
+class StateCondition(Condition):
+
+    metric:  str
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+@dataclass
 class BallTouch(Condition):
 
     surface:        ContactSurface | None = None
     min_height:     float | None          = None
     min_speed_gain: float | None          = None
+    max_speed_gain: float | None          = None
 
 
 @dataclass
@@ -43,53 +52,19 @@ class FlipReset(Condition):
 @dataclass
 class LeaveSurface(Condition):
 
-    pass
+    surface: ArenaSurface | None = None
+    entity:  str                 = "car"
 
 
 @dataclass
-class Grounded(Condition):
+class SurfaceContact(Condition):
 
-    pass
-
-
-@dataclass
-class Airborne(Condition):
-
-    pass
-
-
-@dataclass
-class EnterWall(Condition):
-
-    pass
-
-
-@dataclass
-class LeaveWall(Condition):
-
-    pass
+    surface: ArenaSurface | None = None
+    entity:  str                 = "car"
 
 
 @dataclass
 class Demoed(Condition):
-
-    pass
-
-
-@dataclass
-class BallSurfaceEnter(Condition):
-
-    surface: ArenaSurface | None = None
-
-
-@dataclass
-class BallSurfaceLeave(Condition):
-
-    surface: ArenaSurface | None = None
-
-
-@dataclass
-class BallContactGround(Condition):
 
     pass
 

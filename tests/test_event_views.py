@@ -26,10 +26,10 @@ class EventViewTests(unittest.TestCase):
             batch = CarlEvents.from_native(self.env.events)
 
         flags = th.from_dlpack(self.env.events.get_car_flags())
-        touches = th.from_dlpack(self.env.get_ball_touch_values())
+        touches = th.from_dlpack(self.env.events.get_ball_touch_surfaces())
 
         self.assertEqual(batch.cars.flags.data_ptr(), flags.data_ptr())
-        self.assertEqual(batch.ball_touches.values.data_ptr(), touches.data_ptr())
+        self.assertEqual(batch.ball_touches.surfaces.data_ptr(), touches.data_ptr())
         self.assertTrue(batch.cars.jumped.all().item())
         self.assertEqual(batch.ego.jumped.shape, (2,))
         self.assertEqual(batch.ego.flags.data_ptr(), batch.cars.flags.data_ptr())
@@ -40,7 +40,7 @@ class EventViewTests(unittest.TestCase):
         snapshot = views.snapshot()
 
         self.assertNotEqual(snapshot.cars.flags.data_ptr(), views.cars.flags.data_ptr())
-        self.assertNotEqual(snapshot.ball_touches.values.data_ptr(), views.ball_touches.values.data_ptr())
+        self.assertNotEqual(snapshot.ball_touches.surfaces.data_ptr(), views.ball_touches.surfaces.data_ptr())
 
         self.env.step_continuous(self.actions)
         self.env.reset()
@@ -77,7 +77,7 @@ class EventViewTests(unittest.TestCase):
 
         self.assertIsNone(batch.cars)
         self.assertIsNone(batch.ball)
-        self.assertEqual(batch.ball_touches.counts.tolist(), [0])
+        self.assertEqual(batch.ball_touches.surfaces.tolist(), [[0]])
 
     def test_reward_context_uses_environment_event_batch(self):
         received = []

@@ -347,23 +347,6 @@ class CARLResetState:
     match:              CARLMatchReset | None = None
     normalized:         bool = False
 
-    def validate(self, reset_mask: th.Tensor, n_cars: int) -> None:
-        indices = self.simulation_indices
-
-        if (indices.ndim != 1 or indices.dtype != th.int64
-                or indices.device != reset_mask.device):
-            raise ValueError("simulation_indices must be int64 on the environment device")
-        
-        if ((indices < 0) | (indices >= len(reset_mask))).any():
-            raise ValueError("simulation_indices are out of range")
-        
-        if not reset_mask[indices].all() or th.unique(indices).numel() != len(indices):
-            raise ValueError("simulation_indices must be unique and selected for reset")
-        
-        if (self.ball.shape != (len(indices), carl.OBS_BALL)
-                or self.cars.shape != (len(indices), n_cars, carl.OBS_PER_CAR)):
-            raise ValueError("ball or cars have the wrong shape")
-
     def physical(self) -> tuple[CARLBall, CARLCars]:
         if not self.normalized:
             return self.ball, self.cars

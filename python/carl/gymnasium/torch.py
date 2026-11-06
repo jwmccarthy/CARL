@@ -32,14 +32,7 @@ ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
 def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
     """Convert car axes to [x, y, z, w] quaternions."""
-    if not th.isfinite(forward).all() or not th.isfinite(up).all():
-        raise ValueError("car forward and up directions must be finite")
-
     right = th.linalg.cross(up, forward, dim=-1)
-    for axis in (forward, right):
-        if (axis.square().sum(dim=-1) < 1e-8).any():
-            raise ValueError("car forward and up directions must define a rotation")
-
     forward = F.normalize(forward, dim=-1)
     right = F.normalize(right, dim=-1)
     up = th.linalg.cross(forward, right, dim=-1)
@@ -56,7 +49,8 @@ def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
         th.copysign((1 - xx - yy + zz).clamp_min(0).sqrt(), yx - xy),
     ), dim=-1)
 
-    return F.normalize(quat, dim=-1)[..., (1, 2, 3, 0)]
+    quat = F.normalize(quat, dim=-1)
+    return th.cat((quat[..., 1:], quat[..., :1]), dim=-1)
 
 
 def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int | None:
@@ -99,6 +93,7 @@ class CARLTorchVectorEnv(VectorEnv):
         reward_funcs:             Iterable[RewardFunction] | None = None,
         reward_scale:             float = 1.0,
         reset_state_provider:     ResetStateProvider | None = None,
+        termination_manager:      Any | None = None,
         discrete_actions:         bool = False,
         capture_ball_touches:     bool = False,
         capture_events:           bool = False,
@@ -117,6 +112,20 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
+        self.termination_manager = termination_manager
+
+        if termination_manager is not None and termination_manager.provider is not reset_state_provider:
+            raise ValueError("termination manager must use the environment's reset provider")
+
+        if termination_manager is not None:
+            if (n_blue, n_orange) != (1, 0) or termination_manager.runtime.n_sim != n_sim:
+                raise ValueError("training exercises require matching simulations in 1v0")
+
+            if not capture_events:
+                raise ValueError("training exercises require capture_events=True")
+
+            if termination_manager.runtime.pack.needs_touch and not capture_ball_touches:
+                raise ValueError("surface-qualified touches require capture_ball_touches=True")
         self.discrete_actions = discrete_actions
         self.capture_ball_touches = capture_ball_touches
         self.capture_events = capture_events
@@ -211,7 +220,7 @@ class CARLTorchVectorEnv(VectorEnv):
         return observation
 
     def _apply_reset_state(self, reset_mask: th.Tensor) -> None:
-        if self.reset_state_provider is None or not reset_mask.any():
+        if self.reset_state_provider is None:
             return
 
         state = self.reset_state_provider(reset_mask)
@@ -221,7 +230,9 @@ class CARLTorchVectorEnv(VectorEnv):
             self._apply_typed_reset_state(state, reset_mask)
             return
 
-        indices = state.get("simulation_indices", reset_mask.nonzero(as_tuple=True)[0])
+        indices = state.get("simulation_indices")
+        if indices is None:
+            indices = reset_mask.nonzero(as_tuple=True)[0]
         if not indices.numel():
             return
 
@@ -260,7 +271,6 @@ class CARLTorchVectorEnv(VectorEnv):
     def _apply_typed_reset_state(
         self, state: CARLResetState, reset_mask: th.Tensor,
     ) -> None:
-        state.validate(reset_mask, self.n_cars)
         if not state.simulation_indices.numel():
             return
 
@@ -298,9 +308,9 @@ class CARLTorchVectorEnv(VectorEnv):
             self._episode_ticks.zero_()
             self._overtime.zero_()
         else:
-            self._score_difference[mask] = 0
-            self._episode_ticks[mask] = 0
-            self._overtime[mask] = False
+            self._score_difference.masked_fill_(mask, 0)
+            self._episode_ticks.masked_fill_(mask, 0)
+            self._overtime.masked_fill_(mask, False)
 
     def _per_car(self, x: th.Tensor) -> th.Tensor:
         return x[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
@@ -378,7 +388,11 @@ class CARLTorchVectorEnv(VectorEnv):
             raise NotImplementedError("CARL reset options are not supported")
 
         self._env.reset()
-        self._apply_reset_state(th.ones(self.n_sim, dtype=th.bool, device=self.device))
+        reset_mask = th.ones(self.n_sim, dtype=th.bool, device=self.device)
+        self._apply_reset_state(reset_mask)
+
+        if self.termination_manager is not None:
+            self.termination_manager.reset(reset_mask)
         self._clear_sim_stats()
         ended = th.zeros(self.n_sim, dtype=th.bool, device=self.device)
         self._events = CarlEvents.from_native(
@@ -485,14 +499,46 @@ class CARLTorchVectorEnv(VectorEnv):
             truncated   = sim_truncated,
         )
 
+        exercise = None
+
+        if self.termination_manager is not None:
+            transition_state = None
+
+            if self.termination_manager.runtime.pack.needs_state:
+                transition_state = CarlState.from_raw(
+                    self._tensor(self._env.get_transition_state(), copy=False),
+                    self.n_cars,
+                    self._boost_pad_positions,
+                    self._team_sign,
+                )
+
+            exercise = self.termination_manager.step(
+                self._events, self._env.frameskip, state=transition_state,
+            )
+            exercise_terminated = exercise.succeeded | exercise.failed
+            sim_terminated = sim_terminated | exercise_terminated
+            sim_truncated = (sim_truncated | exercise.timed_out) & ~sim_terminated
+            exercise_done = exercise_terminated | exercise.timed_out
+            self._events.done = sim_terminated | sim_truncated
+            self._events.terminated = sim_terminated
+            self._events.truncated = sim_truncated
+
         if self.reward_funcs:
             reward, reward_info = self._custom_reward(actions)
         else:
             reward = (score_delta[:, None] * self._team_sign).reshape(self.n_envs)
             reward_info = {}
 
-        self._apply_reset_state(sim_done)
-        self._clear_sim_stats(sim_done)
+        if exercise is not None:
+            self._env.reset_selected((exercise_done & ~sim_done).contiguous())
+
+        reset_mask = sim_terminated | sim_truncated
+        self._apply_reset_state(reset_mask)
+
+        if self.termination_manager is not None:
+            self.termination_manager.reset(reset_mask)
+
+        self._clear_sim_stats(reset_mask)
         obs = self._observe()
 
         terminated = self._per_car(sim_terminated)
@@ -519,6 +565,11 @@ class CARLTorchVectorEnv(VectorEnv):
             }
             self._episode_return[finished] = 0
             self._episode_length[finished] = 0
+
+        if exercise is not None:
+            info["exercise_success"] = exercise.succeeded
+            info["exercise_failure"] = exercise.failed
+            info["exercise_timeout"] = exercise.timed_out
 
         return obs, reward, terminated, truncated, info
 
