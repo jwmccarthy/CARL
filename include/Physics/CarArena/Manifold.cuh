@@ -27,9 +27,9 @@ CARL_D CARL_FI ManifoldPoint readManifoldPoint(
     int idx)
 {
     return {
-        Vec3::ldg(manifold.carPos[idx]),
-        Vec3::ldg(manifold.worldPos[idx]),
-        Vec3::ldg(manifold.worldNormal[idx]),
+        manifold.carPos[idx],
+        manifold.worldPos[idx],
+        manifold.worldNormal[idx],
         __ldg(&manifold.dist[idx]),
         __ldg(&manifold.friction[idx]),
         __ldg(&manifold.restitution[idx]),

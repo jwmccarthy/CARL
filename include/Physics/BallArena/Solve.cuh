@@ -15,10 +15,10 @@ CARL_D __noinline__ Vec3 solveBallArena(
     const Vec3& velNoExt)
 {
     BallArenaSolverBody body = {
-        Vec3::ldg(state->ball.pos[ballIdx]),
+        state->ball.pos[ballIdx],
         preSolveVel,
         velNoExt,
-        Vec3::ldg(state->ball.ang[ballIdx]),
+        state->ball.ang[ballIdx],
         Vec3::zero(),
         Vec3::zero(),
         Vec3::zero(),
@@ -49,18 +49,18 @@ CARL_D CARL_FI void solveBallForSim(
     int simIdx)
 {
     const int ballIdx = simIdx;
-    const Vec3 ballVel = Vec3::ldg(state->ball.vel[ballIdx]);
-    const Vec3 ballAng = Vec3::ldg(state->ball.ang[ballIdx]);
+    const Vec3 ballVel = state->ball.vel[ballIdx];
+    const Vec3 ballAng = state->ball.ang[ballIdx];
     const bool sleeping = ballVel.lenSq() == 0.f && ballAng.lenSq() == 0.f;
 
     auto &ball = state->ball;
-    const Vec3 exportedPos = Vec3::ldg(ball.pos[ballIdx]);
+    const Vec3 exportedPos = ball.pos[ballIdx];
     const bool valid = ball.integrationValid[ballIdx] != 0;
-    Vec3 posBT = valid && (exportedPos - Vec3::ldg(ball.exportedPos[ballIdx])).lenSq() == 0.f
-                     ? Vec3::ldg(ball.integrationPos[ballIdx])
+    Vec3 posBT = valid && (exportedPos - ball.exportedPos[ballIdx]).lenSq() == 0.f
+                     ? ball.integrationPos[ballIdx]
                      : exportedPos * .02f;
-    Vec3 velBT = valid && (ballVel - Vec3::ldg(ball.exportedVel[ballIdx])).lenSq() == 0.f
-                     ? Vec3::ldg(ball.integrationVel[ballIdx])
+    Vec3 velBT = valid && (ballVel - ball.exportedVel[ballIdx]).lenSq() == 0.f
+                     ? ball.integrationVel[ballIdx]
                      : ballVel * .02f;
 
     // Damped velocity: exponential drag then gravity, matching Bullet

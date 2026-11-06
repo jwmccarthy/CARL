@@ -25,11 +25,11 @@ CARL_D CARL_FI SolverBody loadSolverBody(
 {
     SolverBody body{};
 
-    body.pos = Vec3::ldg(state->cars.pos[carIdx]);
-    body.vel = Vec3::ldg(state->cars.vel[carIdx]);
-    body.ang = Vec3::ldg(state->cars.ang[carIdx]);
-    body.cen = Vec3::ldg(state->cars.cen[carIdx]);
-    body.rot = Quat::ldg(state->cars.rot[carIdx]);
+    body.pos = state->cars.pos[carIdx];
+    body.vel = state->cars.vel[carIdx];
+    body.ang = state->cars.ang[carIdx];
+    body.cen = state->cars.cen[carIdx];
+    body.rot = state->cars.rot[carIdx];
     body.extVel = WORLD_GRAVITY * PHYS_DT;
 
     return body;

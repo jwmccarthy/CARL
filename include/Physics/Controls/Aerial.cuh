@@ -203,7 +203,7 @@ CARL_D CARL_FI void updateFlipMotion(ControlCtx& ctx)
     if (s.flipTime > FLIP_TORQUE_TIME) return;
 
     // Damp vertical velocity only during the active flip landing window
-    Vec3 vel = Vec3::ldg(ctx.state->cars.vel[ctx.carIdx]);
+    Vec3 vel = ctx.state->cars.vel[ctx.carIdx];
     const bool dampZ = s.flipTime >= FLIP_Z_DAMP_START
         && (vel.z < 0.f || s.flipTime < FLIP_Z_DAMP_END);
 
@@ -274,7 +274,7 @@ CARL_D CARL_FI bool applyFlipTorque(ControlCtx& ctx)
     const Vec3 worldTorque = ctx.rot.toWorld(relTorque);
 
     ctx.susp().angularImpulse[ctx.carIdx] =
-        Vec3::ldg(ctx.susp().angularImpulse[ctx.carIdx]) + worldTorque * PHYS_DT;
+        ctx.susp().angularImpulse[ctx.carIdx] + worldTorque * PHYS_DT;
 
     return useAir;
 }
@@ -295,7 +295,7 @@ CARL_D CARL_FI void applyAirTorque(ControlCtx& ctx)
     const Vec3 input = { c.pitch, c.yaw, c.roll };
     const Vec3 controlScale = { pitchScale, 1.f, 1.f };
     const Vec3 dampInput = { c.pitch * pitchScale, c.yaw, 0.f };
-    const Vec3 ang = Vec3::ldg(ctx.state->cars.ang[ctx.carIdx]);
+    const Vec3 ang = ctx.state->cars.ang[ctx.carIdx];
 
     Vec3 torque = Vec3::zero();
     Vec3 damping = Vec3::zero();
@@ -317,7 +317,7 @@ CARL_D CARL_FI void applyAirTorque(ControlCtx& ctx)
         damping = damping + dir * damp;
     }
 
-    ctx.susp().angularImpulse[ctx.carIdx] = Vec3::ldg(ctx.susp().angularImpulse[ctx.carIdx]) +
+    ctx.susp().angularImpulse[ctx.carIdx] = ctx.susp().angularImpulse[ctx.carIdx] +
                                             (torque - damping) * (CAR_TORQUE_SCALE * PHYS_DT);
 }
 

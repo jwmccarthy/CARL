@@ -97,8 +97,8 @@ CARL_D CARL_FI void solveCarCarPair(
     pair.pairIdx = pairIdx;
     pair.carA = carA;
     pair.carB = carB;
-    pair.boxA.cen = Vec3::ldg(state->cars.cen[carA]);
-    pair.boxB.cen = Vec3::ldg(state->cars.cen[carB]);
+    pair.boxA.cen = state->cars.cen[carA];
+    pair.boxB.cen = state->cars.cen[carB];
 
     const Vec3 centerDelta = pair.boxB.cen - pair.boxA.cen;
     const float maxDist = 2.f * CAR_HALF_EX.len();
@@ -108,8 +108,8 @@ CARL_D CARL_FI void solveCarCarPair(
         return;
     }
 
-    pair.boxA.rot = Quat::ldg(state->cars.rot[carA]);
-    pair.boxB.rot = Quat::ldg(state->cars.rot[carB]);
+    pair.boxA.rot = state->cars.rot[carA];
+    pair.boxB.rot = state->cars.rot[carB];
 
     const SATResult sat = carCarSAT(pair.boxA, pair.boxB);
     if (!sat.overlap)

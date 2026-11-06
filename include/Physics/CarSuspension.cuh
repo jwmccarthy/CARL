@@ -331,9 +331,9 @@ CARL_D __noinline__ void applyCarSuspension(
 
     applySuspAggregate(body, susp, space->ctMan, frame, contacts);
 
-    const Vec3 jumpImpulse = Vec3::ldg(space->susp.jumpImpulse[carIdx]);
+    const Vec3 jumpImpulse = space->susp.jumpImpulse[carIdx];
     body.extVel = body.extVel + jumpImpulse;
     space->susp.jumpImpulse[carIdx] = Vec3::zero();
-    body.extAng = body.extAng + Vec3::ldg(space->susp.angularImpulse[carIdx]);
+    body.extAng = body.extAng + space->susp.angularImpulse[carIdx];
     space->susp.angularImpulse[carIdx] = Vec3::zero();
 }

@@ -65,7 +65,7 @@ CARL_D CARL_FI ControlCtx makeControlCtx(
     ctx.rot = Quat::ldg(state->cars.rot[carIdx]);
     ctx.fwd = ctx.rot.toWorld(WORLD_X);
     ctx.up = ctx.rot.toWorld(WORLD_Z);
-    ctx.fwdSpeed = Vec3::ldg(state->cars.vel[carIdx]).dot(ctx.fwd);
+    ctx.fwdSpeed = state->cars.vel[carIdx].dot(ctx.fwd);
     ctx.absFwdSpeed = fabsf(ctx.fwdSpeed);
 
     // Three suspension contacts count as fully grounded.
@@ -84,7 +84,7 @@ CARL_D CARL_FI ControlCtx makeControlCtx(
 CARL_D CARL_FI void addCarVel(ControlCtx& ctx, const Vec3& vel)
 {
     ctx.state->cars.vel[ctx.carIdx] =
-        Vec3::ldg(ctx.state->cars.vel[ctx.carIdx]) + vel;
+        ctx.state->cars.vel[ctx.carIdx] + vel;
 }
 
 CARL_D CARL_FI void addDeferredVel(ControlCtx& ctx, const Vec3& vel)
@@ -92,7 +92,7 @@ CARL_D CARL_FI void addDeferredVel(ControlCtx& ctx, const Vec3& vel)
     // Deferred velocity is applied with gravity during the arena solve
     CarSuspension& susp = ctx.susp();
     susp.jumpImpulse[ctx.carIdx] =
-        Vec3::ldg(susp.jumpImpulse[ctx.carIdx]) + vel;
+        susp.jumpImpulse[ctx.carIdx] + vel;
 }
 
 CARL_D CARL_FI void stageLagged(float& current, float& previous, float next)

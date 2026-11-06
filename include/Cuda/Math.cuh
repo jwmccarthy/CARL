@@ -35,7 +35,8 @@ struct __align__(16) Vec3
     
     static CARL_D CARL_FI Vec3 ldg(const Vec3& v)
     {
-        return v;
+        const float4 tmp = __ldg(reinterpret_cast<const float4*>(&v));
+        return { tmp.x, tmp.y, tmp.z, tmp.w };
     }
 
     static constexpr CARL_HD CARL_FI Vec3 zero()
@@ -231,7 +232,8 @@ struct __align__(16) Quat
 
     static CARL_D CARL_FI Quat ldg(const Quat& i)
     {
-        return i;
+        const float4 tmp = __ldg(reinterpret_cast<const float4*>(&i));
+        return { tmp.x, tmp.y, tmp.z, tmp.w };
     }
 
     static constexpr CARL_HD CARL_FI Quat angle(float a)

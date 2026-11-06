@@ -173,6 +173,6 @@ CARL_D CARL_FI void updateAutoFlip(ControlCtx& ctx)
         CAR_AUTOFLIP_TORQUE * s.autoFlipTorqueScale * PHYS_DT;
 
     ctx.state->cars.ang[ctx.carIdx] =
-        Vec3::ldg(ctx.state->cars.ang[ctx.carIdx]) + ctx.fwd * torque;
+        ctx.state->cars.ang[ctx.carIdx] + ctx.fwd * torque;
     s.autoFlipTimer -= PHYS_DT;
 }

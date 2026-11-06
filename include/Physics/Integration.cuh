@@ -57,7 +57,7 @@ CARL_D CARL_FI CarPose predictCarPose(
     const Quat& currRot)
 {
     Vec3 cen;
-    Vec3 pos = Vec3::ldg(state->cars.pos[carIdx]);
+    Vec3 pos = state->cars.pos[carIdx];
     Quat rot = currRot;
 
     integrateCarState(
