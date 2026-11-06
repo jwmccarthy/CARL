@@ -22,14 +22,18 @@ struct ArenaMesh
     DeviceArray<Vec3> aabbMax;
     DeviceArray<Int3> cellLow;
     DeviceArray<Vec3> triAngs;
+
     DeviceArray<Vec3> nativeEdgeAngles;
-    DeviceArray<int> nativeEdgeFlags;
-    DeviceArray<int> nativeMesh;
-    DeviceArray<int> nativeOrder;
-    DeviceArray<Vec3> nativeV0, nativeV1, nativeV2;
+    DeviceArray<int>  nativeEdgeFlags;
+    DeviceArray<int>  nativeMesh;
+    DeviceArray<int>  nativeOrder;
+    DeviceArray<Vec3> nativeV0;
+    DeviceArray<Vec3> nativeV1;
+    DeviceArray<Vec3> nativeV2;
     bool hasNativeMetadata = false;
+
     DeviceArray<int>  triIdx;
-    DeviceArray<int> ballTriIdx;
+    DeviceArray<int>  ballTriIdx;
     DeviceArray<int>  prefix;
 
     ArenaMesh();
