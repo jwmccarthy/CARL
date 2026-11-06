@@ -1,8 +1,6 @@
 #pragma once
 
 #include "Common.cuh"
-#include <cuda_runtime_api.h>
-#include <driver_types.h>
 
 struct KernelConfig
 {

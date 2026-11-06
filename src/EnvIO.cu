@@ -11,7 +11,7 @@ DLManagedTensor* makeFloatTensor(
 {
     auto* tensor = new DLManagedTensor{};
     tensor->dl_tensor.data = data;
-    tensor->dl_tensor.device = { kDLCUDA, deviceId };
+    tensor->dl_tensor.device = { CARL_DL_DEVICE, deviceId };
     tensor->dl_tensor.ndim = ndim;
     tensor->dl_tensor.dtype = { kDLFloat, 32, 1 };
     tensor->dl_tensor.shape = shape;

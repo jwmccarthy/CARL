@@ -30,6 +30,7 @@ class BuildConfigurationTests(unittest.TestCase):
         setup.assert_called_once()
         cls.find_toolkit = staticmethod(namespace["find_cuda_toolkit"])
         cls.cmake_args = staticmethod(namespace["cuda_cmake_args"])
+        cls.gpu_args = staticmethod(namespace["gpu_cmake_args"])
 
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -204,6 +205,59 @@ class BuildConfigurationTests(unittest.TestCase):
         ):
             self.cmake_args()
 
+        self.which.assert_not_called()
+        self.output.assert_not_called()
+
+    def test_gpu_backend_defaults_to_cuda(self):
+        self.toolkit()
+        os.environ["CARL_CUDA_ARCHITECTURES"] = "90"
+        expected = ["-DCARL_GPU_BACKEND=CUDA", *self.cmake_args(),
+                    "-DCMAKE_CUDA_ARCHITECTURES=90"]
+        self.assertEqual(self.gpu_args(), expected)
+        os.environ["CARL_GPU_BACKEND"] = "cuda"
+        self.assertEqual(self.gpu_args(), expected)
+
+    def test_hip_configuration(self):
+        os.environ.update(CARL_GPU_BACKEND="hip", CARL_CUDA_ARCHITECTURES="90",
+                          CUDA_HOME=str(self.root / "missing-cuda"))
+        for index, compiler in enumerate(("llvm/bin/clang++", "lib/llvm/bin/clang++")):
+            root = self.root / str(index)
+            self.touch(root / compiler)
+            self.touch(root / "include/hip/hip_runtime.h")
+            os.environ["ROCM_PATH"] = str(root)
+            for arch in ("", "gfx1100"):
+                with self.subTest(compiler=compiler, arch=arch):
+                    os.environ["CARL_HIP_ARCHITECTURES"] = arch
+                    expected = [
+                        "-DCARL_GPU_BACKEND=HIP",
+                        f"-DCMAKE_HIP_COMPILER={root / compiler}",
+                        f"-DCMAKE_HIP_COMPILER_ROCM_ROOT={root}",
+                    ]
+                    if arch:
+                        expected.append(f"-DCMAKE_HIP_ARCHITECTURES={arch}")
+                    self.assertEqual(self.gpu_args(), expected)
+        self.which.assert_not_called()
+        self.output.assert_not_called()
+
+    def test_gpu_backend_errors(self):
+        os.environ["CARL_GPU_BACKEND"] = "METAL"
+        with self.assertRaisesRegex(RuntimeError, "must be CUDA or HIP"):
+            self.gpu_args()
+        os.environ["CARL_GPU_BACKEND"] = "HIP"
+        for index, files in enumerate(((), ("llvm/bin/clang++",),
+                                       ("include/hip/hip_runtime.h",))):
+            root = self.root / str(index)
+            os.environ["ROCM_PATH"] = str(root)
+            for path in files:
+                self.touch(root / path)
+            with self.subTest(files=files), self.assertRaisesRegex(
+                RuntimeError, "ROCm development toolkit"
+            ):
+                self.gpu_args()
+        with mock.patch.object(sys, "platform", "darwin"), self.assertRaisesRegex(
+            RuntimeError, "Linux only"
+        ):
+            self.gpu_args()
         self.which.assert_not_called()
         self.output.assert_not_called()
 

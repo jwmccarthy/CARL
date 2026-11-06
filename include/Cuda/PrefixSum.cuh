@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef CARL_USE_HIP
+#include <hip/hip_cooperative_groups.h>
+#else
 #include <cooperative_groups.h>
+#endif
 
 #include "./Common.cuh"
 
