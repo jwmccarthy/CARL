@@ -125,6 +125,7 @@ class CARLTorchVectorEnv(VectorEnv):
             invert_orange=invert_orange,
             normalize=normalize,
         )
+        self._stream = th.cuda.ExternalStream(self._env.stream, device=self.device)
         self._env.max_ticks = max_ticks
         self._env.overtime_timeout_ticks = _ticks(
             overtime_timeout_ticks, overtime_timeout_seconds, REGULATION_TICKS
@@ -177,6 +178,10 @@ class CARLTorchVectorEnv(VectorEnv):
     def _sync(self) -> None:
         if self._synchronize:
             th.cuda.synchronize(self.device)
+        else:
+            current = th.cuda.current_stream(self.device)
+            self._stream.wait_stream(current)
+            current.wait_stream(self._stream)
 
     def _tensor(self, capsule: object, *, copy: bool | None = None) -> th.Tensor:
         x = th.from_dlpack(capsule)
@@ -364,6 +369,7 @@ class CARLTorchVectorEnv(VectorEnv):
         if options:
             raise NotImplementedError("CARL reset options are not supported")
 
+        self._sync()
         self._env.reset()
         self._apply_reset_state(th.ones(self.n_sim, dtype=th.bool, device=self.device))
         self._clear_sim_stats()
