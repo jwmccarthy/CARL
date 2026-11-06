@@ -10,6 +10,10 @@
     constexpr CARL_HD CARL_FI type operator op(scalar s) const \
     { return { x op s, y op s, z op s }; }
 
+#define CARL_SCALAR_OP4(type, scalar, op) \
+    constexpr CARL_HD CARL_FI type operator op(scalar s) const \
+    { return { x op s, y op s, z op s, w op s }; }
+
 #define CARL_CHAIN_VECTOR_OPS(type) \
     CARL_HD CARL_FI type add(const type& v) const { return *this + v; } \
     CARL_HD CARL_FI type sub(const type& v) const { return *this - v; } \
@@ -243,46 +247,30 @@ struct __align__(16) Quat
 
     static CARL_HD CARL_FI Quat fromAxes(const Vec3& f, const Vec3& r, const Vec3& u)
     {
-        const float m[3][3] = {
-            { f.x, r.x, u.x },
-            { f.y, r.y, u.y },
-            { f.z, r.z, u.z }
-        };
-        const float trace = m[0][0] + m[1][1] + m[2][2];
+        const float trace = f.x + r.y + u.z;
+
+        const Vec3  t    = Vec3{ f.x, r.y, u.z } * 2.f + (1.f - trace);  // 4x², 4y², 4z²
+        const Vec3  sum  = { r.z + u.y, u.x + f.z, f.y + r.x };          // 4yz, 4xz, 4xy
+        const Vec3  diff = { r.z - u.y, u.x - f.z, f.y - r.x };          // 4wx, 4wy, 4wz
 
         if (trace > 0.f)
         {
-            const float diagonal = trace + 1.f;
-            const float scale = .5f / sqrtf(diagonal);
-
-            return {
-                (m[2][1] - m[1][2]) * scale,
-                (m[0][2] - m[2][0]) * scale,
-                (m[1][0] - m[0][1]) * scale,
-                diagonal * scale
-            };
+            const float tw = 1.f + trace;
+            return Quat{ diff.x, diff.y, diff.z, tw } * (.5f / sqrtf(tw));
         }
 
-        int i = 0;
-        if (m[1][1] > m[i][i]) i = 1;
-        if (m[2][2] > m[i][i]) i = 2;
-        const int j = (i + 1) % 3;
-        const int k = (i + 2) % 3;
-        const float diagonal = m[i][i] - m[j][j] - m[k][k] + 1.f;
-        const float scale = .5f / sqrtf(diagonal);
-
-        float q[4];
-        q[i] = diagonal * scale;
-        q[j] = (m[j][i] + m[i][j]) * scale;
-        q[k] = (m[k][i] + m[i][k]) * scale;
-        q[3] = (m[k][j] - m[j][k]) * scale;
-        return { q[0], q[1], q[2], q[3] };
+        switch (t.argMax())
+        {
+            case 0:  return Quat{ t.x,   sum.z, sum.y, diff.x } * (.5f / sqrtf(t.x));
+            case 1:  return Quat{ sum.z, t.y,   sum.x, diff.y } * (.5f / sqrtf(t.y));
+            default: return Quat{ sum.y, sum.x, t.z,   diff.z } * (.5f / sqrtf(t.z));
+        }
     }
 
-    CARL_SCALAR_OP(Quat, float, +)
-    CARL_SCALAR_OP(Quat, float, -)
-    CARL_SCALAR_OP(Quat, float, *)
-    CARL_SCALAR_OP(Quat, float, /)
+    CARL_SCALAR_OP4(Quat, float, +)
+    CARL_SCALAR_OP4(Quat, float, -)
+    CARL_SCALAR_OP4(Quat, float, *)
+    CARL_SCALAR_OP4(Quat, float, /)
 
     CARL_HD CARL_FI Vec3 toVec3() const
     {
@@ -306,8 +294,7 @@ struct __align__(16) Quat
 
     CARL_HD CARL_FI Quat normalize() const
     {
-        const float inv = 1.f / len();
-        return { x * inv, y * inv, z * inv, w * inv };
+        return *this * (1.f / len());
     }
 
     CARL_HD CARL_FI Quat norm() const
@@ -323,18 +310,18 @@ struct __align__(16) Quat
     CARL_HD CARL_FI Quat comp(const Quat& q) const
     {
         return {
-            (w * q.x - z * q.y) + (x * q.w + y * q.z), (w * q.y - x * q.z) + (y * q.w + z * q.x),
-            (w * q.z - y * q.x) + (z * q.w + x * q.y), (w * q.w - z * q.z) - (x * q.x + y * q.y)};
+            (w * q.x - z * q.y) + (x * q.w + y * q.z),
+            (w * q.y - x * q.z) + (y * q.w + z * q.x),
+            (w * q.z - y * q.x) + (z * q.w + x * q.y),
+            (w * q.w - z * q.z) - (x * q.x + y * q.y)
+        };
     }
 
     CARL_HD CARL_FI Vec3 toWorld(const Vec3& v) const
     {
-        const float s = 2.f / lenSq();
-        const float wx = w * x, wy = w * y, wz = w * z;
-        const float xx = x * x, xy = x * y, xz = x * z, yy = y * y, yz = y * z, zz = z * z;
-        return {(1.f - (yy + zz) * s) * v.x + ((xy - wz) * s) * v.y + ((xz + wy) * s) * v.z,
-                ((xy + wz) * s) * v.x + (1.f - (xx + zz) * s) * v.y + ((yz - wx) * s) * v.z,
-                ((xz - wy) * s) * v.x + ((yz + wx) * s) * v.y + (1.f - (xx + yy) * s) * v.z};
+        const Vec3 q = toVec3();
+        const Vec3 t = q.cross(v) * (2.f / lenSq());
+        return v + t * w + q.cross(t);
     }
 
     CARL_HD CARL_FI Vec3 toLocal(const Vec3& v) const
