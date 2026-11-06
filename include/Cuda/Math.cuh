@@ -241,31 +241,42 @@ struct __align__(16) Quat
         return { 0.f, 0.f, sinf(a / 2), cosf(a / 2) };
     }
 
-    static CARL_HD CARL_FI Quat fromAxes(const Vec3 &f, const Vec3 &r, const Vec3 &u)
+    static CARL_HD CARL_FI Quat fromAxes(const Vec3& f, const Vec3& r, const Vec3& u)
     {
-        const float m[3][3] = {{f.x, r.x, u.x}, {f.y, r.y, u.y}, {f.z, r.z, u.z}};
+        const float m[3][3] = {
+            { f.x, r.x, u.x },
+            { f.y, r.y, u.y },
+            { f.z, r.z, u.z }
+        };
         const float trace = m[0][0] + m[1][1] + m[2][2];
-        float q[4];
+
         if (trace > 0.f)
         {
-            const float x = trace + 1.f, s = .5f / sqrtf(x);
-            q[3] = x * s;
-            q[0] = (m[2][1] - m[1][2]) * s;
-            q[1] = (m[0][2] - m[2][0]) * s;
-            q[2] = (m[1][0] - m[0][1]) * s;
+            const float diagonal = trace + 1.f;
+            const float scale = .5f / sqrtf(diagonal);
+
+            return {
+                (m[2][1] - m[1][2]) * scale,
+                (m[0][2] - m[2][0]) * scale,
+                (m[1][0] - m[0][1]) * scale,
+                diagonal * scale
+            };
         }
-        else
-        {
-            const int i =
-                m[0][0] < m[1][1] ? (m[1][1] < m[2][2] ? 2 : 1) : (m[0][0] < m[2][2] ? 2 : 0);
-            const int j = (i + 1) % 3, k = (i + 2) % 3;
-            const float x = m[i][i] - m[j][j] - m[k][k] + 1.f, s = .5f / sqrtf(x);
-            q[i] = x * s;
-            q[3] = (m[k][j] - m[j][k]) * s;
-            q[j] = (m[j][i] + m[i][j]) * s;
-            q[k] = (m[k][i] + m[i][k]) * s;
-        }
-        return {q[0], q[1], q[2], q[3]};
+
+        int i = 0;
+        if (m[1][1] > m[i][i]) i = 1;
+        if (m[2][2] > m[i][i]) i = 2;
+        const int j = (i + 1) % 3;
+        const int k = (i + 2) % 3;
+        const float diagonal = m[i][i] - m[j][j] - m[k][k] + 1.f;
+        const float scale = .5f / sqrtf(diagonal);
+
+        float q[4];
+        q[i] = diagonal * scale;
+        q[j] = (m[j][i] + m[i][j]) * scale;
+        q[k] = (m[k][i] + m[i][k]) * scale;
+        q[3] = (m[k][j] - m[j][k]) * scale;
+        return { q[0], q[1], q[2], q[3] };
     }
 
     CARL_SCALAR_OP(Quat, float, +)
