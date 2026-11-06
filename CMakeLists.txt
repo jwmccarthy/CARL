@@ -1,18 +1,27 @@
 cmake_minimum_required(VERSION 3.24)
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES native)
+set(CARL_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA or HIP")
+set_property(CACHE CARL_GPU_BACKEND PROPERTY STRINGS CUDA HIP)
+if(CARL_GPU_BACKEND STREQUAL "HIP")
+    project(CARL LANGUAGES CXX HIP)
+    find_package(hip REQUIRED CONFIG HINTS "${CMAKE_HIP_COMPILER_ROCM_ROOT}/lib/cmake/hip")
+    find_package(hipcub REQUIRED CONFIG)
+elseif(CARL_GPU_BACKEND STREQUAL "CUDA")
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES native)
+    endif()
+    set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
+    project(CARL LANGUAGES CXX CUDA)
+    message(STATUS "[carl] CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+    find_package(CUDAToolkit 12.8 REQUIRED)
+    if(NOT CUDAToolkit_VERSION VERSION_LESS 12.9)
+        message(FATAL_ERROR "CARL requires CUDA 12.8, found ${CUDAToolkit_VERSION}")
+    endif()
+    message(STATUS "[carl] CUDAToolkit: ${CUDAToolkit_VERSION} (${CUDAToolkit_BIN_DIR})")
+else()
+    message(FATAL_ERROR "CARL_GPU_BACKEND must be CUDA or HIP")
 endif()
-set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
-project(CARL LANGUAGES CXX CUDA)
-message(STATUS "[carl] CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-find_package(CUDAToolkit 12.8 REQUIRED)
-if(NOT CUDAToolkit_VERSION VERSION_LESS 12.9)
-    message(FATAL_ERROR "CARL requires CUDA 12.8, found ${CUDAToolkit_VERSION}")
-endif()
-message(STATUS "[carl] CUDAToolkit: ${CUDAToolkit_VERSION} (${CUDAToolkit_BIN_DIR})")
 
 file(GLOB CORE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -21,12 +30,23 @@ file(GLOB CORE_SOURCES CONFIGURE_DEPENDS
 
 add_library(carl STATIC ${CORE_SOURCES})
 
+if(CARL_GPU_BACKEND STREQUAL "HIP")
+    set(HIP_SOURCES
+        ${CORE_SOURCES}
+        "${CMAKE_CURRENT_SOURCE_DIR}/python/carl.cu"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/parity_harness.cu")
+    list(FILTER HIP_SOURCES INCLUDE REGEX "\\.cu$")
+    set_source_files_properties(${HIP_SOURCES} PROPERTIES LANGUAGE HIP)
+endif()
+
 set_target_properties(carl PROPERTIES
     CXX_STANDARD              20
     CXX_STANDARD_REQUIRED     YES
     CUDA_STANDARD             20
     CUDA_STANDARD_REQUIRED    YES
     CUDA_SEPARABLE_COMPILATION ON
+    HIP_STANDARD              20
+    HIP_STANDARD_REQUIRED     YES
     POSITION_INDEPENDENT_CODE  ON
 )
 
@@ -35,12 +55,18 @@ target_include_directories(carl PUBLIC
     ${CUDAToolkit_INCLUDE_DIRS}
 )
 
-target_link_libraries(carl PUBLIC
-    CUDA::cudart_static
-)
+if(CARL_GPU_BACKEND STREQUAL "HIP")
+    target_compile_definitions(carl PUBLIC CARL_USE_HIP=1)
+    target_link_libraries(carl PUBLIC hip::host hip::hipcub)
+    target_compile_options(carl PUBLIC $<$<COMPILE_LANGUAGE:HIP>:-fgpu-rdc>)
+    target_link_options(carl PUBLIC $<$<LINK_LANGUAGE:HIP>:-fgpu-rdc>)
+else()
+    target_link_libraries(carl PUBLIC CUDA::cudart_static)
+endif()
 
 target_compile_options(carl PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
+    $<$<COMPILE_LANGUAGE:HIP>:-ffp-contract=off>
     $<$<COMPILE_LANGUAGE:CXX>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-w>
     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-w>
@@ -62,6 +88,8 @@ if(CARL_BUILD_PYTHON)
         CUDA_STANDARD             20
         CUDA_STANDARD_REQUIRED    YES
         CUDA_SEPARABLE_COMPILATION ON
+        HIP_STANDARD              20
+        HIP_STANDARD_REQUIRED     YES
         OUTPUT_NAME               _carl
     )
 
@@ -127,6 +155,8 @@ if(CARL_BUILD_PARITY_HARNESS)
         CUDA_STANDARD             20
         CUDA_STANDARD_REQUIRED    YES
         CUDA_SEPARABLE_COMPILATION ON
+        HIP_STANDARD              20
+        HIP_STANDARD_REQUIRED     YES
     )
 
     target_include_directories(carl_parity_harness PRIVATE

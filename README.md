@@ -5,8 +5,12 @@ CARL is a GPU-based Rocket League simulator for reinforcement learning, based on
 
 ## Install
 
-You need Linux, Python 3.10+, an NVIDIA GPU, the CUDA 12.8 toolkit, and a
-compatible C++ compiler such as GCC 12. From the repository root:
+You need Linux and Python 3.10+. NVIDIA builds (the default) require the CUDA
+12.8 toolkit and a compatible C++ compiler such as GCC 12. AMD builds are
+opt-in via `CARL_GPU_BACKEND=HIP` and require a ROCm-supported GPU, the ROCm
+development toolkit with hipCUB and rocPRIM, and a matching ROCm build of PyTorch.
+
+For the default NVIDIA backend, from the repository root:
 
 ```bash
 uv sync

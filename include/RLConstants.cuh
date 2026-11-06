@@ -10,28 +10,28 @@ constexpr float PI_4 = PI / 4;
 constexpr float SQRT_1_2 = 0.7071067811865475244f;
 constexpr float FLOAT_EPSILON = 1.192092896e-07f;
 
-constexpr CARL_HD Vec3 WORLD_X = { 1.f, 0.f, 0.f };
-constexpr CARL_HD Vec3 WORLD_Y = { 0.f, 1.f, 0.f };
-constexpr CARL_HD Vec3 WORLD_Z = { 0.f, 0.f, 1.f };
-constexpr CARL_HD Vec3 WORLD_AXES[3] = { WORLD_X, WORLD_Y, WORLD_Z };
+CARL_CONSTEXPR Vec3 WORLD_X = { 1.f, 0.f, 0.f };
+CARL_CONSTEXPR Vec3 WORLD_Y = { 0.f, 1.f, 0.f };
+CARL_CONSTEXPR Vec3 WORLD_Z = { 0.f, 0.f, 1.f };
+CARL_CONSTEXPR Vec3 WORLD_AXES[3] = { WORLD_X, WORLD_Y, WORLD_Z };
 
 // --- Arena dimensions ---
 
-constexpr CARL_HD Vec3 ARENA_MIN = { -4108.f, -6000.f,  -14.f };
-constexpr CARL_HD Vec3 ARENA_MAX = {  4108.f,  6000.f, 2076.f };
-constexpr CARL_HD Vec3 OBS_POSITION_SCALE = {
+CARL_CONSTEXPR Vec3 ARENA_MIN = { -4108.f, -6000.f,  -14.f };
+CARL_CONSTEXPR Vec3 ARENA_MAX = {  4108.f,  6000.f, 2076.f };
+CARL_CONSTEXPR Vec3 OBS_POSITION_SCALE = {
     ARENA_MAX.x, ARENA_MAX.y, ARENA_MAX.z
 };
-constexpr CARL_HD Vec3 ARENA_PLANE_NORMALS[4] = {
+CARL_CONSTEXPR Vec3 ARENA_PLANE_NORMALS[4] = {
     WORLD_Z, { 0.f, 0.f, -1.f }, WORLD_X, { -1.f, 0.f, 0.f }
 };
 
 // --- Car dimensions ---
 
-constexpr CARL_HD Vec3 CAR_EXTENTS = { 120.507f, 86.6994f,  38.6591f };
+CARL_CONSTEXPR Vec3 CAR_EXTENTS = { 120.507f, 86.6994f,  38.6591f };
 constexpr float CAR_SHAPE_MARGIN = 1.932955f;
-constexpr CARL_HD Vec3 CAR_HALF_EX = {60.186455f, 43.282655f, 19.262505f};
-constexpr CARL_HD Vec3 CAR_OFFSETS = {13.87566f, 0.f, 20.755f};
+CARL_CONSTEXPR Vec3 CAR_HALF_EX = {60.186455f, 43.282655f, 19.262505f};
+CARL_CONSTEXPR Vec3 CAR_OFFSETS = {13.87566f, 0.f, 20.755f};
 
 constexpr float CAR_REST_Z = 17.f;
 constexpr float CAR_RESPAWN_Z = 36.f;
@@ -48,7 +48,7 @@ struct CarSpawn
     float x, y, z, yaw;
 };
 
-constexpr CARL_HD CarSpawn KICKOFF_LOCATIONS[5] = {
+CARL_CONSTEXPR CarSpawn KICKOFF_LOCATIONS[5] = {
     { -2048.f, -2560.f, CAR_REST_Z, PI_4 * 1 },  // Right corner
     {  2048.f, -2560.f, CAR_REST_Z, PI_4 * 3 },  // Left corner
     {  -256.f, -3840.f, CAR_REST_Z, PI_4 * 2 },  // Back right
@@ -56,7 +56,7 @@ constexpr CARL_HD CarSpawn KICKOFF_LOCATIONS[5] = {
     {     0.f, -4608.f, CAR_REST_Z, PI_4 * 2 }   // Back center
 };
 
-constexpr CARL_HD CarSpawn RESPAWN_LOCATIONS[4] = {
+CARL_CONSTEXPR CarSpawn RESPAWN_LOCATIONS[4] = {
     {  2688.f, -4608.f, CAR_REST_Z, PI_2 * 1 },  // Left outside
     {  2304.f, -4608.f, CAR_REST_Z, PI_2 * 1 },  // Left inside
     { -2304.f, -4608.f, CAR_REST_Z, PI_2 * 1 },  // Right inside
@@ -188,8 +188,8 @@ constexpr float POWERSLIDE_FALL_RATE = 2.f;
 // --- Air control and autoflip ---
 
 constexpr float CAR_TORQUE_SCALE = 2.f * PI / 65536.f * 1000.f;
-constexpr CARL_HD Vec3 CAR_AIR_CONTROL_TORQUE = { 130.f, 95.f, 400.f };
-constexpr CARL_HD Vec3 CAR_AIR_CONTROL_DAMPING = { 30.f, 20.f, 50.f };
+CARL_CONSTEXPR Vec3 CAR_AIR_CONTROL_TORQUE = { 130.f, 95.f, 400.f };
+CARL_CONSTEXPR Vec3 CAR_AIR_CONTROL_DAMPING = { 30.f, 20.f, 50.f };
 constexpr float CAR_AUTOFLIP_IMPULSE = 200.f;
 constexpr float CAR_AUTOFLIP_TORQUE = 50.f;
 constexpr float CAR_AUTOFLIP_TIME = 0.4f;

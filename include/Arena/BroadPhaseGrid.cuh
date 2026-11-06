@@ -8,8 +8,8 @@
 #include "../Cuda/Common.cuh"
 #include "../RLConstants.cuh"
 
-constexpr CARL_HD Vec3 GRID_DIMS = { 48.f, 48.f, 10.f };
-constexpr CARL_HD Vec3 CELL_SIZE = (ARENA_MAX - ARENA_MIN) / GRID_DIMS;
+CARL_CONSTEXPR Vec3 GRID_DIMS = { 48.f, 48.f, 10.f };
+CARL_CONSTEXPR Vec3 CELL_SIZE = (ARENA_MAX - ARENA_MIN) / GRID_DIMS;
 
 CARL_HD CARL_FI Int3 aabbToCell3D(const Vec3& p)
 {
