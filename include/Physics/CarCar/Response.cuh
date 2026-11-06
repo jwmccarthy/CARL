@@ -82,10 +82,10 @@ CARL_D CARL_FI DemoHit findDemo(
     const int teamB = (pair.carB % state->nCars) < state->nBlue ? 0 : 1;
     if (teamA == teamB || penetration < 5.f) return {};
 
-    const Vec3 velA = Vec3::ldg(state->cars.vel[pair.carA]);
-    const Vec3 velB = Vec3::ldg(state->cars.vel[pair.carB]);
-    const Vec3 posA = Vec3::ldg(state->cars.pos[pair.carA]);
-    const Vec3 posB = Vec3::ldg(state->cars.pos[pair.carB]);
+    const Vec3 velA = state->cars.vel[pair.carA];
+    const Vec3 velB = state->cars.vel[pair.carB];
+    const Vec3 posA = state->cars.pos[pair.carA];
+    const Vec3 posB = state->cars.pos[pair.carB];
 
     for (int side = 0; side < 2; side++)
     {
@@ -120,14 +120,14 @@ CARL_D CARL_FI void applyDemo(
     GameState* __restrict__ state,
     const DemoHit& demo)
 {
-    Vec3 pos = Vec3::ldg(state->cars.pos[demo.victim]);
+    Vec3 pos = state->cars.pos[demo.victim];
     Vec3 cen;
-    Quat rot = Quat::ldg(state->cars.rot[demo.victim]);
+    Quat rot = state->cars.rot[demo.victim];
 
     integrateCarState(
         pos, cen, rot,
-        Vec3::ldg(state->cars.vel[demo.victim]),
-        Vec3::ldg(state->cars.ang[demo.victim]));
+        state->cars.vel[demo.victim],
+        state->cars.ang[demo.victim]);
 
     state->cars.pos[demo.victim] = pos;
     state->cars.cen[demo.victim] = cen;
@@ -186,7 +186,7 @@ CARL_D CARL_FI void tryApplyBump(
     const Vec3 up = grounded ? victimRot.toWorld(WORLD_Z) : WORLD_Z;
     const Vec3 impulse = velDir * forwardScale + up * bumpUp(closingSpeed);
 
-    state->cars.imp[victim] = Vec3::ldg(state->cars.imp[victim]) + impulse;
+    state->cars.imp[victim] = state->cars.imp[victim] + impulse;
     state->cars.carContactIdx[bumper] = victim;
     state->cars.carContactCooldown[bumper] = BUMP_COOLDOWN_TIME;
 }

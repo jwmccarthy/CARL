@@ -44,6 +44,8 @@ CARL_D CARL_FI void applyPairResult(
     // Split impulse changes position without leaking into reported velocity
     bodyA.pos = bodyA.pos + bodyA.pushVel * PHYS_DT;
     bodyB.pos = bodyB.pos + bodyB.pushVel * PHYS_DT;
+    bodyA.rot = integrateQuat(bodyA.rot, bodyA.turnVel * CAR_SPLIT_IMPULSE_TURN_ERP);
+    bodyB.rot = integrateQuat(bodyB.rot, bodyB.turnVel * CAR_SPLIT_IMPULSE_TURN_ERP);
     bodyA.cen = bodyA.pos + bodyA.rot.toWorld(CAR_OFFSETS);
     bodyB.cen = bodyB.pos + bodyB.rot.toWorld(CAR_OFFSETS);
 
@@ -70,7 +72,7 @@ CARL_D CARL_FI void solveCarCarForSim(
     {
         for (int b = a + 1; b < state->nCars; b++)
         {
-            solveCarCarPair(state, space, pairIdx, carBase + a, carBase + b);
+            solveCarCarPair(state, space, pairIdx, carBase + b, carBase + a);
             pairIdx++;
         }
     }
@@ -95,8 +97,8 @@ CARL_D CARL_FI void solveCarCarPair(
     pair.pairIdx = pairIdx;
     pair.carA = carA;
     pair.carB = carB;
-    pair.boxA.cen = Vec3::ldg(state->cars.cen[carA]);
-    pair.boxB.cen = Vec3::ldg(state->cars.cen[carB]);
+    pair.boxA.cen = state->cars.cen[carA];
+    pair.boxB.cen = state->cars.cen[carB];
 
     const Vec3 centerDelta = pair.boxB.cen - pair.boxA.cen;
     const float maxDist = 2.f * CAR_HALF_EX.len();
@@ -106,8 +108,8 @@ CARL_D CARL_FI void solveCarCarPair(
         return;
     }
 
-    pair.boxA.rot = Quat::ldg(state->cars.rot[carA]);
-    pair.boxB.rot = Quat::ldg(state->cars.rot[carB]);
+    pair.boxA.rot = state->cars.rot[carA];
+    pair.boxB.rot = state->cars.rot[carB];
 
     const SATResult sat = carCarSAT(pair.boxA, pair.boxB);
     if (!sat.overlap)

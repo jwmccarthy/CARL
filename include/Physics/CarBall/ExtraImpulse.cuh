@@ -75,5 +75,5 @@ CARL_D CARL_FI void applyBallCarExtraImpulse(
     state->cars.ballHitTick[carIdx] = tick;
     const Vec3 addedVel = ballCarExtraVelocity(
         ballPos, carPos, carVel, carRot, preSolveBallVel);
-    state->ball.imp[ballIdx] = Vec3::ldg(state->ball.imp[ballIdx]) + addedVel;
+    state->ball.imp[ballIdx] = state->ball.imp[ballIdx] + addedVel;
 }

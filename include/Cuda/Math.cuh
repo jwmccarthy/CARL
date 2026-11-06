@@ -10,6 +10,10 @@
     constexpr CARL_HD CARL_FI type operator op(scalar s) const \
     { return { x op s, y op s, z op s }; }
 
+#define CARL_SCALAR_OP4(type, scalar, op) \
+    constexpr CARL_HD CARL_FI type operator op(scalar s) const \
+    { return { x op s, y op s, z op s, w op s }; }
+
 #define CARL_CHAIN_VECTOR_OPS(type) \
     CARL_HD CARL_FI type add(const type& v) const { return *this + v; } \
     CARL_HD CARL_FI type sub(const type& v) const { return *this - v; } \
@@ -35,7 +39,7 @@ struct __align__(16) Vec3
     
     static CARL_D CARL_FI Vec3 ldg(const Vec3& v)
     {
-        float4 tmp = __ldg(reinterpret_cast<const float4*>(&v));
+        const float4 tmp = __ldg(reinterpret_cast<const float4*>(&v));
         return { tmp.x, tmp.y, tmp.z, tmp.w };
     }
 
@@ -232,7 +236,7 @@ struct __align__(16) Quat
 
     static CARL_D CARL_FI Quat ldg(const Quat& i)
     {
-        float4 tmp = __ldg(reinterpret_cast<const float4*>(&i));
+        const float4 tmp = __ldg(reinterpret_cast<const float4*>(&i));
         return { tmp.x, tmp.y, tmp.z, tmp.w };
     }
 
@@ -241,10 +245,32 @@ struct __align__(16) Quat
         return { 0.f, 0.f, sinf(a / 2), cosf(a / 2) };
     }
 
-    CARL_SCALAR_OP(Quat, float, +)
-    CARL_SCALAR_OP(Quat, float, -)
-    CARL_SCALAR_OP(Quat, float, *)
-    CARL_SCALAR_OP(Quat, float, /)
+    static CARL_HD CARL_FI Quat fromAxes(const Vec3& f, const Vec3& r, const Vec3& u)
+    {
+        const float trace = f.x + r.y + u.z;
+
+        const Vec3  t    = Vec3{ f.x, r.y, u.z } * 2.f + (1.f - trace);  // 4x², 4y², 4z²
+        const Vec3  sum  = { r.z + u.y, u.x + f.z, f.y + r.x };          // 4yz, 4xz, 4xy
+        const Vec3  diff = { r.z - u.y, u.x - f.z, f.y - r.x };          // 4wx, 4wy, 4wz
+
+        if (trace > 0.f)
+        {
+            const float tw = 1.f + trace;
+            return Quat{ diff.x, diff.y, diff.z, tw } * (.5f / sqrtf(tw));
+        }
+
+        switch (t.argMax())
+        {
+            case 0:  return Quat{ t.x,   sum.z, sum.y, diff.x } * (.5f / sqrtf(t.x));
+            case 1:  return Quat{ sum.z, t.y,   sum.x, diff.y } * (.5f / sqrtf(t.y));
+            default: return Quat{ sum.y, sum.x, t.z,   diff.z } * (.5f / sqrtf(t.z));
+        }
+    }
+
+    CARL_SCALAR_OP4(Quat, float, +)
+    CARL_SCALAR_OP4(Quat, float, -)
+    CARL_SCALAR_OP4(Quat, float, *)
+    CARL_SCALAR_OP4(Quat, float, /)
 
     CARL_HD CARL_FI Vec3 toVec3() const
     {
@@ -253,7 +279,7 @@ struct __align__(16) Quat
 
     CARL_HD CARL_FI float dot(const Quat& q) const
     {
-        return x * q.x + y * q.y + z * q.z + w * q.w;
+        return (x * q.x + z * q.z) + (y * q.y + w * q.w);
     }
 
     CARL_HD CARL_FI float lenSq() const
@@ -268,8 +294,7 @@ struct __align__(16) Quat
 
     CARL_HD CARL_FI Quat normalize() const
     {
-        const float inv = 1.f / len();
-        return { x * inv, y * inv, z * inv, w * inv };
+        return *this * (1.f / len());
     }
 
     CARL_HD CARL_FI Quat norm() const
@@ -285,18 +310,18 @@ struct __align__(16) Quat
     CARL_HD CARL_FI Quat comp(const Quat& q) const
     {
         return {
-            w * q.x + x * q.w + y * q.z - z * q.y,
-            w * q.y - x * q.z + y * q.w + z * q.x,
-            w * q.z + x * q.y - y * q.x + z * q.w,
-            w * q.w - x * q.x - y * q.y - z * q.z
+            (w * q.x - z * q.y) + (x * q.w + y * q.z),
+            (w * q.y - x * q.z) + (y * q.w + z * q.x),
+            (w * q.z - y * q.x) + (z * q.w + x * q.y),
+            (w * q.w - z * q.z) - (x * q.x + y * q.y)
         };
     }
 
     CARL_HD CARL_FI Vec3 toWorld(const Vec3& v) const
     {
-        Vec3 qv = toVec3();
-        Vec3 t = qv.cross(v) * 2.f;
-        return v + t * w + qv.cross(t);
+        const Vec3 q = toVec3();
+        const Vec3 t = q.cross(v) * (2.f / lenSq());
+        return v + t * w + q.cross(t);
     }
 
     CARL_HD CARL_FI Vec3 toLocal(const Vec3& v) const

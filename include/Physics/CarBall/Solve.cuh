@@ -39,11 +39,11 @@ CARL_D CARL_FI BallCarBody loadBallCarBody(
     int carIdx)
 {
     return {
-        Vec3::ldg(state->cars.pos[carIdx]),
-        Vec3::ldg(state->cars.cen[carIdx]),
-        Vec3::ldg(state->cars.vel[carIdx]),
-        Vec3::ldg(state->cars.ang[carIdx]),
-        Quat::ldg(state->cars.rot[carIdx])
+        state->cars.pos[carIdx],
+        state->cars.cen[carIdx],
+        state->cars.vel[carIdx],
+        state->cars.ang[carIdx],
+        state->cars.rot[carIdx]
     };
 }
 
@@ -127,7 +127,7 @@ CARL_D CARL_FI BallCarConstraint makeBallCarConstraint(
     constraint.restitution = fabsf(relNormal) > CAR_RESTITUTION_VEL_THRESH
         ? CAR_BALL_RESTITUTION * -relNormal
         : 0.f;
-    tangent = tangentLenSq > 1.192092896e-07f
+    tangent = tangentLenSq > FLOAT_EPSILON
         ? tangent * rsqrtf(tangentLenSq)
         : fallbackTangent(contact.normal);
     constraint.friction = makeBallCarRow(
@@ -194,11 +194,11 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
         * (-pushImpulse * CAR_INV_MASS * PHYS_DT);
     const Vec3 carTurnVelocity = normal.carAngular * -pushImpulse;
 
-    state->ball.pos[ballIdx] = Vec3::ldg(state->ball.pos[ballIdx]) + ballCorrection;
-    const Vec3 carPos = Vec3::ldg(state->cars.pos[carIdx]) + carCorrection;
+    state->ball.pos[ballIdx] = state->ball.pos[ballIdx] + ballCorrection;
+    const Vec3 carPos = state->cars.pos[carIdx] + carCorrection;
     state->cars.pos[carIdx] = carPos;
     const Quat carRot = integrateQuat(
-        Quat::ldg(state->cars.rot[carIdx]),
+        state->cars.rot[carIdx],
         carTurnVelocity * CAR_SPLIT_IMPULSE_TURN_ERP);
     state->cars.rot[carIdx] = carRot;
     state->cars.cen[carIdx] = carPos + carRot.toWorld(CAR_OFFSETS);
@@ -212,10 +212,10 @@ CARL_D CARL_FI void solveBallCarPair(
 {
     if (__ldg(&state->cars.isDemoed[carIdx])) return;
 
-    const Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
+    const Vec3 ballPos = state->ball.pos[ballIdx];
 
-    Vec3 ballVel = Vec3::ldg(state->ball.vel[ballIdx]);
-    Vec3 ballAng = Vec3::ldg(state->ball.ang[ballIdx]);
+    Vec3 ballVel = state->ball.vel[ballIdx];
+    Vec3 ballAng = state->ball.ang[ballIdx];
     BallCarBody car = loadBallCarBody(state, carIdx);
 
     const Vec3 preSolveCarVel = car.vel;
@@ -248,7 +248,7 @@ CARL_D __noinline__ void solveBallCarForSim(
 {
     const int ballIdx = simIdx;
     const int carBase = simIdx * state->nCars;
-    const Vec3 ballPos = Vec3::ldg(state->ball.pos[ballIdx]);
+    const Vec3 ballPos = state->ball.pos[ballIdx];
     const float maxDist = BALL_RADIUS + CAR_BALL_SOLVER_HALF_EX.len();
 
     // Pair solves stay serial because each car sees prior pair results
@@ -257,7 +257,7 @@ CARL_D __noinline__ void solveBallCarForSim(
         const int carIdx = carBase + carOffset;
         if (__ldg(&state->cars.isDemoed[carIdx])) continue;
 
-        const Vec3 carCen = Vec3::ldg(state->cars.cen[carIdx]);
+        const Vec3 carCen = state->cars.cen[carIdx];
         if ((ballPos - carCen).lenSq() > maxDist * maxDist) continue;
 
         solveBallCarPair(state, ballIdx, carIdx, preSolveBallVel);

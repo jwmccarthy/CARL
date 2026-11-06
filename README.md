@@ -13,6 +13,34 @@ Prebuilt wheels are not yet published. With CUDA 12.8 and GCC 12 (or an equally 
 
 Set `CARL_CUDA_ARCHITECTURES` (for example, `89`) if `nvidia-smi` is unavailable.
 
+### RocketSim metadata exporter
+
+RocketSim is an optional submodule used by the arena metadata exporter and
+RocketSim-based parity tooling. Install RLGym, initialize the submodule, and
+build the exporter using the same Python environment:
+
+```bash
+git submodule update --init --recursive
+uv sync --extra rlgym
+cmake -S . -B build -DCARL_BUILD_PYTHON=OFF -DCARL_BUILD_ARENA_METADATA=ON \
+  -DPython_EXECUTABLE="$PWD/.venv/bin/python"
+cmake --build build --target carl_export_arena_metadata
+```
+
+The exporter requires RocketSim collision mesh files, which RLGym includes.
+If the selected Python environment does not contain those meshes, CMake skips
+the exporter and CARL continues to use its default arena setup. Locate the mesh
+directory and pass it to the exporter, then match the output to the CARL arena OBJ:
+
+```bash
+MESHES=$(.venv/bin/python -c 'from importlib.metadata import distribution; print(distribution("rlgym-rocket-league").locate_file("rlgym/rocket_league/sim/collision_meshes"))')
+build/carl_export_arena_metadata "$MESHES" native_triangles.txt
+python tools/arena_metadata.py /path/to/arena.obj native_triangles.txt arena_metadata.txt
+```
+
+Set `CARL_ARENA_METADATA` to the resulting metadata file when running CARL.
+Normal CARL builds do not require the submodule.
+
 ## Torch Environment
 
 `CARLTorchVectorEnv` exposes each car as one actor. Cars remain grouped inside each physics simulation.
