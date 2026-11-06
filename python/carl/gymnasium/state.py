@@ -28,22 +28,7 @@ class _CARLTensor(th.Tensor):
             return function(*args, **kwargs)
 
 
-class CARLBall(_CARLTensor):
-
-    @property
-    def position(self) -> th.Tensor:
-        return self[..., carl.OBS_POS:carl.OBS_VEL]
-
-    @property
-    def velocity(self) -> th.Tensor:
-        return self[..., carl.OBS_VEL:carl.OBS_ANG]
-
-    @property
-    def angular_velocity(self) -> th.Tensor:
-        return self[..., carl.OBS_ANG:carl.OBS_BALL]
-
-
-class CARLCar(_CARLTensor):
+class _CARLPhysics(_CARLTensor):
 
     @property
     def position(self) -> th.Tensor:
@@ -56,6 +41,13 @@ class CARLCar(_CARLTensor):
     @property
     def angular_velocity(self) -> th.Tensor:
         return self[..., carl.OBS_ANG:carl.OBS_FORWARD]
+
+
+class CARLBall(_CARLPhysics):
+    pass
+
+
+class CARLCar(_CARLPhysics):
 
     @property
     def forward(self) -> th.Tensor:
@@ -90,7 +82,7 @@ class CARLCar(_CARLTensor):
         return self[..., carl.OBS_IS_BOOSTING].bool()
 
 
-class CARLCars(_CARLTensor):
+class CARLCars(CARLCar):
 
     @staticmethod
     def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLCars":
@@ -105,50 +97,6 @@ class CARLCars(_CARLTensor):
     @property
     def ego(self) -> CARLCar:
         return CARLCar.from_tensor(self[..., 0, :])
-
-    @property
-    def position(self) -> th.Tensor:
-        return self[..., carl.OBS_POS:carl.OBS_VEL]
-
-    @property
-    def velocity(self) -> th.Tensor:
-        return self[..., carl.OBS_VEL:carl.OBS_ANG]
-
-    @property
-    def angular_velocity(self) -> th.Tensor:
-        return self[..., carl.OBS_ANG:carl.OBS_FORWARD]
-
-    @property
-    def forward(self) -> th.Tensor:
-        return self[..., carl.OBS_FORWARD:carl.OBS_UP]
-
-    @property
-    def up(self) -> th.Tensor:
-        return self[..., carl.OBS_UP:carl.OBS_BOOST]
-
-    @property
-    def boost(self) -> th.Tensor:
-        return self[..., carl.OBS_BOOST]
-
-    @property
-    def on_ground(self) -> th.Tensor:
-        return self[..., carl.OBS_ON_GROUND].bool()
-
-    @property
-    def demoed(self) -> th.Tensor:
-        return self[..., carl.OBS_DEMOED].bool()
-
-    @property
-    def has_flipped(self) -> th.Tensor:
-        return self[..., carl.OBS_HAS_FLIPPED].bool()
-
-    @property
-    def has_double_jumped(self) -> th.Tensor:
-        return self[..., carl.OBS_HAS_DOUBLE_JUMPED].bool()
-
-    @property
-    def is_boosting(self) -> th.Tensor:
-        return self[..., carl.OBS_IS_BOOSTING].bool()
 
     @property
     def ego_position(self) -> th.Tensor:

@@ -26,7 +26,12 @@
 #include "Cuda/Math.cuh"
 #include "RLConstants.cuh"
 
-constexpr int MAX_BALL_ARENA_CONTACTS = 68; // 16 native meshes x 4, plus planes.
+// Capacity for four manifold points per native mesh (16 meshes), plus four
+// arena planes. Keep the contact and solver row arrays sized consistently.
+constexpr int MAX_BALL_ARENA_CONTACTS = 68;
+// Contact separation threshold in Unreal units: contacts farther apart are
+// discarded and the same margin expands the broadphase query. This is an
+// existing physics-port tuning value; its original derivation is undocumented.
 constexpr float BALL_ARENA_CONTACT_BREAK = 1.905f;
 
 struct BallArenaContact
@@ -79,14 +84,16 @@ CARL_D CARL_FI bool clampBallArenaNormal(
     return true;
 }
 
-CARL_D CARL_FI void adjustBallArenaEdgeNormal(
-    BallArenaContact& contact,
+// Both mesh formats select edges the same way, but use different winding and
+// metadata when correcting the normal afterwards.
+CARL_D CARL_FI int closestBallArenaInternalEdge(
     const Vec3& point,
     const Tri& tri,
-    const Vec3& angles)
+    const Vec3& angles,
+    float maxDistSq)
 {
     int bestEdge = -1;
-    float bestDistSq = 25.f; // Bullet's 0.1 m edge-distance threshold, in UU.
+    float bestDistSq = maxDistSq;
 
     const Vec3 verts[3] = { tri.v0, tri.v1, tri.v2 };
     for (int edge = 0; edge < 3; edge++)
@@ -104,8 +111,20 @@ CARL_D CARL_FI void adjustBallArenaEdgeNormal(
         }
     }
 
+    return bestEdge;
+}
+
+CARL_D CARL_FI void adjustBallArenaEdgeNormal(
+    BallArenaContact& contact,
+    const Vec3& point,
+    const Tri& tri,
+    const Vec3& angles)
+{
+    // Bullet's 0.1 m edge-distance threshold, in squared UU.
+    const int bestEdge = closestBallArenaInternalEdge(point, tri, angles, 25.f);
     if (bestEdge < 0) return;
 
+    const Vec3 verts[3] = { tri.v0, tri.v1, tri.v2 };
     Vec3 faceNormal = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).norm();
 
     const float angle = angles[bestEdge];
@@ -146,24 +165,8 @@ CARL_D CARL_FI void adjustNativeBallEdgeNormal(
     float edgeDistance = 5.f)
 {
     const Vec3 verts[3] = { tri.v0, tri.v1, tri.v2 };
-    int bestEdge = -1;
-    float bestDistSq = edgeDistance * edgeDistance;
-
-    for (int edge = 0; edge < 3; edge++)
-    {
-        if (fabsf(angles[edge]) >= BOUNDARY_EDGE_ANGLE) continue;
-
-        const Vec3 nearest = closestPointOnBallArenaEdge(
-            contact.point, verts[edge], verts[(edge + 1) % 3]);
-        const float distSq = (contact.point - nearest).lenSq();
-
-        if (distSq < bestDistSq)
-        {
-            bestEdge = edge;
-            bestDistSq = distSq;
-        }
-    }
-
+    const int bestEdge = closestBallArenaInternalEdge(
+        contact.point, tri, angles, edgeDistance * edgeDistance);
     if (bestEdge < 0) return;
 
     const Vec3 faceNormal = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).norm();
