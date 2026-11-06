@@ -32,9 +32,9 @@ struct ArenaMesh
     DeviceArray<Vec3> nativeV2;
     bool hasNativeMetadata = false;
 
-    DeviceArray<int>  triIdx;
-    DeviceArray<int>  ballTriIdx;
-    DeviceArray<int>  prefix;
+    DeviceArray<int> carTriIdx;
+    DeviceArray<int> ballTriIdx;
+    DeviceArray<int> prefix;
 
     ArenaMesh();
 

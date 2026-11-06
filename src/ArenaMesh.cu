@@ -33,7 +33,7 @@ ArenaMesh::ArenaMesh()
     aabbMax = DeviceArray(hAabbMax);
     cellLow = DeviceArray(hCellLow);
 
-    triIdx = DeviceArray(hTriIdx);
+    carTriIdx = DeviceArray(hTriIdx);
     prefix = DeviceArray(hPrefix);
 
     triAngs = DeviceArray(hAngles);
