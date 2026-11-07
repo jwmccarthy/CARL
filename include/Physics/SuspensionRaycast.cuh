@@ -230,7 +230,7 @@ CARL_D CARL_FI void testArenaWheels(
 
     for (int i = 0; i < triCount; i++)
     {
-        const int triIdx = __ldg(&arena->triIdx[triStart + i]);
+        const int triIdx = __ldg(&arena->carTriIdx[triStart + i]);
         const Int3 vertIdx = Int3::ldg(arena->tris[triIdx]);
 
         const Vec3 v0 = Vec3::ldg(arena->verts[vertIdx.x]);

@@ -72,9 +72,9 @@ CARL_D CARL_FI void finishBallTick(
     int ballIdx,
     EventBuffer events = {})
 {
-    const Vec3 impulse = Vec3::ldg(state->ball.imp[ballIdx]);
-    Vec3 vel = Vec3::ldg(state->ball.vel[ballIdx]) + impulse;
-    Vec3 ang = Vec3::ldg(state->ball.ang[ballIdx]);
+    const Vec3 impulse = state->ball.imp[ballIdx];
+    Vec3 vel = state->ball.vel[ballIdx] + impulse;
+    Vec3 ang = state->ball.ang[ballIdx];
     float speedSq = vel.lenSq();
 
     if (speedSq > BALL_MAX_SPEED * BALL_MAX_SPEED)
@@ -143,10 +143,10 @@ CARL_D CARL_FI void finishCarTick(
         return;
     }
 
-    const Vec3 impulse = Vec3::ldg(state->cars.imp[carIdx]);
+    const Vec3 impulse = state->cars.imp[carIdx];
     if (impulse.lenSq() > 1e-12f)
     {
-        Vec3 vel = Vec3::ldg(state->cars.vel[carIdx]) + impulse;
+        Vec3 vel = state->cars.vel[carIdx] + impulse;
         const float speedSq = vel.lenSq();
 
         if (speedSq > CAR_MAX_SPEED * CAR_MAX_SPEED)

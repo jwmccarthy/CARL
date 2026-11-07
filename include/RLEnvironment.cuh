@@ -33,6 +33,8 @@ private:
     void stepBroadSusp();
     void stepControls(const DiscreteControls* actions, EventBuffer events);
     void stepControls(const ContinuousControls* actions, EventBuffer events);
+    void stepControls(const CarControls *actions, EventBuffer events);
+
     void stepNarrow();
     void stepCarManifoldSolve(EventBuffer events);
     void stepCarCarSolve(EventBuffer events);
@@ -48,6 +50,7 @@ public:
 
     void step(const DiscreteControls* actions, EventBuffer events = {});
     void step(const ContinuousControls* actions, EventBuffer events = {});
+    void step(const CarControls *actions, EventBuffer events = {});
 
     void reset();
     void resetSelected(const bool* mask, EventBuffer events = {});

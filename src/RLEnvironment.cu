@@ -3,11 +3,33 @@
 #include <cstdlib>
 
 #include <cuda_runtime_api.h>
+#include <cub/device/device_scan.cuh>
 
 #include "Kernels.cuh"
 #include "Cuda/Profiler.cuh"
 #include "Cuda/DeviceArray.cuh"
 
+PrefixSum::PrefixSum(int *input, int *output, int count)
+    : count(count), input(input), output(output)
+{
+    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(nullptr, bytes, input, output, count));
+    CUDA_CHECK(cudaMalloc(&buffer, bytes));
+}
+
+PrefixSum::~PrefixSum()
+{
+    CUDA_CHECK(cudaFree(buffer));
+}
+
+void PrefixSum::scan()
+{
+    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(buffer, bytes, input, output, count));
+}
+
+void PrefixSum::scanOnStream(cudaStream_t stream)
+{
+    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(buffer, bytes, input, output, count, stream));
+}
 
 RLEnvironment::RLEnvironment(
     const int nSim, const int nBlue,
@@ -91,6 +113,11 @@ void RLEnvironment::stepControls(const ContinuousControls* actions, EventBuffer 
         carContinuousControlsKernel, d_state, d_space, actions, events);
 }
 
+void RLEnvironment::stepControls(const CarControls *actions, EventBuffer events)
+{
+    threadPerCarKernelConfig.launch(carDirectControlsKernel, d_state, d_space, actions, events);
+}
+
 void RLEnvironment::stepNarrow()
 {
     carTriPairKernelConfig.launch(
@@ -163,6 +190,19 @@ void RLEnvironment::reset()
     h_space.reset();
 
     PROFILE("reset", threadPerSimKernelConfig.launch(resetKernel, d_state));
+}
+
+void RLEnvironment::step(const CarControls *actions, EventBuffer events)
+{
+    PROFILE("init step", beginStep());
+    PROFILE("broad+susp", stepBroadSusp());
+    PROFILE("controls", stepControls(actions, events));
+    PROFILE("narrow", stepNarrow());
+    PROFILE("manifold+solve", stepCarManifoldSolve(events));
+    PROFILE("car-car+ball", stepCarCarSolve(events));
+    PROFILE("integrate-cars", integrateCars());
+    PROFILE("impulse-cache", applyImpulseCache(events));
+    PROFILE("boost-pads", stepBoostPad());
 }
 
 void RLEnvironment::resetDones(

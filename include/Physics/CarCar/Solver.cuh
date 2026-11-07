@@ -72,8 +72,8 @@ CARL_D CARL_FI PairSolverRow makePairNormalRow(
     const Vec3& relA,
     const Vec3& relB)
 {
-    PairSolverRow row =
-        makePairAxisRow(bodyA, bodyB, contact.normal, relA, relB);
+    PairSolverRow row = makePairAxisRow(bodyA, bodyB, contact.normal, relA, relB);
+
     const float relVel = pairRowVelocity(
         row, bodyA.vel, bodyA.ang, bodyB.vel, bodyB.ang);
     const float bounce = relVel < -CAR_RESTITUTION_VEL_THRESH
@@ -98,11 +98,11 @@ CARL_D CARL_FI PairSolverRow makePairFrictionRow(
     const Vec3 velA = pointVelocity(bodyA, relA);
     const Vec3 velB = pointVelocity(bodyB, relB);
     const Vec3 rel = velA - velB;
+
     const float normalVel = contact.normal.dot(rel);
     Vec3 tangent = rel - contact.normal * normalVel;
     const float tangentLenSq = tangent.lenSq();
-    const float threshold =
-        fmaxf(1.192092896e-07f, normalVel * normalVel * 1e-8f);
+    const float threshold = fmaxf(FLOAT_EPSILON, normalVel * normalVel * 1e-8f);
 
     tangent = tangentLenSq > threshold
         ? tangent * rsqrtf(tangentLenSq)
@@ -224,6 +224,8 @@ CARL_D __noinline__ void solvePairContacts(
         for (int i = 0; i < count; i++)
         {
             const float maxImpulse = CARCAR_COLLISION_FRICTION * rows[i].normal.applied;
+            if (maxImpulse <= 0.f)
+                continue;
 
             resolvePairRow(
                 bodyA, bodyB, rows[i].friction,

@@ -162,11 +162,13 @@ CARL_D CARL_FI int faceContacts(
         const float depth = (refCenter - input[i]).dot(refNormal);
         if (depth < -CAR_CONTACT_BREAK) continue;
 
+        const Vec3 onReference = input[i] + refNormal * depth;
+        const Vec3 pointA = face.ref == &boxA ? onReference : input[i];
+        const Vec3 pointB = face.ref == &boxB ? onReference : input[i];
         contacts[count++] = {
-            boxA.rot.toLocal(input[i] - boxA.cen),
-            boxB.rot.toLocal(input[i] - boxB.cen),
-            sat.minAxis,
-            fmaxf(depth, 0.f)
+            boxA.rot.toLocal(pointA - boxA.cen),
+            boxB.rot.toLocal(pointB - boxB.cen),
+            sat.minAxis, fmaxf(depth, 0.f)
         };
     }
 

@@ -25,7 +25,7 @@ CARL_D CARL_FI TriSAT loadSATContext(
 
     const int cellIdx  = __ldg(&space->bp.cellIdx[carIdx]);
     const int triStart = __ldg(&arena->prefix[cellIdx]);
-    const int triIdx   = __ldg(&arena->triIdx[triStart + offset]);
+    const int triIdx   = __ldg(&arena->carTriIdx[triStart + offset]);
 
     auto [i0, i1, i2, _] = Int3::ldg(arena->tris[triIdx]);
     tri.set(
@@ -131,6 +131,17 @@ CARL_D CARL_FI void writeCarTriPairResult(
 
     const TriSAT tri = loadSATContext(
         space, arena, carIdx, offset, pose.cen, pose.rot);
+    const Tri worldTri = arena->ldg(tri.triIdx);
+    const Vec3 a = worldTri.v0;
+    const Vec3 b = worldTri.v1;
+    const Vec3 c = worldTri.v2;
+
+    // These planes are handled separately when building the manifold
+    const bool horizontalPlane = a.z == b.z && a.z == c.z && (a.z == 0.f || a.z == 2048.f);
+    const bool sideWall = a.x == b.x && a.x == c.x && fabsf(a.x) == 4096.f;
+
+    if (horizontalPlane || sideWall) return;
+
     const SATResult sat = carTriSAT(tri);
 
     if (!sat.overlap) return;
@@ -143,9 +154,7 @@ CARL_D CARL_FI void writeCarTriPairResult(
     space->ctNrw.pairV0[pairIdx] = tri.v0;
     space->ctNrw.pairV1[pairIdx] = tri.v1;
     space->ctNrw.pairV2[pairIdx] = tri.v2;
-
     space->ctNrw.triIdx[pairIdx] = tri.triIdx;
-
     space->ctNrw.axisIdx[pairIdx] = sat.axisIdx;
     space->ctNrw.minAxis[pairIdx] = sat.minAxis;
     space->ctNrw.minPen[pairIdx] = sat.minPen;

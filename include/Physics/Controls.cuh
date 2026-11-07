@@ -13,6 +13,7 @@ CARL_D CARL_FI void processCarControls(
     if (__ldg(&state->cars.isDemoed[carIdx]))
     {
         space->susp.jumpImpulse[carIdx] = Vec3::zero();
+        space->susp.angularImpulse[carIdx] = Vec3::zero();
         return;
     }
 
@@ -44,7 +45,6 @@ CARL_D CARL_FI void processCarControls(
     updateGroundDrive(ctx);
     updateBoost(ctx);
     updateSteer(ctx);
-    updateAutoFlip(ctx);
 
     // Aerial control depends on how many wheels currently reach the surface
     if (ctx.wheelConCount < 3)
@@ -53,5 +53,6 @@ CARL_D CARL_FI void processCarControls(
     }
 
     updateJump(ctx);
+    updateAutoFlip(ctx);
     updateDodge(ctx);
 }

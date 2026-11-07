@@ -22,6 +22,9 @@ dependencies = [
 jax = [
     "jax[cuda12]>=0.4.30; sys_platform == 'linux'",
 ]
+rlgym = [
+    "rlgym[rl-sim]>=2.0",
+]
 
 [dependency-groups]
 dev = [

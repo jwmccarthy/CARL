@@ -1,11 +1,8 @@
 #pragma once
 
 #include <cooperative_groups.h>
-#include <cub/device/device_scan.cuh>
 
 #include "./Common.cuh"
-
-using scan = cub::DeviceScan;
 
 struct PrefixSum
 {
@@ -17,32 +14,16 @@ struct PrefixSum
 
     PrefixSum() = default;
 
-    PrefixSum(int* input, int* output, int count)
-        : input(input), output(output), count(count)
-    {
-        CUDA_CHECK(scan::ExclusiveSum(nullptr, bytes, input, output, count));
-        CUDA_CHECK(cudaMalloc(&buffer, bytes));
-    }
-
-    ~PrefixSum()
-    {
-        CUDA_CHECK(cudaFree(buffer));
-    }
+    PrefixSum(int *input, int *output, int count);
+    ~PrefixSum();
 
     PrefixSum(const PrefixSum&) = delete;
     PrefixSum& operator=(const PrefixSum&) = delete;
     PrefixSum(PrefixSum&&) = delete;
     PrefixSum& operator=(PrefixSum&&) = delete;
 
-    void scan()
-    {
-        CUDA_CHECK(scan::ExclusiveSum(buffer, bytes, input, output, count));
-    }
-
-    void scanOnStream(cudaStream_t stream)
-    {
-        CUDA_CHECK(scan::ExclusiveSum(buffer, bytes, input, output, count, stream));
-    }
+    void scan();
+    void scanOnStream(cudaStream_t stream);
 };
 
 CARL_D CARL_FI int2 binarySearchWithValue(const int* a, int n, int t)

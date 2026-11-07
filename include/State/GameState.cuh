@@ -24,15 +24,24 @@ struct BallState
     DeviceArray<Vec3> ang;
     DeviceArray<Vec3> imp;
 
+    DeviceArray<Vec3> integrationPos;
+    DeviceArray<Vec3> integrationVel;
+    DeviceArray<Vec3> exportedPos;
+    DeviceArray<Vec3> exportedVel;
+    DeviceArray<int>  integrationValid;
+
     BallState(const int nBall)
-        : nBall(nBall)
-        , pos(nBall)
-        , vel(nBall)
-        , ang(nBall)
-        , imp(nBall)
+        : nBall(nBall), pos(nBall), vel(nBall)
+        , ang(nBall), imp(nBall), integrationPos(nBall)
+        , integrationVel(nBall), exportedPos(nBall)
+        , exportedVel(nBall), integrationValid(nBall)
     {}
 
-    void reset() { imp.fill(0); }
+    void reset()
+    {
+        imp.fill(0);
+        integrationValid.fill(0);
+    }
 };
 
 struct CarInternalState

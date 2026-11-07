@@ -128,6 +128,19 @@ __global__ void carArenaSATKernel(
     }
 }
 
+__global__ void carDirectControlsKernel(
+    GameState *__restrict__ state,
+    Workspace *__restrict__ space,
+    const CarControls *__restrict__ actions,
+    EventBuffer events)
+{
+    const int carIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (carIdx >= state->nTotalCars) return;
+
+    state->cars.controls[carIdx] = actions[carIdx];
+    processCarControls(state, space, carIdx, events);
+}
+
 __global__ void carArenaClipKernel(
     ArenaMesh* __restrict__ arena,
     Workspace* __restrict__ space)

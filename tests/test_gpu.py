@@ -23,12 +23,12 @@ def main():
         raise RuntimeError("This smoke test requires a working CUDA GPU/backend")
 
     env = CARLTorchVectorEnv(
-        n_sim            = 1,
-        n_blue           = 1,
-        n_orange         = 1,
-        frameskip        = 1,
-        discrete_actions = True,
-        synchronize      = True,
+        n_sim=1,
+        n_blue=1,
+        n_orange=1,
+        frameskip=1,
+        discrete_actions=True,
+        synchronize=True,
     )
 
     try:
@@ -43,20 +43,21 @@ def main():
 
         actions = torch.zeros(
             (env.n_envs, len(carl.ACTION_NVECS)),
-            dtype  = torch.long,
-            device = env.device,
+            dtype=torch.long,
+            device=env.device,
         )
         observation, reward, terminated, truncated, info = env.step(actions)
 
         assert isinstance(observation, CARLObservation)
+
         check_tensor(observation, env.observation_space.shape, torch.float32)
         check_tensor(reward, (env.n_envs,), torch.float32)
         check_tensor(terminated, (env.n_envs,), torch.bool)
         check_tensor(truncated, (env.n_envs,), torch.bool)
+        
         assert isinstance(info, dict)
 
         torch.cuda.synchronize(env.device)
-
     finally:
         env.close()
 
