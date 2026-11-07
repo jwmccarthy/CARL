@@ -29,6 +29,7 @@
 // Capacity for four manifold points per native mesh (16 meshes), plus four
 // arena planes. Keep the contact and solver row arrays sized consistently.
 constexpr int MAX_BALL_ARENA_CONTACTS = 68;
+
 // Contact separation threshold in Unreal units: contacts farther apart are
 // discarded and the same margin expands the broadphase query. This is an
 // existing physics-port tuning value; its original derivation is undocumented.
