@@ -1,8 +1,8 @@
 #pragma once
 
+#include "EventState.cuh"
 #include "Cuda/DLPack.h"
 #include "Cuda/KernelConfig.cuh"
-#include "EventState.cuh"
 #include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
@@ -33,12 +33,12 @@ DLManagedTensor* makeBoolTensor(
 class EnvIO
 {
 private:
-    float* d_obs     = nullptr;
+    float* d_obs = nullptr;
     float* d_transitionObs = nullptr;
-    float* d_state   = nullptr;
+    float* d_state = nullptr;
     float* d_transitionState = nullptr;
     float* d_rewards = nullptr;
-    bool*  d_dones   = nullptr;
+    bool*  d_dones = nullptr;
     int*   d_scoreDifference = nullptr;
     int*   d_episodeTicks = nullptr;
     int*   d_transitionScoreDifference = nullptr;
@@ -123,7 +123,8 @@ public:
 
     void setCar(
         GameState* d_state, Workspace* d_space,
-        const float* pos, const float* rot, const float* vel, const float* ang,
+        const float* pos, const float* rot, 
+        const float* vel, const float* ang,
         const void* demoed, bool byteDemoed,
         const float* boost = nullptr, const float* internalState = nullptr,
         const int64_t* simulationIndices = nullptr, int nSelected = -1);

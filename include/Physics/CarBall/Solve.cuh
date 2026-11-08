@@ -209,10 +209,17 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
 CARL_D CARL_FI BallTouchSurface ballCarSurface(const Vec3& localNormal)
 {
     const Vec3 magnitude = localNormal.abs();
+
     if (magnitude.x >= magnitude.y && magnitude.x >= magnitude.z)
+    {
         return localNormal.x >= 0.f ? TOUCH_FRONT : TOUCH_REAR;
+    }
+    
     if (magnitude.y >= magnitude.z)
+    {
         return localNormal.y >= 0.f ? TOUCH_LEFT : TOUCH_RIGHT;
+    }
+
     return localNormal.z >= 0.f ? TOUCH_ROOF : TOUCH_UNDERSIDE;
 }
 

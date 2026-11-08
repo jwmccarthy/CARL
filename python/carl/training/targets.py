@@ -45,7 +45,6 @@ class StateMetric(IntEnum):
 
 @dataclass(frozen=True)
 class TargetConditions:
-
     valid:              th.Tensor
     kind:               th.Tensor
     entity:             th.Tensor
@@ -67,7 +66,6 @@ class TargetConditions:
 
 @dataclass(frozen=True)
 class TrainingTarget:
-
     stages:                TargetConditions
     failures:              TargetConditions
     repeats:               TargetConditions

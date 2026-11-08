@@ -1,10 +1,10 @@
 #pragma once
 
+#include "RLConstants.cuh"
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
-#include "RLConstants.cuh"
 #include "Physics/SuspensionUtils.cuh"
-#include "State/Events.cuh"
 
 struct ControlCtx
 {
@@ -20,6 +20,7 @@ struct ControlCtx
     int wheelConCount;
     bool onGround;
     bool jumpPressed;
+
     EventBuffer events;
 
     CARL_D CARL_FI CarInternalState& internal()

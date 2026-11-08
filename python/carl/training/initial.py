@@ -6,7 +6,6 @@ from ..events import ArenaSurface
 
 @dataclass
 class Uniform:
-
     low:  float
     high: float
 
@@ -20,14 +19,12 @@ Scalar = Union[float, Uniform]
 
 @dataclass
 class Box2D:
-
     low:  tuple[float, float]
     high: tuple[float, float]
 
 
 @dataclass
 class Box3D:
-
     low:  tuple[float, float, float]
     high: tuple[float, float, float]
 
@@ -38,7 +35,6 @@ Vector3 = Union[tuple[Scalar, Scalar, Scalar], Box3D]
 
 @dataclass
 class Euler:
-
     roll:  Scalar = 0.0
     pitch: Scalar = 0.0
     yaw:   Scalar = 0.0
@@ -46,7 +42,6 @@ class Euler:
 
 @dataclass
 class OnSurface:
-
     surface:  ArenaSurface = ArenaSurface.FLOOR
     position: Vector2      = (0.0, 0.0)
     heading:  Scalar       = 0.0
@@ -59,14 +54,12 @@ class OnSurface:
 
 @dataclass
 class InAir:
-
     position:    Vector3
     orientation: Euler = field(default_factory=Euler)
 
 
 @dataclass
 class CarState:
-
     placement:        Union[OnSurface, InAir]
     velocity:         Vector3 = (0.0, 0.0, 0.0)
     angular_velocity: Vector3 = (0.0, 0.0, 0.0)
@@ -75,7 +68,6 @@ class CarState:
 
 @dataclass
 class BallState:
-
     position:         Vector3
     velocity:         Vector3 = (0.0, 0.0, 0.0)
     angular_velocity: Vector3 = (0.0, 0.0, 0.0)
@@ -83,6 +75,5 @@ class BallState:
 
 @dataclass
 class InitialState:
-
     ego:  CarState
     ball: BallState

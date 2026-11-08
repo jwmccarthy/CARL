@@ -9,11 +9,14 @@
 class EventState
 {
     cudaStream_t stream;
+
     bool captureEvents;
     bool captureTouches;
+    
     int nSim;
     int nCars;
     int capacity = 0;
+
     std::vector<cudaStream_t> consumers;
 
     void waitForConsumers();
@@ -28,10 +31,13 @@ public:
     DeviceArray<int> ballSurfaceEntered;
     DeviceArray<int> ballSurfaceLeft;
     DeviceArray<int> goalSide;
+
     DeviceArray<float> ballSpeedChange;
     DeviceArray<float> ballSpeedBefore;
+
     DeviceArray<int> touchSurfaces;
     DeviceArray<int> touchTickSurfaces;
+
     DeviceArray<float> touchTickSpeed;
     DeviceArray<float> touchTickSpeedBefore;
 

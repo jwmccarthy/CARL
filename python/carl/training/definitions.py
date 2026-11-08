@@ -6,7 +6,6 @@ from ..events import Condition
 
 @dataclass
 class Stage:
-
     event:        Condition
     within_ticks: int | None       = None
     fail_on:      list[Condition] = field(default_factory=list)
@@ -41,7 +40,6 @@ class Stage:
 
 @dataclass
 class Exercise:
-
     name:        str
     initial:     InitialState
     stages:      list[Stage]
@@ -55,7 +53,6 @@ class Exercise:
 
 @dataclass
 class TrainingPack:
-
     name:      str
     exercises: list[Exercise]
 

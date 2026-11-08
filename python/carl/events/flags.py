@@ -1,14 +1,13 @@
-from dataclasses import dataclass, field, fields, replace
-
 import torch as th
 
-from .. import _carl
+from dataclasses import dataclass, field, fields, replace
+
 from .enums import Event
+from .. import _carl
 
 
 @dataclass
 class EntityEvents:
-
     flags:   th.Tensor
     _native: _carl.EventState | None = field(default=None, repr=False, compare=False)
 
@@ -35,7 +34,6 @@ class EntityEvents:
 
 @dataclass
 class CarEvents(EntityEvents):
-
     surface_contacted: th.Tensor | None = None
     surface_left:      th.Tensor | None = None
 
@@ -74,7 +72,6 @@ class CarEvents(EntityEvents):
 
 @dataclass
 class BallEvents(EntityEvents):
-
     surface_entered: th.Tensor | None = None
     surface_left:    th.Tensor | None = None
     goal_side:       th.Tensor | None = None

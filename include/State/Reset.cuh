@@ -162,7 +162,7 @@ CARL_D CARL_FI void resetAfterDone(
     }
 
     const bool reset = scored || noTouchTimeout || overtimeExpired
-                     || (!goal.overtime && tickTimeout);
+        || (!goal.overtime && tickTimeout);
 
     if (reset) resetEpisode(state, space, simIdx);
 }

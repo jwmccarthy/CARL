@@ -10,7 +10,6 @@ from ..events import CarlEvents
 
 @dataclass(frozen=True)
 class RewardResult:
-
     reward: th.Tensor
     info:   Mapping[str, list[Any]] = field(default_factory=dict)
 
@@ -327,7 +326,6 @@ class CARLObservation(_CARLTensor):
 
 @dataclass(frozen=True)
 class CARLMatchReset:
-
     """Match state for the simulations selected by a reset provider."""
 
     blue_score:    th.Tensor
@@ -337,7 +335,6 @@ class CARLMatchReset:
 
 @dataclass(frozen=True)
 class CARLResetState:
-
     """Ball and cars use physics units unless ``normalized`` is true."""
 
     simulation_indices: th.Tensor
@@ -370,7 +367,6 @@ class CARLResetState:
 
 @dataclass(frozen=True)
 class CarlState:
-
     raw:                 th.Tensor
     n_cars:              int
     boost_pad_positions: th.Tensor
@@ -477,7 +473,6 @@ class CarlState:
 
 @dataclass(frozen=True)
 class StepContext:
-
     current:              CarlState
     previous:             CarlState
     current_observation:  CARLObservation

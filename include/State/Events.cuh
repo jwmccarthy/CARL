@@ -26,6 +26,16 @@ enum ArenaSurface
     ARENA_OTHER = 1 << 4
 };
 
+enum BallTouchSurface
+{
+    TOUCH_FRONT,
+    TOUCH_REAR,
+    TOUCH_LEFT,
+    TOUCH_RIGHT,
+    TOUCH_ROOF,
+    TOUCH_UNDERSIDE
+};
+
 CARL_HD CARL_FI int arenaSurface(const Vec3& normal)
 {
     const float x = fabsf(normal.x);
@@ -55,16 +65,6 @@ CARL_HD CARL_FI int carArenaSurface(const Vec3& normal)
     return surface;
 }
 
-enum BallTouchSurface
-{
-    TOUCH_FRONT,
-    TOUCH_REAR,
-    TOUCH_LEFT,
-    TOUCH_RIGHT,
-    TOUCH_ROOF,
-    TOUCH_UNDERSIDE
-};
-
 struct BallTouchBuffer
 {
     int* surfaces = nullptr;
@@ -76,9 +76,17 @@ struct BallTouchBuffer
     CARL_D CARL_FI void record(int carIdx, BallTouchSurface surface, float speedBefore) const
     {
         if (!enabled()) return;
+
         surfaces[carIdx] |= 1 << static_cast<int>(surface);
-        if (tickSurfaces) tickSurfaces[carIdx] |= 1 << static_cast<int>(surface);
-        if (tickSpeedBefore) tickSpeedBefore[carIdx] = speedBefore;
+
+        if (tickSurfaces)
+        {
+            tickSurfaces[carIdx] |= 1 << static_cast<int>(surface);
+        }
+        if (tickSpeedBefore)
+        {
+            tickSpeedBefore[carIdx] = speedBefore;
+        }
     }
 };
 

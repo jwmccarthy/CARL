@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field, fields, replace
-
 import torch as th
+
+from dataclasses import dataclass, field, fields, replace
 
 from .. import _carl
 from .flags import BallEvents, CarEvents, EntityEvents
@@ -9,14 +9,13 @@ from .touches import BallTouchBatch
 
 @dataclass(kw_only=True)
 class CarlEvents:
-
-    score_delta:  th.Tensor | None      = None
-    done:         th.Tensor | None      = None
-    terminated:   th.Tensor | None      = None
-    truncated:    th.Tensor | None      = None
-    cars:         CarEvents | None      = None
-    ball:         BallEvents | None     = None
-    ball_touches: BallTouchBatch | None = None
+    score_delta:  th.Tensor        | None = None
+    done:         th.Tensor        | None = None
+    terminated:   th.Tensor        | None = None
+    truncated:    th.Tensor        | None = None
+    cars:         CarEvents        | None = None
+    ball:         BallEvents       | None = None
+    ball_touches: BallTouchBatch   | None = None
     _native:      _carl.EventState | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -52,11 +51,11 @@ class CarlEvents:
 
         if native.touches_enabled:
             batch.ball_touches = BallTouchBatch(
-                surfaces = th.from_dlpack(native.get_ball_touch_surfaces()),
-                tick_surfaces = th.from_dlpack(native.get_ball_touch_tick_surfaces()),
-                tick_speed = th.from_dlpack(native.get_ball_touch_tick_speed()),
+                surfaces          = th.from_dlpack(native.get_ball_touch_surfaces()),
+                tick_surfaces     = th.from_dlpack(native.get_ball_touch_tick_surfaces()),
+                tick_speed        = th.from_dlpack(native.get_ball_touch_tick_speed()),
                 tick_speed_before = th.from_dlpack(native.get_ball_touch_tick_speed_before()),
-                _native  = native,
+                _native           = native,
             )
 
         return batch

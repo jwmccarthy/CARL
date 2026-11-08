@@ -8,12 +8,11 @@ from .enums import ContactSurface
 
 @dataclass
 class BallTouchBatch:
-
-    surfaces: th.Tensor
-    _native:  _carl.EventState | None = field(default=None, repr=False, compare=False)
-    tick_surfaces: th.Tensor | None = None
-    tick_speed:    th.Tensor | None = None
-    tick_speed_before: th.Tensor | None = None
+    surfaces:          th.Tensor
+    _native:           _carl.EventState | None = field(default=None, repr=False, compare=False)
+    tick_surfaces:     th.Tensor        | None = None
+    tick_speed:        th.Tensor        | None = None
+    tick_speed_before: th.Tensor        | None = None
 
     def wait(self):
         if self._native is not None:

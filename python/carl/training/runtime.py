@@ -111,7 +111,6 @@ def _condition(condition, target_goal):
 
 @dataclass
 class CompiledTrainingPack:
-
     source:                object
     kind:                  th.Tensor
     mask:                  th.Tensor
@@ -292,7 +291,6 @@ class CompiledTrainingPack:
 
 @dataclass
 class TrainingStep:
-
     succeeded: th.Tensor
     failed:    th.Tensor
     timed_out: th.Tensor
