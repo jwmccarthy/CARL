@@ -7,6 +7,13 @@
 #include "Physics/Goals.cuh"
 #include "State/GameState.cuh"
 
+// Arena contacts are solved before car-ball contacts, so the most recent hit
+// relevant to this solve is from the preceding physics tick.
+CARL_D CARL_FI bool ballHitOnPreviousTick(int hitTick, int tick)
+{
+    return hitTick >= 0 && tick > 0 && hitTick == tick - 1;
+}
+
 CARL_D __noinline__ Vec3 solveBallArena(
     GameState* state,
     ArenaMesh* arena,
@@ -33,7 +40,8 @@ CARL_D __noinline__ Vec3 solveBallArena(
 
     for (int carOffset = 0; carOffset < state->nCars; carOffset++)
     {
-        ballWasHit |= __ldg(&state->cars.ballHitTick[carBase + carOffset]) >= 0;
+        const int hitTick = __ldg(&state->cars.ballHitTick[carBase + carOffset]);
+        ballWasHit |= ballHitOnPreviousTick(hitTick, state->tickCount);
     }
 
     solveBallArenaContacts(body, contacts, count, ballWasHit);
