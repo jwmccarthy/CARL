@@ -206,7 +206,7 @@ CARL_D CARL_FI void solveBallArenaContacts(
     Vec3 totalNormal = Vec3::zero();
     float totalRadius = 0.f;
 
-    // Omit split correction for isolated floor contacts after a car hit
+    // Omit split correction for an isolated floor contact immediately after a hit.
     const bool splitCorrection = !ballWasHit
         || count != 1
         || contacts[0].normal.z < 0.999f;
