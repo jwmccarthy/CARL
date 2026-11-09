@@ -1,5 +1,6 @@
 #include <cstdio>
 
+#include "Physics/BallArena/Solve.cuh"
 #include "Physics/Controls/Aerial.cuh"
 #include "Physics/Controls/Drive.cuh"
 #include "Physics/Goals.cuh"
@@ -14,6 +15,25 @@ __global__ void checkPhysics(GameState* state, Workspace* space, int* result)
         ++cases;
         failures += !passed;
     };
+
+    // A past kickoff hit must not indefinitely disable floor depenetration.
+    check(!ballHitOnPreviousTick(-1, 0));
+    check(ballHitOnPreviousTick(99, 100));
+    check(!ballHitOnPreviousTick(98, 100));
+    check(!ballHitOnPreviousTick(100, 100));
+
+    BallArenaContact floor{};
+    floor.normal = { 0.f, 0.f, 1.f };
+    floor.relPos = { 0.f, 0.f, -BALL_COLLISION_RADIUS };
+    floor.depth = 30.f;
+    for (int hitAge = 1; hitAge <= 2; ++hitAge)
+    {
+        BallArenaSolverBody body{};
+        body.vel = { 0.f, 0.f, -5.f };
+        body.velNoExt = body.vel;
+        solveBallArenaContacts(body, &floor, 1, ballHitOnPreviousTick(100 - hitAge, 100));
+        check(hitAge == 1 ? body.pushVel.z == 0.f : body.pushVel.z > 0.f);
+    }
 
     const float inputs[][3] = {
         { 0.f, 1.f, -1.f }, { 0.f, -1.f, 1.f },
