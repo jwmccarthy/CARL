@@ -551,7 +551,10 @@ public:
     int getActDim() const { return io.getActDim(); }
     int getNSim()   const { return env.getNSim();  }
     int getNCars()  const { return env.getNCars(); }
-    uintptr_t getStream() const { return reinterpret_cast<uintptr_t>(env.getStream()); }
+    uintptr_t getStream() const
+    {
+        return reinterpret_cast<uintptr_t>(env.getStream());
+    }
 
     py::list getActionNvec() const
     {

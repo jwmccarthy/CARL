@@ -211,15 +211,21 @@ class BuildConfigurationTests(unittest.TestCase):
     def test_gpu_backend_defaults_to_cuda(self):
         self.toolkit()
         os.environ["CARL_CUDA_ARCHITECTURES"] = "90"
-        expected = ["-DCARL_GPU_BACKEND=CUDA", *self.cmake_args(),
-                    "-DCMAKE_CUDA_ARCHITECTURES=90"]
+        expected = [
+            "-DCARL_GPU_BACKEND=CUDA",
+            *self.cmake_args(),
+            "-DCMAKE_CUDA_ARCHITECTURES=90",
+        ]
         self.assertEqual(self.gpu_args(), expected)
         os.environ["CARL_GPU_BACKEND"] = "cuda"
         self.assertEqual(self.gpu_args(), expected)
 
     def test_hip_configuration(self):
-        os.environ.update(CARL_GPU_BACKEND="hip", CARL_CUDA_ARCHITECTURES="90",
-                          CUDA_HOME=str(self.root / "missing-cuda"))
+        os.environ.update(
+            CARL_GPU_BACKEND="hip",
+            CARL_CUDA_ARCHITECTURES="90",
+            CUDA_HOME=str(self.root / "missing-cuda"),
+        )
         for index, compiler in enumerate(("llvm/bin/clang++", "lib/llvm/bin/clang++")):
             root = self.root / str(index)
             self.touch(root / compiler)
@@ -244,8 +250,8 @@ class BuildConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "must be CUDA or HIP"):
             self.gpu_args()
         os.environ["CARL_GPU_BACKEND"] = "HIP"
-        for index, files in enumerate(((), ("llvm/bin/clang++",),
-                                       ("include/hip/hip_runtime.h",))):
+        cases = ((), ("llvm/bin/clang++",), ("include/hip/hip_runtime.h",))
+        for index, files in enumerate(cases):
             root = self.root / str(index)
             os.environ["ROCM_PATH"] = str(root)
             for path in files:

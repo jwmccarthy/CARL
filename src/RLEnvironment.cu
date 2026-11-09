@@ -4,11 +4,11 @@
 
 #ifdef CARL_USE_HIP
 #include <hipcub/hipcub.hpp>
-using scan = hipcub::DeviceScan;
+using DeviceScan = hipcub::DeviceScan;
 #else
 #include <cuda_runtime_api.h>
 #include <cub/device/device_scan.cuh>
-using scan = cub::DeviceScan;
+using DeviceScan = cub::DeviceScan;
 #endif
 
 #include "Kernels.cuh"
@@ -18,7 +18,7 @@ using scan = cub::DeviceScan;
 PrefixSum::PrefixSum(int *input, int *output, int count)
     : count(count), input(input), output(output)
 {
-    CUDA_CHECK(scan::ExclusiveSum(nullptr, bytes, input, output, count));
+    CUDA_CHECK(DeviceScan::ExclusiveSum(nullptr, bytes, input, output, count));
     CUDA_CHECK(cudaMalloc(&buffer, bytes));
 }
 
@@ -29,12 +29,12 @@ PrefixSum::~PrefixSum()
 
 void PrefixSum::scan()
 {
-    CUDA_CHECK(scan::ExclusiveSum(buffer, bytes, input, output, count));
+    CUDA_CHECK(DeviceScan::ExclusiveSum(buffer, bytes, input, output, count));
 }
 
 void PrefixSum::scanOnStream(cudaStream_t stream)
 {
-    CUDA_CHECK(scan::ExclusiveSum(buffer, bytes, input, output, count, stream));
+    CUDA_CHECK(DeviceScan::ExclusiveSum(buffer, bytes, input, output, count, stream));
 }
 
 RLEnvironment::RLEnvironment(

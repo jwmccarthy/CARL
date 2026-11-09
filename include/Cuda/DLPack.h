@@ -6,7 +6,11 @@
 
 // --- DLPack types (minimal, no external dependency) ---
 
-enum DLDeviceType { kDLCUDA = 2, kDLROCM = 10 };
+enum DLDeviceType
+{
+    kDLCUDA = 2,
+    kDLROCM = 10
+};
 
 #ifdef CARL_USE_HIP
 constexpr DLDeviceType CARL_DL_DEVICE = kDLROCM;

@@ -113,18 +113,17 @@ def hip_cmake_args():
     if sys.platform != "linux":
         raise RuntimeError("CARL: source builds currently support Linux only")
     root = Path(os.environ.get("ROCM_PATH", "/opt/rocm")).expanduser().resolve()
-    compiler = next(
-        (path for path in (
-            root / "llvm/bin/clang++",
-            root / "lib/llvm/bin/clang++",
-        ) if path.is_file()),
-        None,
+    candidates = (
+        root / "llvm/bin/clang++",
+        root / "lib/llvm/bin/clang++",
     )
+    compiler = next((path for path in candidates if path.is_file()), None)
     if compiler is None or not (root / "include/hip/hip_runtime.h").is_file():
         raise RuntimeError(
             f"CARL: ROCm development toolkit missing under {root}; "
             "install ROCm with hipCUB/rocPRIM and set ROCM_PATH"
         )
+
     args = [
         f"-DCMAKE_HIP_COMPILER={compiler}",
         f"-DCMAKE_HIP_COMPILER_ROCM_ROOT={root}",
@@ -132,6 +131,7 @@ def hip_cmake_args():
     architectures = os.environ.get("CARL_HIP_ARCHITECTURES")
     if architectures:
         args.append(f"-DCMAKE_HIP_ARCHITECTURES={architectures}")
+
     return args
 
 
@@ -143,8 +143,10 @@ def gpu_cmake_args():
         if architectures:
             args.append(f"-DCMAKE_CUDA_ARCHITECTURES={architectures}")
         return args
+
     if backend == "HIP":
         return ["-DCARL_GPU_BACKEND=HIP", *hip_cmake_args()]
+
     raise RuntimeError("CARL_GPU_BACKEND must be CUDA or HIP")
 
 

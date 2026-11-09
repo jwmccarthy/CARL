@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 set(CARL_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA or HIP")
 set_property(CACHE CARL_GPU_BACKEND PROPERTY STRINGS CUDA HIP)
+
 if(CARL_GPU_BACKEND STREQUAL "HIP")
     project(CARL LANGUAGES CXX HIP)
     find_package(hip REQUIRED CONFIG HINTS "${CMAKE_HIP_COMPILER_ROCM_ROOT}/lib/cmake/hip")
@@ -34,7 +35,8 @@ if(CARL_GPU_BACKEND STREQUAL "HIP")
     set(HIP_SOURCES
         ${CORE_SOURCES}
         "${CMAKE_CURRENT_SOURCE_DIR}/python/carl.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/parity_harness.cu")
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/parity_harness.cu"
+    )
     list(FILTER HIP_SOURCES INCLUDE REGEX "\\.cu$")
     set_source_files_properties(${HIP_SOURCES} PROPERTIES LANGUAGE HIP)
 endif()
