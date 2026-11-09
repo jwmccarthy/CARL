@@ -9,11 +9,16 @@ class StreamHandoffTests(unittest.TestCase):
     def test_stream_handoff(self):
         def run(synchronize):
             env = CARLTorchVectorEnv(
-                n_sim=4, n_blue=1, n_orange=1, seed=7, synchronize=synchronize,
+                n_sim=4,
+                n_blue=1,
+                n_orange=1,
+                seed=7,
+                synchronize=synchronize,
             )
             self.addCleanup(env.close)
             actions = torch.zeros(env.action_space.shape, device=env.device)
             frames = [env.reset().clone()]
+
             for step in range(8):
                 if step == 4:
                     zeros = torch.zeros((env.n_sim, 3), device=env.device)
@@ -25,15 +30,19 @@ class StreamHandoffTests(unittest.TestCase):
                     obs = env.reset()
                 else:
                     obs = env.step(actions)[0]
+
                 frames.append(obs.clone())
+
             env.close()
             return frames
 
         expected = run(synchronize=True)
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
+
         with torch.cuda.stream(stream):
             actual = run(synchronize=False)
+
         torch.cuda.synchronize()
         torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-4)
 
