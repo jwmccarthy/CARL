@@ -75,7 +75,7 @@ class EnvWrapper
             throw py::type_error("actions must have dtype int32");
         }
 
-        if (t.device.device_type != kDLCUDA || t.device.device_id != 0)
+        if (t.device.device_type != CARL_DL_DEVICE || t.device.device_id != 0)
         {
             throw py::value_error("actions must be on cuda:0");
         }
@@ -116,7 +116,7 @@ class EnvWrapper
         {
             throw py::type_error("continuous actions must have dtype float32");
         }
-        if (t.device.device_type != kDLCUDA || t.device.device_id != 0)
+        if (t.device.device_type != CARL_DL_DEVICE || t.device.device_id != 0)
         {
             throw py::value_error("continuous actions must be on cuda:0");
         }
@@ -157,7 +157,7 @@ class EnvWrapper
             throw py::type_error(std::string(name) + " has an invalid dtype");
         }
 
-        if (tensor.device.device_type != kDLCUDA || tensor.device.device_id != 0)
+        if (tensor.device.device_type != CARL_DL_DEVICE || tensor.device.device_id != 0)
         {
             throw py::value_error(std::string(name) + " must be on cuda:0");
         }
@@ -220,7 +220,7 @@ class EnvWrapper
         {
             throw py::type_error("simulation_indices must have dtype int64");
         }
-        if (tensor.device.device_type != kDLCUDA || tensor.device.device_id != 0)
+        if (tensor.device.device_type != CARL_DL_DEVICE || tensor.device.device_id != 0)
         {
             throw py::value_error("simulation_indices must be on cuda:0");
         }

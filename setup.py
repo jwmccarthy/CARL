@@ -109,10 +109,51 @@ def cuda_architectures():
     return detected
 
 
+def hip_cmake_args():
+    if sys.platform != "linux":
+        raise RuntimeError("CARL: source builds currently support Linux only")
+    root = Path(os.environ.get("ROCM_PATH", "/opt/rocm")).expanduser().resolve()
+    candidates = (
+        root / "llvm/bin/clang++",
+        root / "lib/llvm/bin/clang++",
+    )
+    compiler = next((path for path in candidates if path.is_file()), None)
+    if compiler is None or not (root / "include/hip/hip_runtime.h").is_file():
+        raise RuntimeError(
+            f"CARL: ROCm development toolkit missing under {root}; "
+            "install ROCm with hipCUB/rocPRIM and set ROCM_PATH"
+        )
+
+    args = [
+        f"-DCMAKE_HIP_COMPILER={compiler}",
+        f"-DCMAKE_HIP_COMPILER_ROCM_ROOT={root}",
+    ]
+    architectures = os.environ.get("CARL_HIP_ARCHITECTURES")
+    if architectures:
+        args.append(f"-DCMAKE_HIP_ARCHITECTURES={architectures}")
+
+    return args
+
+
+def gpu_cmake_args():
+    backend = os.environ.get("CARL_GPU_BACKEND", "CUDA").upper()
+    if backend == "CUDA":
+        args = ["-DCARL_GPU_BACKEND=CUDA", *cuda_cmake_args()]
+        architectures = cuda_architectures()
+        if architectures:
+            args.append(f"-DCMAKE_CUDA_ARCHITECTURES={architectures}")
+        return args
+
+    if backend == "HIP":
+        return ["-DCARL_GPU_BACKEND=HIP", *hip_cmake_args()]
+
+    raise RuntimeError("CARL_GPU_BACKEND must be CUDA or HIP")
+
+
 class CMakeBuild(build_ext):
 
     def run(self):
-        toolkit_args = cuda_cmake_args()
+        toolkit_args = gpu_cmake_args()
         build_dir    = Path(self.build_temp)
 
         print("[carl] Locating pybind11...")
@@ -138,10 +179,6 @@ class CMakeBuild(build_ext):
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ]
-
-        architectures = cuda_architectures()
-        if architectures:
-            cmake_args.append(f"-DCMAKE_CUDA_ARCHITECTURES={architectures}")
 
         cmake_args.extend(toolkit_args)
 
