@@ -267,10 +267,10 @@ class CARLObservation(_CARLTensor):
 
     @property
     def ego_controller(self) -> th.Tensor:
-        """Ego-only v1 block; times remain seconds even when normalized."""
+        """Mandatory ego-only v2 block; times remain seconds when normalized."""
         start = self._goal_start + carl.OBS_RELATIVE_GOALS + carl.OBS_EGO_DODGE
         if self.shape[-1] != start + carl.OBS_EGO_CONTROLLER:
-            raise ValueError("observation does not include ego controller v1")
+            raise ValueError("observation does not match ego controller v2")
         return self[..., start:]
 
     @property
@@ -278,60 +278,24 @@ class CARLObservation(_CARLTensor):
         return self.ego_controller[..., :8]
 
     @property
-    def ego_last_jump(self) -> th.Tensor:
+    def ego_has_jumped(self) -> th.Tensor:
         return self.ego_controller[..., 8].bool()
 
     @property
-    def ego_has_jumped(self) -> th.Tensor:
+    def ego_is_jumping(self) -> th.Tensor:
         return self.ego_controller[..., 9].bool()
 
     @property
-    def ego_is_jumping(self) -> th.Tensor:
+    def ego_is_flipping(self) -> th.Tensor:
         return self.ego_controller[..., 10].bool()
 
     @property
-    def ego_jump_time(self) -> th.Tensor:
+    def ego_flip_time(self) -> th.Tensor:
         return self.ego_controller[..., 11]
 
     @property
-    def ego_boost_min_time_remaining(self) -> th.Tensor:
-        return self.ego_controller[..., 12]
-
-    @property
-    def ego_is_flipping(self) -> th.Tensor:
-        return self.ego_controller[..., 13].bool()
-
-    @property
-    def ego_flip_time(self) -> th.Tensor:
-        return self.ego_controller[..., 14]
-
-    @property
-    def ego_flip_relative_torque(self) -> th.Tensor:
-        return self.ego_controller[..., 15:18]
-
-    @property
-    def ego_handbrake(self) -> th.Tensor:
-        return self.ego_controller[..., 18]
-
-    @property
-    def ego_wheel_contacts(self) -> th.Tensor:
-        return self.ego_controller[..., 19:23].bool()
-
-    @property
-    def ego_is_auto_flipping(self) -> th.Tensor:
-        return self.ego_controller[..., 23].bool()
-
-    @property
-    def ego_auto_flip_time(self) -> th.Tensor:
-        return self.ego_controller[..., 24]
-
-    @property
-    def ego_auto_flip_torque_scale(self) -> th.Tensor:
-        return self.ego_controller[..., 25]
-
-    @property
     def ego_demo_respawn_time(self) -> th.Tensor:
-        return self.ego_controller[..., 26]
+        return self.ego_controller[..., 12]
 
     @property
     def car_end(self) -> int:

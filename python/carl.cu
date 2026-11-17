@@ -254,10 +254,9 @@ public:
         int seed,
         int frameskip,
         bool invertOrange,
-        bool normalize,
-        bool egoController)
+        bool normalize)
         : env(nSim, nBlue, nOrange, seed)
-        , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize, egoController)
+        , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize)
         , frameskip(frameskip)
     {
         if (frameskip < 1)
@@ -698,13 +697,12 @@ PYBIND11_MODULE(_carl, m)
     m.attr("BOOST_PAD_POSITIONS") = boostPadPositions;
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int, int, bool, bool, bool>(),
+        .def(py::init<int, int, int, int, int, bool, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
              py::arg("frameskip") = 1,
              py::arg("invert_orange") = true,
-             py::arg("normalize") = false,
-             py::arg("ego_controller") = false)
+             py::arg("normalize") = false)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
         .def("step_continuous", &EnvWrapper::stepContinuous, py::arg("actions"))

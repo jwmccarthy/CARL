@@ -100,8 +100,7 @@ CARL_D CARL_FI void packObservations(
     int observerIdx,
     int nCars,
     bool invertOrange,
-    float* __restrict__ obs,
-    bool egoController = false)
+    float* __restrict__ obs)
 {
     const int  carBase          = simIdx * nCars;
     const bool observerIsOrange = observerIdx >= state->nBlue;
@@ -214,39 +213,23 @@ CARL_D CARL_FI void packObservations(
     obs[o++] = flipAvailable
         ? fmaxf(0.f, DOUBLEJUMP_MAX_DELAY - egoInternal.airTimeSinceJump)
         : 0.f;
-    if (egoController)
-    {
-        // Car-local controls/torques never change sign for the orange team.
-        const int ego = carBase + observerIdx;
-        const CarControls controls = state->cars.controls[ego];
-        obs[o++] = controls.throttle;
-        obs[o++] = controls.steer;
-        obs[o++] = controls.yaw;
-        obs[o++] = controls.pitch;
-        obs[o++] = controls.roll;
-        obs[o++] = (float)controls.jump;
-        obs[o++] = (float)controls.boost;
-        obs[o++] = (float)controls.slide;
-        obs[o++] = (float)egoInternal.lastJump;
-        obs[o++] = (float)egoInternal.hasJumped;
-        obs[o++] = (float)egoInternal.isJumping;
-        obs[o++] = egoInternal.jumpTime;
-        obs[o++] = egoInternal.isBoosting
-            ? fmaxf(0.f, BOOST_MIN_TIME - egoInternal.boostingTime) : 0.f;
-        obs[o++] = (float)egoInternal.isFlipping;
-        obs[o++] = egoInternal.flipTime;
-        obs[o++] = egoInternal.flipRelTorque.x;
-        obs[o++] = egoInternal.flipRelTorque.y;
-        obs[o++] = egoInternal.flipRelTorque.z;
-        obs[o++] = egoInternal.handbrakeVal;
-        for (int w = 0; w < NUM_WHEELS; w++)
-            obs[o++] = state->cars.isDemoed[ego] ? 0.f
-                : (float)state->cars.wheelContact[ego * NUM_WHEELS + w];
-        obs[o++] = (float)egoInternal.isAutoFlipping;
-        obs[o++] = egoInternal.autoFlipTimer;
-        obs[o++] = egoInternal.autoFlipTorqueScale;
-        obs[o++] = state->cars.demoRespawnTimer[ego];
-    }
+    // Controller schema v2 exposes only controls and packet-visible state.
+    // Car-local controls never change sign for the orange team.
+    const int ego = carBase + observerIdx;
+    const CarControls controls = state->cars.controls[ego];
+    obs[o++] = controls.throttle;
+    obs[o++] = controls.steer;
+    obs[o++] = controls.yaw;
+    obs[o++] = controls.pitch;
+    obs[o++] = controls.roll;
+    obs[o++] = (float)controls.jump;
+    obs[o++] = (float)controls.boost;
+    obs[o++] = (float)controls.slide;
+    obs[o++] = (float)egoInternal.hasJumped;
+    obs[o++] = (float)egoInternal.isJumping;
+    obs[o++] = (float)egoInternal.isFlipping;
+    obs[o++] = egoInternal.flipTime;
+    obs[o++] = state->cars.demoRespawnTimer[ego];
 }
 
 CARL_D CARL_FI void normalizeObservations(float* obs, int nCars)
