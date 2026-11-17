@@ -1,7 +1,9 @@
 #pragma once
 
+#include "EventState.cuh"
 #include "Cuda/DLPack.h"
 #include "Cuda/KernelConfig.cuh"
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
 
@@ -10,9 +12,9 @@ struct ArenaMesh;
 // --- DLPack capsule helpers ---
 
 DLManagedTensor* makeFloatTensor(
-    void* data, 
-    int64_t* shape, 
-    int ndim, 
+    void* data,
+    int64_t* shape,
+    int ndim,
     int deviceId = 0);
 
 DLManagedTensor* makeIntTensor(
@@ -33,12 +35,12 @@ DLManagedTensor* makeBoolTensor(
 class EnvIO
 {
 private:
-    float* d_obs     = nullptr;
+    float* d_obs = nullptr;
     float* d_transitionObs = nullptr;
-    float* d_state   = nullptr;
+    float* d_state = nullptr;
     float* d_transitionState = nullptr;
     float* d_rewards = nullptr;
-    bool*  d_dones   = nullptr;
+    bool*  d_dones = nullptr;
     int*   d_scoreDifference = nullptr;
     int*   d_episodeTicks = nullptr;
     int*   d_transitionScoreDifference = nullptr;
@@ -72,13 +74,18 @@ private:
     KernelConfig perAgentConfig;
 
 public:
+    EventState events;
+
     EnvIO(
         int nSim,
         int nCars,
         cudaStream_t stream,
         bool invertOrange,
         bool normalize,
-        bool previousControls = false);
+        bool previousControls = false,
+        int frameskip = 1,
+        bool captureBallTouches = false,
+        bool captureEvents = false);
     ~EnvIO();
 
     // Pack state into observation buffer
@@ -126,7 +133,11 @@ public:
         const float* ang,
         const int64_t* simulationIndices = nullptr,
         int nSelected = -1,
-        const bool* resetMask = nullptr);
+        const bool* resetMask = nullptr,
+        bool primeContacts = true);
+
+    void primeRestoredContacts(GameState* d_state,
+        const int64_t* simulationIndices, int nSelected, const bool* resetMask);
 
     void setCar(
         GameState* d_state,

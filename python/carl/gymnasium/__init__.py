@@ -9,6 +9,7 @@ from .state import (
     CarlEvents,
     CarlState,
     REGULATION_TICKS,
+    StepContext,
     RewardContext,
     RewardResult,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "CarlEvents",
     "CarlState",
     "REGULATION_TICKS",
+    "StepContext",
     "RewardContext",
     "RewardFunction",
     "RewardResult",

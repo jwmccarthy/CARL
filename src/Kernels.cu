@@ -27,7 +27,8 @@ __global__ void resetDonesKernel(
     Workspace* __restrict__ space,
     int maxTicks,
     int overtimeTimeoutTicks,
-    int noTouchTimeoutTicks)
+    int noTouchTimeoutTicks,
+    EventBuffer events)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim) return;
@@ -37,6 +38,24 @@ __global__ void resetDonesKernel(
         maxTicks, 
         overtimeTimeoutTicks,
         noTouchTimeoutTicks);
+
+    if (state->episodeTicks[simIdx] == 0)
+    {
+        events.invalidate(simIdx);
+    }
+}
+
+__global__ void resetSelectedKernel(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    const bool* __restrict__ mask,
+    EventBuffer events)
+{
+    const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (simIdx >= state->nSim || !mask[simIdx]) return;
+
+    resetEpisode(state, space, simIdx);
+    events.invalidate(simIdx);
 }
 
 __global__ void beginStepKernel(
@@ -68,25 +87,27 @@ __global__ void carArenaBroadPhaseKernel(
 __global__ void carControlsKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    const DiscreteControls* __restrict__ actions)
+    const DiscreteControls* __restrict__ actions,
+    EventBuffer events)
 {
     const int carIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (carIdx >= state->nTotalCars) return;
 
     state->cars.controls[carIdx] = actions[carIdx].decode();
-    processCarControls(state, space, carIdx);
+    processCarControls(state, space, carIdx, events);
 }
 
 __global__ void carContinuousControlsKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    const ContinuousControls* __restrict__ actions)
+    const ContinuousControls* __restrict__ actions,
+    EventBuffer events)
 {
     const int carIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (carIdx >= state->nTotalCars) return;
 
     state->cars.controls[carIdx] = actions[carIdx].decode();
-    processCarControls(state, space, carIdx);
+    processCarControls(state, space, carIdx, events);
 }
 
 __global__ void carArenaSATKernel(
@@ -112,13 +133,14 @@ __global__ void carArenaSATKernel(
 __global__ void carDirectControlsKernel(
     GameState *__restrict__ state,
     Workspace *__restrict__ space,
-    const CarControls *__restrict__ actions)
+    const CarControls *__restrict__ actions,
+    EventBuffer events)
 {
     const int carIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (carIdx >= state->nTotalCars) return;
 
     state->cars.controls[carIdx] = actions[carIdx];
-    processCarControls(state, space, carIdx);
+    processCarControls(state, space, carIdx, events);
 }
 
 __global__ void carArenaClipKernel(
@@ -148,27 +170,29 @@ __global__ void carSuspensionRaycastKernel(
 __global__ void carArenaSolveKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    ArenaMesh* __restrict__ arena)
+    ArenaMesh* __restrict__ arena,
+    EventBuffer events)
 {
     const int start = blockIdx.x * blockDim.x + threadIdx.x;
     const int stride = gridDim.x * blockDim.x;
 
     for (int carIdx = start; carIdx < state->nTotalCars; carIdx += stride)
     {
-        solveCarArena(state, space, arena, carIdx);
+        solveCarArena(state, space, arena, carIdx, events);
     }
 }
 
 __global__ void carCarBallSolveKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    ArenaMesh* __restrict__ arena)
+    ArenaMesh* __restrict__ arena,
+    EventBuffer events)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim) return;
 
-    solveCarCarForSim(state, space, simIdx);
-    solveBallForSim(state, arena, simIdx);
+    solveCarCarForSim(state, space, simIdx, events);
+    solveBallForSim(state, arena, simIdx, events.touches, events);
 }
 
 __global__ void integrateCarsKernel(GameState* __restrict__ state)
@@ -179,11 +203,13 @@ __global__ void integrateCarsKernel(GameState* __restrict__ state)
     integrateCar(state, carIdx);
 }
 
-__global__ void applyImpulseCacheKernel(GameState* __restrict__ state)
+__global__ void applyImpulseCacheKernel(
+    GameState* __restrict__ state,
+    EventBuffer events)
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx < state->nSim) finishBallTick(state, idx);
+    if (idx < state->nSim) finishBallTick(state, idx, events);
     if (idx >= state->nTotalCars) return;
 
     finishCarTick(state, idx);

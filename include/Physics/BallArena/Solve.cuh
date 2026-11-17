@@ -5,6 +5,7 @@
 #include "Physics/BallArena/Solver.cuh"
 #include "Physics/CarBall/Solve.cuh"
 #include "Physics/Goals.cuh"
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 
 // Arena contacts are solved before car-ball contacts, so the most recent hit
@@ -19,7 +20,8 @@ CARL_D __noinline__ Vec3 solveBallArena(
     ArenaMesh* arena,
     int ballIdx,
     const Vec3& preSolveVel,
-    const Vec3& velNoExt)
+    const Vec3& velNoExt,
+    EventBuffer events = {})
 {
     BallArenaSolverBody body = {
         state->ball.pos[ballIdx],
@@ -34,6 +36,19 @@ CARL_D __noinline__ Vec3 solveBallArena(
 
     BallArenaContact contacts[MAX_BALL_ARENA_CONTACTS];
     const int count = gatherBallArenaContacts(contacts, body.pos, arena);
+
+    if (events.enabled())
+    {
+        int surfaces = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            const Vec3 normal = contacts[i].normal.norm();
+            surfaces |= arenaSurface(normal);
+        }
+
+        events.ballSurface(ballIdx, surfaces);
+    }
 
     bool ballWasHit = false;
     const int carBase = ballIdx * state->nCars;
@@ -56,12 +71,19 @@ CARL_D __noinline__ Vec3 solveBallArena(
 CARL_D CARL_FI void solveBallForSim(
     GameState* __restrict__ state,
     ArenaMesh* __restrict__ arena,
-    int simIdx)
+    int simIdx,
+    BallTouchBuffer touches = {},
+    EventBuffer events = {})
 {
     const int ballIdx = simIdx;
     const Vec3 ballVel = state->ball.vel[ballIdx];
     const Vec3 ballAng = state->ball.ang[ballIdx];
     const bool sleeping = ballVel.lenSq() == 0.f && ballAng.lenSq() == 0.f;
+
+    if (events.enabled())
+    {
+        events.ballSpeedBefore[simIdx] = ballVel.len();
+    }
 
     auto& ball = state->ball;
     const Vec3 exportedPos = ball.pos[ballIdx];
@@ -86,10 +108,26 @@ CARL_D CARL_FI void solveBallForSim(
     if (!sleeping)
     {
         pushVel = solveBallArena(
-            state, arena, ballIdx, preSolveVel, velNoExt);
+            state, arena, ballIdx, preSolveVel, velNoExt, events);
+    }
+    else if (events.enabled())
+    {
+        BallArenaContact contacts[MAX_BALL_ARENA_CONTACTS];
+        const Vec3 position = ball.pos[ballIdx];
+        const int count = gatherBallArenaContacts(contacts, position, arena);
+
+        int surfaces = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            const Vec3 normal = contacts[i].normal.norm();
+            surfaces |= arenaSurface(normal);
+        }
+
+        events.ballSurface(ballIdx, surfaces);
     }
 
-    solveBallCarForSim(state, simIdx, preSolveVel);
+    solveBallCarForSim(state, simIdx, preSolveVel, touches, events);
 
     // Integrate position after all collision solves
     const Vec3 correctedPos = ball.pos[ballIdx];
@@ -113,5 +151,5 @@ CARL_D CARL_FI void solveBallForSim(
     ball.exportedVel[ballIdx] = finalVel;
     ball.integrationValid[ballIdx] = 1;
 
-    detectGoal(state, simIdx, ballPos);
+    detectGoal(state, simIdx, ballPos, events);
 }

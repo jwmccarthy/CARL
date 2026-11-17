@@ -1,6 +1,7 @@
 #pragma once
 
 #include "State/GameState.cuh"
+#include "State/Events.cuh"
 
 CARL_D CARL_FI void respawnCar(
     GameState* __restrict__ state,
@@ -29,7 +30,6 @@ CARL_D CARL_FI void respawnCar(
     state->cars.carContactCooldown[carIdx] = 0.f;
     state->cars.ballHitTick[carIdx] = -1;
     state->cars.ballContactTick[carIdx] = -1;
-
     for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
     {
         state->cars.wheelContact[carIdx * NUM_WHEELS + wheel] = 0;
@@ -73,7 +73,8 @@ CARL_D CARL_FI void updateRespawnSelection(
 
 CARL_D CARL_FI void finishBallTick(
     GameState* __restrict__ state,
-    int ballIdx)
+    int ballIdx,
+    EventBuffer events = {})
 {
     const Vec3 impulse = state->ball.imp[ballIdx];
     Vec3 vel = state->ball.vel[ballIdx] + impulse;
@@ -94,6 +95,34 @@ CARL_D CARL_FI void finishBallTick(
     state->ball.vel[ballIdx] = vel;
     state->ball.ang[ballIdx] = ang;
     state->ball.imp[ballIdx] = Vec3::zero();
+
+    if (events.touchSpeed && events.touches.tickSurfaces)
+    {
+        for (int local = 0; local < events.nCars; local++)
+        {
+            const int carIdx = ballIdx * events.nCars + local;
+            if (events.touches.tickSurfaces[carIdx]) events.touchSpeed[carIdx] = vel.len();
+        }
+    }
+
+    if (events.enabled())
+    {
+        const GoalState& goal = state->goals[ballIdx];
+        const bool scored = goal.lastScorer != 0 && goal.tick == state->tickCount;
+
+        if (!scored)
+        {
+            const float change = vel.len() - events.ballSpeedBefore[ballIdx];
+            const float peak = events.ballSpeedChange[ballIdx];
+
+            events.ballSpeedChange[ballIdx] = fmaxf(peak, change);
+
+            if (change > 0.f)
+            {
+                events.ball(ballIdx, EVENT_BALL_ACCELERATES);
+            }
+        }
+    }
 }
 
 CARL_D CARL_FI void finishCarTick(

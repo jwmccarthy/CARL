@@ -1,15 +1,20 @@
 #include "EnvIO.cuh"
 #include "Physics/CarArena/BroadPhase.cuh"
+#include "Physics/CarBall/Contact.cuh"
 #include "Physics/Observations.cuh"
 #include "Physics/SuspensionRaycast.cuh"
 #include "RLConstants.cuh"
+
+#include <stdexcept>
 
 // --- DLPack capsule helpers ---
 
 // Wrap device pointer as non-owning DLPack view
 DLManagedTensor* makeFloatTensor(
-    void* data, int64_t* shape,
-    int ndim, int deviceId)
+    void* data,
+    int64_t* shape,
+    int ndim,
+    int deviceId)
 {
     auto* tensor = new DLManagedTensor{};
     tensor->dl_tensor.data = data;
@@ -21,12 +26,15 @@ DLManagedTensor* makeFloatTensor(
     tensor->dl_tensor.byte_offset = 0;
     tensor->manager_ctx = nullptr;
     tensor->deleter = [](DLManagedTensor* self) { delete self; };
+
     return tensor;
 }
 
 DLManagedTensor* makeIntTensor(
-    void* data, int64_t* shape,
-    int ndim, int deviceId)
+    void* data,
+    int64_t* shape,
+    int ndim,
+    int deviceId)
 {
     auto* tensor = makeFloatTensor(data, shape, ndim, deviceId);
     tensor->dl_tensor.dtype = { kDLInt, 32, 1 };
@@ -34,8 +42,10 @@ DLManagedTensor* makeIntTensor(
 }
 
 DLManagedTensor* makeBoolTensor(
-    void* data, int64_t* shape,
-    int ndim, int deviceId)
+    void* data,
+    int64_t* shape,
+    int ndim,
+    int deviceId)
 {
     auto* tensor = makeFloatTensor(data, shape, ndim, deviceId);
     tensor->dl_tensor.dtype = { kDLBool, 8, 1 };
@@ -44,18 +54,40 @@ DLManagedTensor* makeBoolTensor(
 
 // --- Packing kernels ---
 
+namespace
+{
+struct BallInput
+{
+    const float* position;
+    const float* velocity;
+    const float* angularVelocity;
+};
+
+struct CarInput
+{
+    const float* position;
+    const float* rotation;
+    const float* velocity;
+    const float* angularVelocity;
+    const void* demoed;
+    bool byteDemoed;
+    const float* boost;
+    const float* internalState;
+};
+
+}
+
 __global__ void packObsKernel(
     GameState* __restrict__ state,
     float* __restrict__ obs,
     const bool* __restrict__ mask,
-    int nSim,
-    int nCars,
     bool invertOrange,
     bool normalize,
     bool previousControls)
 {
+    const int nCars = state->nCars;
     const int agentIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (agentIdx >= nSim * nCars)
+    if (agentIdx >= state->nTotalCars)
     {
         return;
     }
@@ -99,13 +131,12 @@ __global__ void packRewardsDonesKernel(
     GameState* __restrict__ state,
     float* __restrict__ rewards,
     bool* __restrict__ dones,
-    int nSim, 
-    int maxTicks, 
+    int maxTicks,
     int overtimeTimeoutTicks,
     int noTouchTimeoutTicks)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (simIdx >= nSim) return;
+    if (simIdx >= state->nSim) return;
 
     packRewards(state, simIdx, rewards);
     packDones(
@@ -136,47 +167,47 @@ __global__ void packOvertimeKernel(GameState* state, bool* overtime, const bool*
 
 __global__ void setBallKernel(
     GameState* __restrict__ state,
-    const float* __restrict__ pos,
-    const float* __restrict__ vel,
-    const float* __restrict__ ang,
-    const int64_t* __restrict__ simulationIndices,
+    BallInput input,
+    const int64_t* __restrict__ indices,
     int nSelected,
-    int nSim,
     const bool* __restrict__ resetMask)
 {
     const int sourceSimIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (sourceSimIdx >= nSelected) return;
     if (resetMask && !resetMask[sourceSimIdx]) return;
 
-    const int64_t targetSimIdx64 = simulationIndices
-        ? simulationIndices[sourceSimIdx] : sourceSimIdx;
-    if (targetSimIdx64 < 0 || targetSimIdx64 >= nSim) return;
+    const int64_t targetSimIdx64 = indices ? indices[sourceSimIdx] : sourceSimIdx;
+    if (targetSimIdx64 < 0 || targetSimIdx64 >= state->nSim) return;
 
     const int targetSimIdx = static_cast<int>(targetSimIdx64);
     const int offset = sourceSimIdx * 3;
-    state->ball.pos[targetSimIdx] = { pos[offset], pos[offset + 1], pos[offset + 2] };
-    state->ball.vel[targetSimIdx] = { vel[offset], vel[offset + 1], vel[offset + 2] };
-    state->ball.ang[targetSimIdx] = { ang[offset], ang[offset + 1], ang[offset + 2] };
+
+    state->ball.pos[targetSimIdx] = {
+        input.position[offset], input.position[offset + 1], input.position[offset + 2]
+    };
+
+    state->ball.vel[targetSimIdx] = {
+        input.velocity[offset], input.velocity[offset + 1], input.velocity[offset + 2]
+    };
+
+    state->ball.ang[targetSimIdx] = {
+        input.angularVelocity[offset],
+        input.angularVelocity[offset + 1],
+        input.angularVelocity[offset + 2]
+    };
+
     state->ball.imp[targetSimIdx] = Vec3::zero();
 }
 
 __global__ void setCarKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    const float* __restrict__ pos,
-    const float* __restrict__ rot,
-    const float* __restrict__ vel,
-    const float* __restrict__ ang,
-    const void* __restrict__ demoed,
-    bool byteDemoed,
-    const float* __restrict__ boost,
-    const float* __restrict__ internalState,
-    const int64_t* __restrict__ simulationIndices,
+    CarInput input,
+    const int64_t* __restrict__ indices,
     int nSelected,
-    int nCars,
-    int nSim,
     const bool* __restrict__ resetMask)
 {
+    const int nCars = state->nCars;
     const int sourceCarIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (sourceCarIdx >= nSelected * nCars) return;
 
@@ -184,9 +215,9 @@ __global__ void setCarKernel(
     if (resetMask && !resetMask[sourceSimIdx]) return;
 
     const int localCarIdx = sourceCarIdx % nCars;
-    const int64_t targetSimIdx64 = simulationIndices
-        ? simulationIndices[sourceSimIdx] : sourceSimIdx;
-    if (targetSimIdx64 < 0 || targetSimIdx64 >= nSim) return;
+    const int64_t targetSimIdx64 = indices ? indices[sourceSimIdx] : sourceSimIdx;
+
+    if (targetSimIdx64 < 0 || targetSimIdx64 >= state->nSim) return;
 
     const int carIdx = static_cast<int>(targetSimIdx64) * nCars + localCarIdx;
 
@@ -195,31 +226,31 @@ __global__ void setCarKernel(
     const float previousBoost = state->cars.internal[carIdx].boost;
 
     const Vec3 carPos = {
-        pos[vecOffset], pos[vecOffset + 1], pos[vecOffset + 2]
+        input.position[vecOffset], input.position[vecOffset + 1], input.position[vecOffset + 2]
     };
 
     const Quat carRot = {
-        rot[rotOffset], rot[rotOffset + 1],
-        rot[rotOffset + 2], rot[rotOffset + 3]
+        input.rotation[rotOffset], input.rotation[rotOffset + 1],
+        input.rotation[rotOffset + 2], input.rotation[rotOffset + 3]
     };
 
-    const int isDemoed = byteDemoed
-        ? static_cast<const uint8_t*>(demoed)[sourceCarIdx]
-        : static_cast<const int32_t*>(demoed)[sourceCarIdx];
+    const int isDemoed = input.byteDemoed
+        ? static_cast<const uint8_t*>(input.demoed)[sourceCarIdx]
+        : static_cast<const int32_t*>(input.demoed)[sourceCarIdx];
 
     state->cars.pos[carIdx] = carPos;
     state->cars.rot[carIdx] = carRot;
 
     state->cars.vel[carIdx] = {
-        vel[vecOffset],
-        vel[vecOffset + 1],
-        vel[vecOffset + 2]
+        input.velocity[vecOffset],
+        input.velocity[vecOffset + 1],
+        input.velocity[vecOffset + 2]
     };
 
     state->cars.ang[carIdx] = {
-        ang[vecOffset],
-        ang[vecOffset + 1],
-        ang[vecOffset + 2]
+        input.angularVelocity[vecOffset],
+        input.angularVelocity[vecOffset + 1],
+        input.angularVelocity[vecOffset + 2]
     };
 
     state->cars.cen[carIdx] = carPos + carRot.toWorld(CAR_OFFSETS);
@@ -233,10 +264,10 @@ __global__ void setCarKernel(
     state->cars.ballContactTick[carIdx] = -1;
     state->cars.controls[carIdx] = {};
 
-    if (internalState)
+    if (input.internalState)
     {
         const int offset = sourceCarIdx * CAR_INTERNAL_SIZE;
-        const float* values = internalState + offset;
+        const float* values = input.internalState + offset;
         CarInternalState internal{};
 
         internal.isOnGround = values[CAR_INT_ON_GROUND] != 0.f;
@@ -260,17 +291,17 @@ __global__ void setCarKernel(
         };
         internal.isBoosting = values[CAR_INT_IS_BOOSTING] != 0.f;
         internal.boostingTime = values[CAR_INT_BOOSTING_TIME];
-        internal.boost = boost
-            ? fminf(BOOST_MAX, fmaxf(0.f, boost[sourceCarIdx]))
+        internal.boost = input.boost
+            ? fminf(BOOST_MAX, fmaxf(0.f, input.boost[sourceCarIdx]))
             : previousBoost;
 
         state->cars.internal[carIdx] = internal;
     }
 
-    else if (boost)
+    else if (input.boost)
     {
         state->cars.internal[carIdx].boost = fminf(
-            BOOST_MAX, fmaxf(0.f, boost[sourceCarIdx]));
+            BOOST_MAX, fmaxf(0.f, input.boost[sourceCarIdx]));
     }
 
     // The saved latch is the previous jump input, even when the remaining
@@ -281,8 +312,8 @@ __global__ void setCarKernel(
     space->susp.brakeFactorPrev[carIdx] = 0.f;
     space->susp.throttleVal[carIdx] = 0.f;
     space->susp.rawThrottle[carIdx] = 0.f;
-    space->susp.handbrakeVal[carIdx] = internalState
-        ? internalState[sourceCarIdx * CAR_INTERNAL_SIZE + CAR_INT_HANDBRAKE]
+    space->susp.handbrakeVal[carIdx] = input.internalState
+        ? input.internalState[sourceCarIdx * CAR_INTERNAL_SIZE + CAR_INT_HANDBRAKE]
         : 0.f;
     space->susp.steerAngle[carIdx] = 0.f;
     space->susp.jumpImpulse[carIdx] = Vec3::zero();
@@ -337,23 +368,50 @@ __global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
 
 __global__ void resetBoostPadsKernel(
     GameState* __restrict__ state,
-    const int64_t* __restrict__ simulationIndices,
+    const int64_t* __restrict__ indices,
     int nSelected,
-    int nSim,
     const bool* __restrict__ resetMask)
 {
     const int source = blockIdx.x * blockDim.x + threadIdx.x;
     if (source >= nSelected) return;
     if (resetMask && !resetMask[source]) return;
 
-    const int64_t target = simulationIndices ? simulationIndices[source] : source;
-    if (target < 0 || target >= nSim) return;
+    const int64_t target = indices ? indices[source] : source;
+    if (target < 0 || target >= state->nSim) return;
 
     const int offset = static_cast<int>(target) * NUM_BOOST_PADS;
     for (int pad = 0; pad < NUM_BOOST_PADS; pad++)
     {
         state->boostPadCooldowns[offset + pad] = 0.f;
     }
+}
+
+__global__ void primeBallContactsKernel(
+    GameState* state, const int64_t* indices, int nSelected,
+    EventBuffer events, const bool* resetMask)
+{
+    const int source = blockIdx.x * blockDim.x + threadIdx.x;
+    if (source >= nSelected * state->nCars) return;
+    const int sim = source / state->nCars;
+    if (resetMask && !resetMask[sim]) return;
+    const int64_t target = indices ? indices[sim] : sim;
+    if (target < 0 || target >= state->nSim) return;
+    const int localCar = source % state->nCars;
+    const int car = static_cast<int>(target) * state->nCars + localCar;
+    const bool touching = !state->cars.isDemoed[car] && sphereOBBContact(
+        Vec3::ldg(state->ball.pos[target]), Vec3::ldg(state->cars.cen[car]),
+        Quat::ldg(state->cars.rot[car])).hit;
+    state->cars.ballContactTick[car] = touching ? state->tickCount : -1;
+    if (localCar == 0) events.invalidate(static_cast<int>(target));
+}
+
+void EnvIO::primeRestoredContacts(GameState* state,
+    const int64_t* indices, int nSelected, const bool* resetMask)
+{
+    if (!events.touchesEnabled() && !events.enabled()) return;
+    primeBallContactsKernel<<<perAgentConfig.gridDim, perAgentConfig.blockDim, 0, stream>>>(
+        state, indices, nSelected, events.buffer(), resetMask);
+    CUDA_CHECK(cudaGetLastError());
 }
 
 // --- EnvIO ---
@@ -364,7 +422,10 @@ EnvIO::EnvIO(
     cudaStream_t stream,
     bool invertOrange,
     bool normalize,
-    bool previousControls)
+    bool previousControls,
+    int frameskip,
+    bool captureBallTouches,
+    bool captureEvents)
     : nSim(nSim)
     , nCars(nCars)
     , obsDim(observationDim(nCars, previousControls))
@@ -374,6 +435,7 @@ EnvIO::EnvIO(
     , normalize(normalize)
     , previousControls(previousControls)
     , stream(stream)
+    , events(nSim, nCars, frameskip, stream, captureEvents, captureBallTouches)
 {
     obsShape[0] = nSim;
     obsShape[1] = nCars;
@@ -402,15 +464,14 @@ EnvIO::EnvIO(
     CUDA_CHECK(cudaMalloc(&d_overtime, nSim * sizeof(bool)));
     CUDA_CHECK(cudaMalloc(&d_transitionOvertime, nSim * sizeof(bool)));
 
-    perSimConfig
-        .setBlockDim(32)
+    perSimConfig.setBlockDim(32)
         .setGridFromThreads(nSim)
         .setStream(stream);
 
-    perAgentConfig
-        .setBlockDim(128)
+    perAgentConfig.setBlockDim(128)
         .setGridFromThreads(nSim * nCars)
         .setStream(stream);
+
 }
 
 EnvIO::~EnvIO()
@@ -451,7 +512,7 @@ void EnvIO::packObs(GameState* d_state, const bool* resetMask)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_obs, resetMask, nSim, nCars, invertOrange, normalize, previousControls);
+        d_state, d_obs, resetMask, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -459,7 +520,7 @@ void EnvIO::packTransitionObs(GameState* d_state)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_transitionObs, d_dones, nSim, nCars, invertOrange, normalize, previousControls);
+        d_state, d_transitionObs, nullptr, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -468,7 +529,7 @@ void EnvIO::packRewardsDones(GameState* d_state)
     packRewardsDonesKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
         d_state, d_rewards, d_dones,
-        nSim, maxTicks, overtimeTimeoutTicks, noTouchTimeoutTicks);
+        maxTicks, overtimeTimeoutTicks, noTouchTimeoutTicks);
 
     CUDA_CHECK(cudaGetLastError());
 
@@ -583,10 +644,13 @@ void EnvIO::setBall(
     const float* ang,
     const int64_t* simulationIndices,
     int nSelected,
-    const bool* resetMask)
+    const bool* resetMask,
+    bool primeContacts)
 {
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
+
+    const BallInput input = { pos, vel, ang };
 
     const KernelConfig config = KernelConfig{}
         .setBlockDim(32)
@@ -594,9 +658,11 @@ void EnvIO::setBall(
         .setStream(stream);
 
     setBallKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
-        d_state, pos, vel, ang, simulationIndices, nSelected, nSim, resetMask);
+        d_state, input, simulationIndices, nSelected, resetMask);
 
     CUDA_CHECK(cudaGetLastError());
+
+    if (primeContacts) primeRestoredContacts(d_state, simulationIndices, nSelected, resetMask);
 }
 
 // Rebuild contacts after all car poses are restored.
@@ -661,6 +727,17 @@ void EnvIO::setCar(
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
 
+    const CarInput input = {
+        .position = pos,
+        .rotation = rot,
+        .velocity = vel,
+        .angularVelocity = ang,
+        .demoed = demoed,
+        .byteDemoed = byteDemoed,
+        .boost = boost,
+        .internalState = internalState
+    };
+
     const KernelConfig perCarConfig = KernelConfig{}
         .setBlockDim(256)
         .setGridFromThreads(nSelected * nCars)
@@ -668,8 +745,7 @@ void EnvIO::setCar(
 
     setCarKernel<<<perCarConfig.gridDim,
         perCarConfig.blockDim, 0, stream>>>(
-        d_state, d_space, pos, rot, vel, ang, demoed, byteDemoed,
-        boost, internalState, simulationIndices, nSelected, nCars, nSim, resetMask);
+        d_state, d_space, input, simulationIndices, nSelected, resetMask);
         
     CUDA_CHECK(cudaGetLastError());
 
@@ -677,6 +753,7 @@ void EnvIO::setCar(
         perCarConfig.blockDim, 0, stream>>>(
         d_state, d_space, d_arena, simulationIndices, nSelected, resetMask);
     CUDA_CHECK(cudaGetLastError());
+    primeRestoredContacts(d_state, simulationIndices, nSelected, resetMask);
 }
 
 void EnvIO::setMatchState(
@@ -712,7 +789,7 @@ void EnvIO::resetBoostPads(
         .setStream(stream);
 
     resetBoostPadsKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
-        d_state, simulationIndices, nSelected, nSim, resetMask);
+        d_state, simulationIndices, nSelected, resetMask);
 
     CUDA_CHECK(cudaGetLastError());
 }

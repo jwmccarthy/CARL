@@ -36,7 +36,6 @@ CARL_D CARL_FI void resetCar(CarState* __restrict__ cars, int carIdx, int locIdx
     cars->ballHitTick[carIdx] = -1;
     cars->ballContactTick[carIdx] = -1;
     cars->controls[carIdx] = {};
-
     for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
     {
         cars->wheelContact[carIdx * NUM_WHEELS + wheel] = 0;
@@ -79,39 +78,12 @@ CARL_D CARL_FI void resetToKickoff(GameState* __restrict__ state, int simIdx)
     }
 }
 
-CARL_D CARL_FI void resetAfterDone(
+CARL_D CARL_FI void resetEpisode(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    int simIdx,
-    int maxTicks,
-    int overtimeTimeoutTicks,
-    int noTouchTimeoutTicks)
+    int simIdx)
 {
     GoalState& goal = state->goals[simIdx];
-    const bool scored = goal.lastScorer != 0;
-
-    const int ticksSinceTouch = state->tickCount - state->lastBallTouchTicks[simIdx];
-
-    const bool noTouchTimeout = noTouchTimeoutTicks > 0
-        && ticksSinceTouch >= noTouchTimeoutTicks;
-    const bool overtimeExpired = goal.overtime
-        && state->episodeTicks[simIdx] >= maxTicks + overtimeTimeoutTicks;
-    const bool tickTimeout = state->episodeTicks[simIdx] >= maxTicks;
-
-    if (!goal.overtime && !scored && !noTouchTimeout
-        && state->episodeTicks[simIdx] >= maxTicks
-        && goal.blueScore == goal.orangeScore)
-    {
-        goal.overtime = true;
-        return;
-    }
-
-    // All temporal bound reset conditions
-    const bool reset = scored || noTouchTimeout || overtimeExpired
-                    || (!goal.overtime && tickTimeout);
-
-    if (!reset) return;
-
     goal = {};
 
     resetToKickoff(state, simIdx);
@@ -168,4 +140,34 @@ CARL_D CARL_FI void resetAfterDone(
     {
         state->boostPadCooldowns[simIdx * NUM_BOOST_PADS + pad] = 0.f;
     }
+}
+
+CARL_D CARL_FI void resetAfterDone(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    int simIdx,
+    int maxTicks,
+    int overtimeTimeoutTicks,
+    int noTouchTimeoutTicks)
+{
+    GoalState& goal = state->goals[simIdx];
+    const bool scored = goal.lastScorer != 0;
+    const int ticksSinceTouch = state->tickCount - state->lastBallTouchTicks[simIdx];
+    const bool noTouchTimeout = noTouchTimeoutTicks > 0
+        && ticksSinceTouch >= noTouchTimeoutTicks;
+    const bool overtimeExpired = goal.overtime
+        && state->episodeTicks[simIdx] >= maxTicks + overtimeTimeoutTicks;
+    const bool tickTimeout = state->episodeTicks[simIdx] >= maxTicks;
+
+    if (!goal.overtime && !scored && !noTouchTimeout
+        && tickTimeout && goal.blueScore == goal.orangeScore)
+    {
+        goal.overtime = true;
+        return;
+    }
+
+    const bool reset = scored || noTouchTimeout || overtimeExpired
+        || (!goal.overtime && tickTimeout);
+
+    if (reset) resetEpisode(state, space, simIdx);
 }

@@ -1,8 +1,9 @@
 #pragma once
 
+#include "RLConstants.cuh"
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
-#include "RLConstants.cuh"
 #include "Physics/SuspensionUtils.cuh"
 
 struct ControlCtx
@@ -19,6 +20,8 @@ struct ControlCtx
     int wheelConCount;
     bool onGround;
     bool jumpPressed;
+
+    EventBuffer events;
 
     CARL_D CARL_FI CarInternalState& internal()
     {
@@ -55,12 +58,14 @@ CARL_D CARL_FI int countWheelContacts(const ControlCtx& ctx)
 CARL_D CARL_FI ControlCtx makeControlCtx(
     GameState* state,
     Workspace* space,
-    int carIdx)
+    int carIdx,
+    EventBuffer events = {})
 {
     ControlCtx ctx{};
     ctx.state = state;
     ctx.space = space;
     ctx.carIdx = carIdx;
+    ctx.events = events;
 
     ctx.rot = Quat::ldg(state->cars.rot[carIdx]);
     ctx.fwd = ctx.rot.toWorld(WORLD_X);

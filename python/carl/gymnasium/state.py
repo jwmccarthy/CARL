@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import torch as th
 import carl
 
 from typing import Any
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from carl import BOOST_PAD_POSITIONS, REGULATION_TICKS
+from ..events import CarlEvents
 
 
 @dataclass(frozen=True)
@@ -16,11 +19,17 @@ class RewardResult:
 class _CARLTensor(th.Tensor):
 
     @classmethod
-    def from_tensor(cls, tensor: th.Tensor):
+    def from_tensor(cls, tensor: th.Tensor) -> _CARLTensor:
         return tensor.as_subclass(cls)
 
     @classmethod
-    def __torch_function__(cls, function, types, args=(), kwargs=None):
+    def __torch_function__(
+        cls,
+        function: Callable[..., Any],
+        types:    tuple[type[th.Tensor], ...],
+        args:     tuple[Any, ...] = (),
+        kwargs:   dict[str, Any] | None = None,
+    ) -> Any:
         if kwargs is None:
             kwargs = {}
 
@@ -85,7 +94,10 @@ class CARLCar(_CARLPhysics):
 class CARLCars(CARLCar):
 
     @staticmethod
-    def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLCars":
+    def from_tensor(
+        tensor: th.Tensor,
+        n_cars: int,
+    ) -> CARLCars:
         cars = tensor.as_subclass(CARLCars)
         cars._n_cars = n_cars
         return cars
@@ -124,12 +136,16 @@ class CARLCars(CARLCar):
 
 
 class CARLObservation(_CARLTensor):
+
     """A tensor observation with named views into CARL's packed layout."""
 
     _n_cars: int
 
     @staticmethod
-    def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLObservation":
+    def from_tensor(
+        tensor: th.Tensor,
+        n_cars: int,
+    ) -> CARLObservation:
         observation = tensor.as_subclass(CARLObservation)
         observation._n_cars = n_cars
         return observation
@@ -236,6 +252,7 @@ class CARLObservation(_CARLTensor):
     def ego_other_relative(self) -> th.Tensor:
         start = self.car_end + carl.OBS_BOOST_PADS + carl.OBS_RELATIVE_EGO_BALL
         end = start + carl.OBS_RELATIVE_PER_OTHER_CAR * (self._n_cars - 1)
+
         return self[..., start:end].view(
             *self.shape[:-1],
             self._n_cars - 1,
@@ -373,7 +390,7 @@ class CARLResetState:
 
         ball = CARLBall.from_tensor(self.ball.clone())
         cars = CARLCars.from_tensor(self.cars.clone(), self.cars.n_cars)
-        
+
         position_scale = ball.position.new_tensor(carl.OBS_POSITION_SCALE)
 
         ball.position.mul_(position_scale)
@@ -495,15 +512,7 @@ class CarlState:
 
 
 @dataclass(frozen=True)
-class CarlEvents:
-    score_delta: th.Tensor
-    done:        th.Tensor
-    terminated:  th.Tensor
-    truncated:   th.Tensor
-
-
-@dataclass(frozen=True)
-class RewardContext:
+class StepContext:
     current:              CarlState
     previous:             CarlState
     current_observation:  CARLObservation
@@ -513,6 +522,9 @@ class RewardContext:
     score_difference:     th.Tensor
     episode_ticks:        th.Tensor
     overtime:             th.Tensor
+
+
+RewardContext = StepContext
 
 
 __all__ = [
@@ -526,5 +538,6 @@ __all__ = [
     "REGULATION_TICKS",
     "CarlEvents",
     "CarlState",
+    "StepContext",
     "RewardContext",
 ]

@@ -137,8 +137,8 @@ CARL_D CARL_FI void writeCarTriPairResult(
     const Vec3 c = worldTri.v2;
 
     // These planes are handled separately when building the manifold
-    const bool horizontalPlane = a.z == b.z && a.z == c.z && (a.z == 0.f || a.z == 2048.f);
-    const bool sideWall = a.x == b.x && a.x == c.x && fabsf(a.x) == 4096.f;
+    const bool horizontalPlane = a.z == b.z && a.z == c.z && (a.z == 0.f || a.z == SOCCAR_CEILING);
+    const bool sideWall = a.x == b.x && a.x == c.x && fabsf(a.x) == SOCCAR_SIDE_WALL;
 
     if (horizontalPlane || sideWall) return;
 

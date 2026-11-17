@@ -3,6 +3,7 @@
 #include "Cuda/PrefixSum.cuh"
 #include "Cuda/KernelConfig.cuh"
 
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
 #include "Arena/ArenaMesh.cuh"
@@ -30,30 +31,36 @@ private:
 
     void beginStep();
     void stepBroadSusp();
-    
-    void stepControls(const DiscreteControls* actions);
-    void stepControls(const ContinuousControls* actions);
-    void stepControls(const CarControls *actions);
+    void stepControls(const DiscreteControls* actions, EventBuffer events);
+    void stepControls(const ContinuousControls* actions, EventBuffer events);
+    void stepControls(const CarControls *actions, EventBuffer events);
 
     void stepNarrow();
-    void stepCarManifoldSolve();
-    void stepCarCarSolve();
+    void stepCarManifoldSolve(EventBuffer events);
+    void stepCarCarSolve(EventBuffer events);
     void integrateCars();
-    void applyImpulseCache();
+    void applyImpulseCache(EventBuffer events);
     void stepBoostPad();
 
 public:
     RLEnvironment(
-        const int nSim, const int nBlue,
-        const int nOrange, const int seed);
+        const int nSim,
+        const int nBlue,
+        const int nOrange,
+        const int seed);
     ~RLEnvironment();
 
-    void step(const DiscreteControls* actions);
-    void step(const ContinuousControls* actions);
-    void step(const CarControls *actions);
-    
+    void step(const DiscreteControls* actions, EventBuffer events = {});
+    void step(const ContinuousControls* actions, EventBuffer events = {});
+    void step(const CarControls *actions, EventBuffer events = {});
+
     void reset();
-    void resetDones(int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks);
+    void resetSelected(const bool* mask, EventBuffer events = {});
+    void resetDones(
+        int maxTicks,
+        int overtimeTimeoutTicks,
+        int noTouchTimeoutTicks,
+        EventBuffer events = {});
 
     GameState* getDeviceState() { return d_state; }
     Workspace* getDeviceWorkspace() { return d_space; }

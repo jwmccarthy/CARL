@@ -1,17 +1,25 @@
 #pragma once
 
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
 #include "Arena/ArenaMesh.cuh"
 
 __global__ void resetKernel(GameState* __restrict__ state);
 
+__global__ void resetSelectedKernel(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    const bool* __restrict__ mask,
+    EventBuffer events);
+
 __global__ void resetDonesKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
     int maxTicks,
     int overtimeTimeoutTicks,
-    int noTouchTimeoutTicks);
+    int noTouchTimeoutTicks,
+    EventBuffer events);
 
 __global__ void beginStepKernel(
     GameState* __restrict__ state,
@@ -20,17 +28,20 @@ __global__ void beginStepKernel(
 __global__ void carControlsKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    const DiscreteControls* __restrict__ actions);
+    const DiscreteControls* __restrict__ actions,
+    EventBuffer events);
 
 __global__ void carContinuousControlsKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    const ContinuousControls* __restrict__ actions);
+    const ContinuousControls* __restrict__ actions,
+    EventBuffer events);
 
 __global__ void carDirectControlsKernel(
     GameState *__restrict__ state,
     Workspace *__restrict__ space,
-    const CarControls *__restrict__ actions);
+    const CarControls *__restrict__ actions,
+    EventBuffer events);
 
 __global__ void carArenaBroadPhaseKernel(
     GameState* __restrict__ state,
@@ -54,15 +65,19 @@ __global__ void carArenaClipKernel(
 __global__ void carArenaSolveKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    ArenaMesh* __restrict__ arena);
+    ArenaMesh* __restrict__ arena,
+    EventBuffer events);
 
 __global__ void carCarBallSolveKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
-    ArenaMesh* __restrict__ arena);
+    ArenaMesh* __restrict__ arena,
+    EventBuffer events);
 
 __global__ void integrateCarsKernel(GameState* __restrict__ state);
 
-__global__ void applyImpulseCacheKernel(GameState* __restrict__ state);
+__global__ void applyImpulseCacheKernel(
+    GameState* __restrict__ state,
+    EventBuffer events);
 
 __global__ void boostPadKernel(GameState* __restrict__ state);

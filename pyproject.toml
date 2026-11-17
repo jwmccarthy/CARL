@@ -19,6 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+training = [
+    "rich>=13.7",
+    "tensorboard>=2.16",
+]
 jax = [
     "jax[cuda12]>=0.4.30; sys_platform == 'linux'",
 ]

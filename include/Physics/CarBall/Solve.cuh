@@ -3,6 +3,7 @@
 #include "Physics/Collision/Solver.cuh"
 #include "Physics/Integration.cuh"
 #include "RLConstants.cuh"
+#include "State/Events.cuh"
 #include "State/GameState.cuh"
 #include "Contact.cuh"
 #include "ExtraImpulse.cuh"
@@ -200,21 +201,42 @@ CARL_D CARL_FI void applyBallCarSplitCorrection(
     const Quat carRot = integrateQuat(
         state->cars.rot[carIdx],
         carTurnVelocity * CAR_SPLIT_IMPULSE_TURN_ERP);
+        
     state->cars.rot[carIdx] = carRot;
     state->cars.cen[carIdx] = carPos + carRot.toWorld(CAR_OFFSETS);
+}
+
+CARL_D CARL_FI BallTouchSurface ballCarSurface(const Vec3& localNormal)
+{
+    const Vec3 magnitude = localNormal.abs();
+
+    if (magnitude.x >= magnitude.y && magnitude.x >= magnitude.z)
+    {
+        return localNormal.x >= 0.f ? TOUCH_FRONT : TOUCH_REAR;
+    }
+    
+    if (magnitude.y >= magnitude.z)
+    {
+        return localNormal.y >= 0.f ? TOUCH_LEFT : TOUCH_RIGHT;
+    }
+
+    return localNormal.z >= 0.f ? TOUCH_ROOF : TOUCH_UNDERSIDE;
 }
 
 CARL_D CARL_FI void solveBallCarPair(
     GameState* state,
     int ballIdx,
     int carIdx,
-    const Vec3& preSolveBallVel)
+    const Vec3& preSolveBallVel,
+    BallTouchBuffer touches,
+    EventBuffer events = {})
 {
     if (__ldg(&state->cars.isDemoed[carIdx])) return;
 
     const Vec3 ballPos = state->ball.pos[ballIdx];
 
     Vec3 ballVel = state->ball.vel[ballIdx];
+    const float ballSpeedBefore = ballVel.len();
     Vec3 ballAng = state->ball.ang[ballIdx];
     BallCarBody car = loadBallCarBody(state, carIdx);
 
@@ -223,6 +245,8 @@ CARL_D CARL_FI void solveBallCarPair(
     if (!contact.hit) return;
 
     BallCarConstraint constraint = makeBallCarConstraint(car, ballVel, ballAng, contact);
+    const bool newTouch = (touches.enabled() || events.enabled())
+        && __ldg(&state->cars.ballContactTick[carIdx]) < state->tickCount - 1;
 
     solveBallCarConstraint(
         ballVel, ballAng, car, constraint);
@@ -239,12 +263,23 @@ CARL_D CARL_FI void solveBallCarPair(
     applyBallCarExtraImpulse(
         state, ballIdx, carIdx, ballPos, car.pos,
         preSolveCarVel, car.rot, preSolveBallVel);
+
+    if (newTouch)
+    {
+        events.car(carIdx, EVENT_BALL_TOUCH);
+        events.ball(ballIdx, EVENT_BALL_TOUCH);
+
+        const Vec3 localNormal = car.rot.toLocal(contact.normal);
+        touches.record(carIdx, ballCarSurface(localNormal), ballSpeedBefore);
+    }
 }
 
 CARL_D __noinline__ void solveBallCarForSim(
     GameState* state,
     int simIdx,
-    const Vec3& preSolveBallVel)
+    const Vec3& preSolveBallVel,
+    BallTouchBuffer touches = {},
+    EventBuffer events = {})
 {
     const int ballIdx = simIdx;
     const int carBase = simIdx * state->nCars;
@@ -260,6 +295,6 @@ CARL_D __noinline__ void solveBallCarForSim(
         const Vec3 carCen = state->cars.cen[carIdx];
         if ((ballPos - carCen).lenSq() > maxDist * maxDist) continue;
 
-        solveBallCarPair(state, ballIdx, carIdx, preSolveBallVel);
+        solveBallCarPair(state, ballIdx, carIdx, preSolveBallVel, touches, events);
     }
 }
