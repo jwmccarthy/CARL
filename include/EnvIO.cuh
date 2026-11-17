@@ -82,16 +82,16 @@ public:
     ~EnvIO();
 
     // Pack state into observation buffer
-    void packObs(GameState* d_state);
+    void packObs(GameState* d_state, const bool* resetMask = nullptr);
     void packTransitionObs(GameState* d_state);
 
     // Pack canonical state before and after same-step autoreset
-    void packState(GameState* d_state);
+    void packState(GameState* d_state, const bool* resetMask = nullptr);
     void packTransitionState(GameState* d_state, int touchWindow);
 
     // Pack rewards and dones
     void packRewardsDones(GameState* d_state);
-    void packRawMatchState(GameState* d_state);
+    void packRawMatchState(GameState* d_state, const bool* resetMask = nullptr);
 
     // DLPack accessors (caller owns the capsule)
     DLManagedTensor* getObsTensor();
@@ -125,7 +125,8 @@ public:
         const float* vel,
         const float* ang,
         const int64_t* simulationIndices = nullptr,
-        int nSelected = -1);
+        int nSelected = -1,
+        const bool* resetMask = nullptr);
 
     void setCar(
         GameState* d_state,
@@ -140,12 +141,15 @@ public:
         const float* boost = nullptr,
         const float* internalState = nullptr,
         const int64_t* simulationIndices = nullptr,
-        int nSelected = -1);
+        int nSelected = -1,
+        const bool* resetMask = nullptr);
     void setMatchState(GameState* d_state, const int32_t* blueScore,
         const int32_t* orangeScore, const int32_t* episodeTicks,
-        const int64_t* simulationIndices = nullptr, int nSelected = -1);
+        const int64_t* simulationIndices = nullptr, int nSelected = -1,
+        const bool* resetMask = nullptr);
     void resetBoostPads(GameState* d_state,
-        const int64_t* simulationIndices = nullptr, int nSelected = -1);
+        const int64_t* simulationIndices = nullptr, int nSelected = -1,
+        const bool* resetMask = nullptr);
 
     // Properties
     int getObsDim() const { return obsDim; }

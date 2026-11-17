@@ -10,10 +10,14 @@
 #define cudaEvent_t hipEvent_t
 #define cudaStream_t hipStream_t
 #define cudaSuccess hipSuccess
+#define cudaErrorNotReady hipErrorNotReady
 #define cudaEventCreate hipEventCreate
+#define cudaEventCreateWithFlags hipEventCreateWithFlags
+#define cudaEventDisableTiming hipEventDisableTiming
 #define cudaEventDestroy hipEventDestroy
 #define cudaEventElapsedTime hipEventElapsedTime
 #define cudaEventRecord hipEventRecord
+#define cudaEventQuery hipEventQuery
 #define cudaEventSynchronize hipEventSynchronize
 #define cudaFree hipFree
 #define cudaGetDeviceProperties hipGetDeviceProperties

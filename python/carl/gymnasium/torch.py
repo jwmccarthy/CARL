@@ -28,15 +28,19 @@ ResetState = CARLResetState | Mapping[str, th.Tensor]
 ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
 
-def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
+def _forward_up_to_quat(
+    forward: th.Tensor, up: th.Tensor, *, validate: bool = True,
+) -> th.Tensor:
     """Convert car axes to [x, y, z, w] quaternions."""
-    if not th.isfinite(forward).all() or not th.isfinite(up).all():
-        raise ValueError("car forward and up directions must be finite")
-
     right = th.linalg.cross(up, forward, dim=-1)
-    for axis in (forward, right):
-        if (axis.square().sum(dim=-1) < 1e-8).any():
-            raise ValueError("car forward and up directions must define a rotation")
+
+    if validate:
+        if not th.isfinite(forward).all() or not th.isfinite(up).all():
+            raise ValueError("car forward and up directions must be finite")
+
+        for axis in (forward, right):
+            if (axis.square().sum(dim=-1) < 1e-8).any():
+                raise ValueError("car forward and up directions must define a rotation")
 
     forward = F.normalize(forward, dim=-1)
     right = F.normalize(right, dim=-1)
@@ -73,6 +77,14 @@ def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int
 
 
 class CARLTorchVectorEnv(VectorEnv):
+    """Torch vector environment with optional fixed-shape reset providers.
+
+    ``masked_resets=True`` calls the provider on every step, including when no
+    arena is done. Return full-size tensors and ``reset_mask`` in a CARLResetState
+    or mapping. Selection stays on the GPU; providers may also return None.
+    Input storage must not be modified until CARL's stream has finished reading it.
+    """
+
     metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
     render_mode = spec = None
 
@@ -97,6 +109,8 @@ class CARLTorchVectorEnv(VectorEnv):
         reward_funcs:             Iterable[RewardFunction] | None = None,
         reward_scale:             float = 1.0,
         reset_state_provider:     ResetStateProvider | None = None,
+        masked_resets:            bool = False,
+        defer_episode_reporting:  bool = False,
         discrete_actions:         bool = False,
     ) -> None:
         super().__init__()
@@ -113,6 +127,9 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
+        self.masked_resets = masked_resets
+        self.defer_episode_reporting = defer_episode_reporting
+        self._episode_reports: list[tuple[th.Tensor, th.Tensor, th.Tensor]] = []
         self.discrete_actions = discrete_actions
         self._state: CarlState | None = None
         self._observation: CARLObservation | None = None
@@ -207,96 +224,137 @@ class CARLTorchVectorEnv(VectorEnv):
         return observation
 
     def _apply_reset_state(self, reset_mask: th.Tensor) -> None:
-        if self.reset_state_provider is None or not reset_mask.any():
+        if self.reset_state_provider is None:
+            return
+
+        if not self.masked_resets and not reset_mask.any():
             return
 
         state = self.reset_state_provider(reset_mask)
         if state is None:
             return
+
         if isinstance(state, CARLResetState):
             self._apply_typed_reset_state(state, reset_mask)
             return
 
-        indices = state.get("simulation_indices", reset_mask.nonzero(as_tuple=True)[0])
-        if not indices.numel():
-            return
+        self._apply_mapping_reset_state(state, reset_mask)
 
-        self._env.reset_boost_pads(indices.contiguous())
-        self._env.set_ball(
+    def _reset_selection(self, mask: th.Tensor, eligible: th.Tensor) -> th.Tensor:
+        if (mask.shape != (self.n_sim,) or mask.dtype != th.bool
+                or mask.device != eligible.device):
+            raise ValueError("reset_mask must be bool [n_sim] on the environment device")
+
+        return (mask & eligible).contiguous()
+
+    def _apply_mapping_reset_state(
+        self, state: Mapping[str, th.Tensor], reset_mask: th.Tensor,
+    ) -> None:
+        indices = None
+        mask = None
+
+        if "reset_mask" in state:
+            if "simulation_indices" in state:
+                raise ValueError("specify reset_mask or simulation_indices, not both")
+
+            mask = self._reset_selection(state["reset_mask"], reset_mask)
+        else:
+            if self.masked_resets:
+                raise ValueError("masked reset providers must supply reset_mask")
+
+            indices = state.get("simulation_indices")
+            if indices is None:
+                indices = reset_mask.nonzero(as_tuple=True)[0]
+
+            if not indices.numel():
+                return
+
+            indices = indices.contiguous()
+
+        self._env.apply_reset_state(
             state["ball_position"].contiguous(),
             state["ball_velocity"].contiguous(),
             state["ball_angular_velocity"].contiguous(),
-            simulation_indices=indices.contiguous(),
-        )
-        self._env.set_car(
             state["car_position"].contiguous(),
             state["car_rotation"].contiguous(),
             state["car_velocity"].contiguous(),
             state["car_angular_velocity"].contiguous(),
             state["car_demoed"].contiguous(),
-            boost=(
+            car_boost=(
                 state["car_boost"].contiguous()
                 if "car_boost" in state else None
             ),
-            internal_state=(
+            car_internal_state=(
                 state["car_internal_state"].contiguous()
                 if "car_internal_state" in state else None
             ),
-            simulation_indices=indices.contiguous(),
+            blue_score=(
+                state["blue_score"].contiguous() if "blue_score" in state else None
+            ),
+            orange_score=(
+                state["orange_score"].contiguous() if "orange_score" in state else None
+            ),
+            episode_ticks=(
+                state["episode_ticks"].contiguous() if "episode_ticks" in state else None
+            ),
+            simulation_indices=indices,
+            reset_mask=mask,
         )
-
-        if "blue_score" in state:
-            self._env.set_match_state(
-                state["blue_score"].contiguous(),
-                state["orange_score"].contiguous(),
-                state["episode_ticks"].contiguous(),
-                simulation_indices=indices.contiguous(),
-            )
 
     def _apply_typed_reset_state(
         self, state: CARLResetState, reset_mask: th.Tensor,
     ) -> None:
+        masked = state.reset_mask is not None
+        if self.masked_resets and not masked:
+            raise ValueError("masked reset providers must supply reset_mask")
+
         state.validate(reset_mask, self.n_cars)
-        if not state.simulation_indices.numel():
+        if not masked and not state.simulation_indices.numel():
             return
 
         ball, cars = state.physical()
-        rotation = _forward_up_to_quat(cars.forward, cars.up).contiguous()
-        indices = state.simulation_indices.contiguous()
-        self._env.reset_boost_pads(indices)
-        self._env.set_ball(
+        rotation = _forward_up_to_quat(
+            cars.forward, cars.up, validate=not masked,
+        ).contiguous()
+
+        indices = None if masked else state.simulation_indices.contiguous()
+        mask = self._reset_selection(state.reset_mask, reset_mask) if masked else None
+
+        self._env.apply_reset_state(
             ball.position.contiguous(), ball.velocity.contiguous(),
-            ball.angular_velocity.contiguous(), simulation_indices=indices,
-        )
-        self._env.set_car(
+            ball.angular_velocity.contiguous(),
             cars.position.contiguous(), rotation, cars.velocity.contiguous(),
             cars.angular_velocity.contiguous(), cars.demoed.contiguous(),
-            boost=cars.boost.contiguous(),
-            internal_state=(
+            car_boost=cars.boost.contiguous(),
+            car_internal_state=(
                 state.car_internal_state.contiguous()
                 if state.car_internal_state is not None else None
             ),
+            blue_score=(
+                state.match.blue_score.contiguous() if state.match is not None else None
+            ),
+            orange_score=(
+                state.match.orange_score.contiguous() if state.match is not None else None
+            ),
+            episode_ticks=(
+                state.match.episode_ticks.contiguous() if state.match is not None else None
+            ),
             simulation_indices=indices,
+            reset_mask=mask,
         )
-        if state.match is not None:
-            self._env.set_match_state(
-                state.match.blue_score.contiguous(),
-                state.match.orange_score.contiguous(),
-                state.match.episode_ticks.contiguous(),
-                simulation_indices=indices,
-            )
 
     def _clear_sim_stats(self, mask: th.Tensor | None = None) -> None:
         if mask is None:
+            self._episode_reports.clear()
             self._episode_return.zero_()
             self._episode_length.zero_()
             self._score_difference.zero_()
             self._episode_ticks.zero_()
             self._overtime.zero_()
         else:
-            self._score_difference[mask] = 0
-            self._episode_ticks[mask] = 0
-            self._overtime[mask] = False
+            self._score_difference.masked_fill_(mask, 0)
+            self._episode_ticks.masked_fill_(mask, 0)
+            self._overtime.masked_fill_(mask, False)
 
     def _per_car(self, x: th.Tensor) -> th.Tensor:
         return x[:, None].expand(-1, self.n_cars).reshape(self.n_envs)
@@ -476,6 +534,26 @@ class CARLTorchVectorEnv(VectorEnv):
 
         self._episode_return += reward
         self._episode_length += 1
+
+        if self.defer_episode_reporting:
+            self._episode_reports.append((
+                self._episode_return.clone(), self._episode_length.clone(), done.clone(),
+            ))
+            self._episode_return.masked_fill_(done, 0)
+            self._episode_length.masked_fill_(done, 0)
+
+            info = {
+                **reward_info,
+                "final_obs": CARLObservation.from_tensor(
+                    self._tensor(self._env.get_transition_obs()).view(
+                        self.n_envs, self._env.obs_dim,
+                    ),
+                    self.n_cars,
+                ),
+                "_final_obs": done,
+            }
+            return obs, reward, terminated, truncated, info
+
         finished = done.nonzero(as_tuple=True)[0]
         info: dict[str, Any] = {"reward": [], "length": []}
 
@@ -496,6 +574,25 @@ class CARLTorchVectorEnv(VectorEnv):
             self._episode_length[finished] = 0
 
         return obs, reward, terminated, truncated, info
+
+    def drain_episode_reports(self) -> dict[str, list[Any]]:
+        """Transfer completed episodes at a rollout boundary, in step/actor order.
+
+        Every completion is retained, including repeated episodes for one actor.
+        Explicit reset discards pending reports along with the episode counters.
+        """
+        self._check_open()
+        if not self._episode_reports:
+            return {"reward": [], "length": []}
+
+        returns, lengths, dones = zip(*self._episode_reports)
+        finished = th.stack(dones).flatten().nonzero(as_tuple=True)[0]
+        reports = {
+            "reward": th.stack(returns).flatten()[finished].cpu().tolist(),
+            "length": th.stack(lengths).flatten()[finished].cpu().tolist(),
+        }
+        self._episode_reports.clear()
+        return reports
 
     def render(self) -> None:
         return None

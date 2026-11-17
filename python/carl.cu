@@ -1,9 +1,11 @@
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <initializer_list>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 #include <pybind11/pybind11.h>
 
 #include "RLEnvironment.cuh"
@@ -55,12 +57,46 @@ struct TensorView
     DLTensor tensor;
 };
 
+// DLPack owners are released on the Python thread after native reads complete.
+struct PendingReset
+{
+    std::vector<py::object> inputs;
+    cudaEvent_t complete = nullptr;
+
+    explicit PendingReset(std::vector<py::object> inputs)
+        : inputs(std::move(inputs))
+    {
+        CUDA_CHECK(cudaEventCreateWithFlags(&complete, cudaEventDisableTiming));
+    }
+
+    PendingReset(const PendingReset&) = delete;
+    PendingReset& operator=(const PendingReset&) = delete;
+
+    ~PendingReset()
+    {
+        CUDA_CHECK(cudaEventDestroy(complete));
+    }
+};
+
 // Holds env + I/O, DLPack tensors to Python are non-owning views over EnvIO buffers
 class EnvWrapper
 {
     RLEnvironment env;
     EnvIO io;
     int frameskip;
+    std::deque<PendingReset> pendingResets;
+
+    void releaseResetInputs()
+    {
+        while (!pendingResets.empty())
+        {
+            const cudaError_t status = cudaEventQuery(pendingResets.front().complete);
+            if (status == cudaErrorNotReady) return;
+
+            CUDA_CHECK(status);
+            pendingResets.pop_front();
+        }
+    }
 
     const int32_t* actionData(const DLManagedTensor* tensor) const
     {
@@ -273,8 +309,18 @@ public:
         io.packRawMatchState(env.getDeviceState());
     }
 
+    ~EnvWrapper()
+    {
+        if (pendingResets.empty()) return;
+
+        CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
+        pendingResets.clear();
+    }
+
     py::object step(py::object actions)
     {
+        releaseResetInputs();
+
         py::capsule capsule = toCapsule(actions, env.getStream());
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setActions(actionData(actTensor));
@@ -299,6 +345,8 @@ public:
 
     py::object stepContinuous(py::object actions)
     {
+        releaseResetInputs();
+
         py::capsule capsule = toCapsule(actions, env.getStream());
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setContinuousActions(continuousActionData(actTensor));
@@ -323,6 +371,8 @@ public:
 
     void reset()
     {
+        releaseResetInputs();
+
         env.reset();
         io.packObs(env.getDeviceState());
         io.packState(env.getDeviceState());
@@ -453,6 +503,166 @@ public:
         io.packState(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), 1);
         CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
+    }
+
+    void applyResetState(
+        py::object ballPosition,
+        py::object ballVelocity,
+        py::object ballAngularVelocity,
+        py::object carPosition,
+        py::object carRotation,
+        py::object carVelocity,
+        py::object carAngularVelocity,
+        py::object carDemoed,
+        py::object carBoost,
+        py::object carInternalState,
+        py::object blueScore,
+        py::object orangeScore,
+        py::object episodeTicks,
+        py::object simulationIndices,
+        py::object resetMask)
+    {
+        releaseResetInputs();
+
+        if (!resetMask.is_none() && !simulationIndices.is_none())
+        {
+            throw py::value_error("specify reset_mask or simulation_indices, not both");
+        }
+
+        int nSelected = env.getNSim();
+        std::optional<TensorView> selection;
+        const int64_t* selected = nullptr;
+        if (!simulationIndices.is_none())
+        {
+            selection.emplace(selectionData(simulationIndices, nSelected));
+            selected = static_cast<const int64_t*>(data(selection->tensor));
+        }
+
+        const bool* mask = nullptr;
+        std::optional<TensorView> maskTensor;
+        if (!resetMask.is_none())
+        {
+            maskTensor.emplace(tensorData(resetMask, "reset_mask",
+                { env.getNSim() }, kDLBool, 8));
+            mask = static_cast<const bool*>(data(maskTensor->tensor));
+        }
+
+        // Validate every input before submitting any state-changing kernels.
+        const auto ballPos = tensorData(ballPosition, "ball_position",
+            { nSelected, 3 }, kDLFloat, 32);
+        const auto ballVel = tensorData(ballVelocity, "ball_velocity",
+            { nSelected, 3 }, kDLFloat, 32);
+        const auto ballAng = tensorData(ballAngularVelocity, "ball_angular_velocity",
+            { nSelected, 3 }, kDLFloat, 32);
+        const std::initializer_list<int64_t> vecShape = {
+            nSelected, env.getNCars(), 3
+        };
+        const auto carPos = tensorData(carPosition, "car_position",
+            vecShape, kDLFloat, 32);
+        const auto carRot = tensorData(carRotation, "car_rotation",
+            { nSelected, env.getNCars(), 4 }, kDLFloat, 32);
+        const auto carVel = tensorData(carVelocity, "car_velocity",
+            vecShape, kDLFloat, 32);
+        const auto carAng = tensorData(carAngularVelocity, "car_angular_velocity",
+            vecShape, kDLFloat, 32);
+
+        py::capsule demoCapsule = toCapsule(carDemoed, env.getStream());
+        const DLManagedTensor* demoTensor = demoCapsule.get_pointer<DLManagedTensor>();
+        if (!demoTensor) throw py::value_error("invalid DLPack tensor");
+        const DLTensor demo = demoTensor->dl_tensor;
+        const bool byteDemoed = demo.dtype.code == kDLBool && demo.dtype.bits == 8;
+        if (!byteDemoed && !(demo.dtype.code == kDLInt && demo.dtype.bits == 32))
+        {
+            throw py::type_error("car_demoed must have dtype bool or int32");
+        }
+        validateTensor(demo, "car_demoed",
+            { nSelected, env.getNCars() }, demo.dtype.code, demo.dtype.bits);
+
+        const float* boostData = nullptr;
+        std::optional<TensorView> boostTensor;
+        if (!carBoost.is_none())
+        {
+            boostTensor.emplace(tensorData(carBoost, "car_boost",
+                { nSelected, env.getNCars() }, kDLFloat, 32));
+            boostData = static_cast<const float*>(data(boostTensor->tensor));
+        }
+        const float* internalData = nullptr;
+        std::optional<TensorView> internalTensor;
+        if (!carInternalState.is_none())
+        {
+            internalTensor.emplace(tensorData(carInternalState, "car_internal_state",
+                { nSelected, env.getNCars(), CAR_INTERNAL_SIZE }, kDLFloat, 32));
+            internalData = static_cast<const float*>(data(internalTensor->tensor));
+        }
+
+        const bool hasMatch = !blueScore.is_none();
+        if (hasMatch != !orangeScore.is_none() || hasMatch != !episodeTicks.is_none())
+        {
+            throw py::value_error(
+                "blue_score, orange_score and episode_ticks must be supplied together");
+        }
+        std::optional<TensorView> blue, orange, ticks;
+        if (hasMatch)
+        {
+            blue.emplace(tensorData(blueScore, "blue_score", { nSelected }, kDLInt, 32));
+            orange.emplace(tensorData(orangeScore, "orange_score", { nSelected }, kDLInt, 32));
+            ticks.emplace(tensorData(episodeTicks, "episode_ticks", { nSelected }, kDLInt, 32));
+        }
+        if (nSelected == 0) return;
+
+        if (mask)
+        {
+            std::vector<py::object> inputs = {
+                maskTensor->capsule, ballPos.capsule, ballVel.capsule, ballAng.capsule,
+                carPos.capsule, carRot.capsule, carVel.capsule, carAng.capsule, demoCapsule
+            };
+            if (boostTensor) inputs.push_back(boostTensor->capsule);
+            if (internalTensor) inputs.push_back(internalTensor->capsule);
+            if (hasMatch)
+            {
+                inputs.push_back(blue->capsule);
+                inputs.push_back(orange->capsule);
+                inputs.push_back(ticks->capsule);
+            }
+
+            pendingResets.emplace_back(std::move(inputs));
+        }
+
+        io.resetBoostPads(env.getDeviceState(), selected, nSelected, mask);
+        io.setBall(env.getDeviceState(),
+            static_cast<const float*>(data(ballPos.tensor)),
+            static_cast<const float*>(data(ballVel.tensor)),
+            static_cast<const float*>(data(ballAng.tensor)), selected, nSelected, mask);
+        // setCar installs all poses before reconstructing suspension contacts,
+        // including rays against other restored cars. It also clears touch history.
+        io.setCar(env.getDeviceState(), env.getDeviceWorkspace(), env.getDeviceArena(),
+            static_cast<const float*>(data(carPos.tensor)),
+            static_cast<const float*>(data(carRot.tensor)),
+            static_cast<const float*>(data(carVel.tensor)),
+            static_cast<const float*>(data(carAng.tensor)),
+            data(demo), byteDemoed, boostData, internalData, selected, nSelected, mask);
+        if (hasMatch)
+        {
+            io.setMatchState(env.getDeviceState(),
+                static_cast<const int32_t*>(data(blue->tensor)),
+                static_cast<const int32_t*>(data(orange->tensor)),
+                static_cast<const int32_t*>(data(ticks->tensor)), selected, nSelected, mask);
+        }
+
+        // Current outputs only: terminal successors/rewards/dones belong to step().
+        io.packObs(env.getDeviceState(), mask);
+        io.packState(env.getDeviceState(), mask);
+        io.packRawMatchState(env.getDeviceState(), mask);
+
+        if (mask)
+        {
+            CUDA_CHECK(cudaEventRecord(pendingResets.back().complete, env.getStream()));
+        }
+        else
+        {
+            CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
+            pendingResets.clear();
+        }
     }
 
     void setMatchState(py::object blueScore, py::object orangeScore,
@@ -710,6 +920,23 @@ PYBIND11_MODULE(_carl, m)
         .def("step",  &EnvWrapper::step, py::arg("actions"))
         .def("step_continuous", &EnvWrapper::stepContinuous, py::arg("actions"))
         .def("reset", &EnvWrapper::reset)
+
+        .def("apply_reset_state", &EnvWrapper::applyResetState,
+             py::arg("ball_position"),
+             py::arg("ball_velocity"),
+             py::arg("ball_angular_velocity"),
+             py::arg("car_position"),
+             py::arg("car_rotation"),
+             py::arg("car_velocity"),
+             py::arg("car_angular_velocity"),
+             py::arg("car_demoed"),
+             py::arg("car_boost") = py::none(),
+             py::arg("car_internal_state") = py::none(),
+             py::arg("blue_score") = py::none(),
+             py::arg("orange_score") = py::none(),
+             py::arg("episode_ticks") = py::none(),
+             py::arg("simulation_indices") = py::none(),
+             py::arg("reset_mask") = py::none())
 
         .def("set_ball", &EnvWrapper::setBall,
              py::arg("position"),
