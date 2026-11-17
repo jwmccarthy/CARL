@@ -91,6 +91,10 @@ class CARLTorchVectorEnv(VectorEnv):
     arena is done. Return full-size tensors and ``reset_mask`` in a CARLResetState
     or mapping. Selection stays on the GPU; providers may also return None.
     Input storage must not be modified until CARL's stream has finished reading it.
+
+    ``native_cuda_graphs=True`` replays the physics tick loop on CARL's stream.
+    Graphs are built lazily and rebuilt when frameskip changes. Action copies,
+    event clearing, output packing and resets execute outside the graph.
     """
 
     metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
@@ -123,6 +127,7 @@ class CARLTorchVectorEnv(VectorEnv):
         discrete_actions:         bool = False,
         capture_ball_touches:     bool = False,
         capture_events:           bool = False,
+        native_cuda_graphs:       bool = False,
     ) -> None:
         super().__init__()
 
@@ -171,6 +176,7 @@ class CARLTorchVectorEnv(VectorEnv):
             previous_controls=previous_controls,
             capture_ball_touches=capture_ball_touches,
             capture_events=capture_events,
+            native_cuda_graphs=native_cuda_graphs,
         )
         self._stream = th.cuda.ExternalStream(self._env.stream, device=self.device)
         self._env.max_ticks = max_ticks

@@ -10,6 +10,8 @@
 
 #include "RLEnvironment.cuh"
 #include "EnvIO.cuh"
+#include "Cuda/Graph.cuh"
+#include "Cuda/Profiler.cuh"
 #include "Physics/BoostPads.cuh"
 
 namespace py = pybind11;
@@ -105,8 +107,41 @@ class EnvWrapper
     RLEnvironment env;
     EnvIO io;
     int frameskip;
+    bool nativeCudaGraphs;
+    CudaGraph discreteGraph;
+    CudaGraph continuousGraph;
     std::deque<PendingReset> pendingResets;
 
+    template<typename Controls>
+    void runTicks(const Controls* actions, CudaGraph& graph)
+    {
+        auto submit = [&]() {
+            for (int tick = 0; tick < frameskip; tick++)
+                env.step(actions, io.events.tickBuffer(tick));
+        };
+        if (!nativeCudaGraphs)
+        {
+            submit();
+            return;
+        }
+        if (ScopedCudaProfiler::get().running)
+            throw std::runtime_error("native_cuda_graphs cannot use the synchronous stage profiler");
+
+        graph.replay(env.getStream(), submit);
+    }
+
+    bool hasGraphs() const
+    {
+        return discreteGraph.nodeCount() || continuousGraph.nodeCount();
+    }
+
+    void invalidateGraphs()
+    {
+        if (!hasGraphs()) return;
+        CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
+        discreteGraph.clear();
+        continuousGraph.clear();
+    }
     void releaseResetInputs()
     {
         while (!pendingResets.empty())
@@ -322,12 +357,18 @@ public:
         bool normalize,
         bool previousControls,
         bool captureBallTouches,
-        bool captureEvents)
+        bool captureEvents,
+        bool nativeCudaGraphs)
         : env(nSim, nBlue, nOrange, seed)
         , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize,
              previousControls, frameskip, captureBallTouches, captureEvents)
         , frameskip(frameskip)
+        , nativeCudaGraphs(nativeCudaGraphs)
     {
+#ifdef CARL_USE_HIP
+        if (nativeCudaGraphs)
+            throw py::value_error("native_cuda_graphs requires the CUDA backend");
+#endif
         if (frameskip < 1)
         {
             throw py::value_error("frameskip must be at least 1");
@@ -343,9 +384,8 @@ public:
 
     ~EnvWrapper()
     {
-        if (pendingResets.empty()) return;
-
-        CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
+        if (hasGraphs() || !pendingResets.empty())
+            CUDA_CHECK(cudaStreamSynchronize(env.getStream()));
         pendingResets.clear();
     }
 
@@ -356,12 +396,10 @@ public:
         py::capsule capsule = toCapsule(actions, env.getStream());
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setActions(actionData(actTensor));
+        retainInputs({capsule});
         io.events.clear();
 
-        for (int tick = 0; tick < frameskip; tick++)
-        {
-            env.step(io.getActions(), io.events.tickBuffer(tick));
-        }
+        runTicks(io.getActions(), discreteGraph);
         
         io.packRewardsDones(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), frameskip);
@@ -383,12 +421,10 @@ public:
         py::capsule capsule = toCapsule(actions, env.getStream());
         const DLManagedTensor* actTensor = capsule.get_pointer<DLManagedTensor>();
         io.setContinuousActions(continuousActionData(actTensor));
+        retainInputs({capsule});
         io.events.clear();
 
-        for (int tick = 0; tick < frameskip; tick++)
-        {
-            env.step(io.getContinuousActions(), io.events.tickBuffer(tick));
-        }
+        runTicks(io.getContinuousActions(), continuousGraph);
 
         io.packRewardsDones(env.getDeviceState());
         io.packTransitionState(env.getDeviceState(), frameskip);
@@ -866,6 +902,11 @@ public:
     }
 
     int getFrameskip() const { return frameskip; }
+    bool getNativeCudaGraphs() const { return nativeCudaGraphs; }
+    size_t getNativeGraphNodes() const
+    {
+        return discreteGraph.nodeCount() + continuousGraph.nodeCount();
+    }
 
     void setFrameskip(int ticks)
     {
@@ -873,6 +914,8 @@ public:
         {
             throw py::value_error("frameskip must be at least 1");
         }
+        if (ticks == frameskip) return;
+        invalidateGraphs();
         io.events.resize(ticks);
         frameskip = ticks;
     }
@@ -1042,7 +1085,7 @@ PYBIND11_MODULE(_carl, m)
         });
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int, int, bool, bool, bool, bool, bool>(),
+        .def(py::init<int, int, int, int, int, bool, bool, bool, bool, bool, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
              py::arg("frameskip") = 1,
@@ -1050,9 +1093,12 @@ PYBIND11_MODULE(_carl, m)
              py::arg("normalize") = false,
              py::arg("previous_controls") = false,
              py::arg("capture_ball_touches") = false,
-             py::arg("capture_events") = false)
+             py::arg("capture_events") = false,
+             py::arg("native_cuda_graphs") = false)
         .def_property_readonly("events", &EnvWrapper::getEvents,
              py::return_value_policy::reference_internal)
+        .def_property_readonly("native_cuda_graphs", &EnvWrapper::getNativeCudaGraphs)
+        .def_property_readonly("native_graph_nodes", &EnvWrapper::getNativeGraphNodes)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
         .def("step_continuous", &EnvWrapper::stepContinuous, py::arg("actions"))
