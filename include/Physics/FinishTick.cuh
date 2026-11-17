@@ -30,6 +30,11 @@ CARL_D CARL_FI void respawnCar(
     state->cars.ballHitTick[carIdx] = -1;
     state->cars.ballContactTick[carIdx] = -1;
 
+    for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
+    {
+        state->cars.wheelContact[carIdx * NUM_WHEELS + wheel] = 0;
+    }
+
     CarInternalState internal{};
     internal.isOnGround = 1;
     internal.boost = BOOST_SPAWN_AMOUNT;

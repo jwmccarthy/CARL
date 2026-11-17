@@ -1,5 +1,7 @@
 #include "EnvIO.cuh"
+#include "Physics/CarArena/BroadPhase.cuh"
 #include "Physics/Observations.cuh"
+#include "Physics/SuspensionRaycast.cuh"
 #include "RLConstants.cuh"
 
 // --- DLPack capsule helpers ---
@@ -49,7 +51,8 @@ __global__ void packObsKernel(
     int nSim,
     int nCars,
     bool invertOrange,
-    bool normalize)
+    bool normalize,
+    bool previousControls)
 {
     const int agentIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (agentIdx >= nSim * nCars)
@@ -63,12 +66,12 @@ __global__ void packObsKernel(
         return;
     }
     const int observerIdx = agentIdx % nCars;
-    const int obsDim = observationDim(nCars);
+    const int obsDim = observationDim(nCars, previousControls);
 
     packObservations(
         state, simIdx, observerIdx,
         nCars, invertOrange,
-        obs + agentIdx * obsDim);
+        obs + agentIdx * obsDim, previousControls);
         
     if (normalize)
     {
@@ -258,6 +261,10 @@ __global__ void setCarKernel(
             BOOST_MAX, fmaxf(0.f, boost[sourceCarIdx]));
     }
 
+    // The saved latch is the previous jump input, even when the remaining
+    // previous controls are unavailable. Expose that known history faithfully.
+    state->cars.controls[carIdx].jump = state->cars.internal[carIdx].lastJump;
+
     space->susp.brakeFactor[carIdx] = 0.f;
     space->susp.brakeFactorPrev[carIdx] = 0.f;
     space->susp.throttleVal[carIdx] = 0.f;
@@ -281,6 +288,7 @@ __global__ void setCarKernel(
     for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
     {
         const int wheelIdx = carIdx * NUM_WHEELS + wheel;
+        state->cars.wheelContact[wheelIdx] = 0;
         space->susp.latFrictionPrev[wheelIdx] = 0.f;
         space->susp.lonFrictionPrev[wheelIdx] = 0.f;
     }
@@ -340,14 +348,16 @@ EnvIO::EnvIO(
     int nCars,
     cudaStream_t stream,
     bool invertOrange,
-    bool normalize)
+    bool normalize,
+    bool previousControls)
     : nSim(nSim)
     , nCars(nCars)
-    , obsDim(observationDim(nCars))
+    , obsDim(observationDim(nCars, previousControls))
     , stateDim(packedStateDim(nCars))
     , actDim(nCars * ACT_PER_CAR)
     , invertOrange(invertOrange)
     , normalize(normalize)
+    , previousControls(previousControls)
     , stream(stream)
 {
     obsShape[0] = nSim;
@@ -426,7 +436,7 @@ void EnvIO::packObs(GameState* d_state)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_obs, nullptr, nSim, nCars, invertOrange, normalize);
+        d_state, d_obs, nullptr, nSim, nCars, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -434,7 +444,7 @@ void EnvIO::packTransitionObs(GameState* d_state)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_transitionObs, d_dones, nSim, nCars, invertOrange, normalize);
+        d_state, d_transitionObs, d_dones, nSim, nCars, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -573,9 +583,50 @@ void EnvIO::setBall(
     CUDA_CHECK(cudaGetLastError());
 }
 
+// Rebuild contacts after all car poses are restored.
+__global__ void refreshRestoredCarContactsKernel(
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    ArenaMesh* __restrict__ arena,
+    const int64_t* __restrict__ indices,
+    int nSelected)
+{
+    const int source = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (source >= nSelected * state->nCars) return;
+
+    const int sim = source / state->nCars;
+    const int64_t target = indices ? indices[sim] : sim;
+
+    if (target < 0 || target >= state->nSim) return;
+
+    const int car = static_cast<int>(target) * state->nCars + source % state->nCars;
+
+    if (state->cars.isDemoed[car])
+    {
+        RayHit empty[NUM_WHEELS];
+        initWheelHits(empty, WORLD_Z);
+        storeWheelHits(space->susp, state, car, empty);
+        state->cars.internal[car].isOnGround = false;
+        return;
+    }
+
+    carArenaBroadPhase(state, space, arena, car);
+    raycastCarSuspension(state, space, arena, car);
+    int contacts = 0;
+
+    for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
+    {
+        contacts += state->cars.wheelContact[car * NUM_WHEELS + wheel] != 0;
+    }
+
+    state->cars.internal[car].isOnGround = contacts >= 3;
+}
+
 void EnvIO::setCar(
     GameState* d_state,
     Workspace* d_space,
+    ArenaMesh* d_arena,
     const float* pos,
     const float* rot,
     const float* vel,
@@ -600,6 +651,11 @@ void EnvIO::setCar(
         d_state, d_space, pos, rot, vel, ang, demoed, byteDemoed,
         boost, internalState, simulationIndices, nSelected, nCars, nSim);
         
+    CUDA_CHECK(cudaGetLastError());
+
+    refreshRestoredCarContactsKernel<<<perCarConfig.gridDim,
+        perCarConfig.blockDim, 0, stream>>>(
+        d_state, d_space, d_arena, simulationIndices, nSelected);
     CUDA_CHECK(cudaGetLastError());
 }
 

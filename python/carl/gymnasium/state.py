@@ -259,11 +259,48 @@ class CARLObservation(_CARLTensor):
 
     @property
     def ego_has_flip_or_jump(self) -> th.Tensor:
-        return self[..., carl.OBS_EGO_FLIP_INDEX].bool()
+        return self[..., self._goal_start + carl.OBS_RELATIVE_GOALS].bool()
 
     @property
     def ego_flip_window_remaining(self) -> th.Tensor:
-        return self[..., carl.OBS_EGO_DODGE_TIME_INDEX]
+        return self[..., self._goal_start + carl.OBS_RELATIVE_GOALS + 1]
+
+    @property
+    def ego_controller(self) -> th.Tensor:
+        start = self._goal_start + carl.OBS_RELATIVE_GOALS + carl.OBS_EGO_DODGE
+        end = start + carl.OBS_EGO_CONTROLLER
+        if self.shape[-1] not in (end, end + carl.OBS_PREVIOUS_CONTROLS):
+            raise ValueError("observation does not match ego controller v3")
+        return self[..., start:end]
+
+    @property
+    def ego_previous_controls(self) -> th.Tensor:
+        _ = self.ego_controller
+        start = (self._goal_start + carl.OBS_RELATIVE_GOALS
+                 + carl.OBS_EGO_DODGE + carl.OBS_EGO_CONTROLLER)
+        if self.shape[-1] != start + carl.OBS_PREVIOUS_CONTROLS:
+            raise ValueError("observation does not include previous controls")
+        return self[..., start:]
+
+    @property
+    def ego_has_jumped(self) -> th.Tensor:
+        return self.ego_controller[..., 0].bool()
+
+    @property
+    def ego_is_jumping(self) -> th.Tensor:
+        return self.ego_controller[..., 1].bool()
+
+    @property
+    def ego_is_flipping(self) -> th.Tensor:
+        return self.ego_controller[..., 2].bool()
+
+    @property
+    def ego_flip_time(self) -> th.Tensor:
+        return self.ego_controller[..., 3]
+
+    @property
+    def ego_demo_respawn_time(self) -> th.Tensor:
+        return self.ego_controller[..., 4]
 
     @property
     def car_end(self) -> int:

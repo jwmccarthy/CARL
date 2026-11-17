@@ -37,6 +37,11 @@ CARL_D CARL_FI void resetCar(CarState* __restrict__ cars, int carIdx, int locIdx
     cars->ballContactTick[carIdx] = -1;
     cars->controls[carIdx] = {};
 
+    for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
+    {
+        cars->wheelContact[carIdx * NUM_WHEELS + wheel] = 0;
+    }
+
     CarInternalState internal{};
     internal.isOnGround = true;
     internal.boost = BOOST_SPAWN_AMOUNT;
@@ -144,6 +149,7 @@ CARL_D CARL_FI void resetAfterDone(
         {
             const int wheelIdx = carIdx * NUM_WHEELS + wheel;
             state->cars.wheelSource[wheelIdx] = WHEEL_SOURCE_NONE;
+            state->cars.wheelContact[wheelIdx] = 0;
             space->susp.rayDist[wheelIdx] = 0.f;
             space->susp.rayNormal[wheelIdx] = Vec3::zero();
             space->susp.latFrictionPrev[wheelIdx] = 0.f;
