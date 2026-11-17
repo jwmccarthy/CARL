@@ -238,9 +238,15 @@ class CARLTorchVectorEnv(VectorEnv):
                 state["car_internal_state"].contiguous()
                 if "car_internal_state" in state else None
             ),
-            blue_score=state["blue_score"].contiguous() if "blue_score" in state else None,
-            orange_score=state["orange_score"].contiguous() if "orange_score" in state else None,
-            episode_ticks=state["episode_ticks"].contiguous() if "episode_ticks" in state else None,
+            blue_score=(
+                state["blue_score"].contiguous() if "blue_score" in state else None
+            ),
+            orange_score=(
+                state["orange_score"].contiguous() if "orange_score" in state else None
+            ),
+            episode_ticks=(
+                state["episode_ticks"].contiguous() if "episode_ticks" in state else None
+            ),
             simulation_indices=indices.contiguous(),
         )
 
@@ -264,9 +270,15 @@ class CARLTorchVectorEnv(VectorEnv):
                 state.car_internal_state.contiguous()
                 if state.car_internal_state is not None else None
             ),
-            blue_score=state.match.blue_score.contiguous() if state.match is not None else None,
-            orange_score=state.match.orange_score.contiguous() if state.match is not None else None,
-            episode_ticks=state.match.episode_ticks.contiguous() if state.match is not None else None,
+            blue_score=(
+                state.match.blue_score.contiguous() if state.match is not None else None
+            ),
+            orange_score=(
+                state.match.orange_score.contiguous() if state.match is not None else None
+            ),
+            episode_ticks=(
+                state.match.episode_ticks.contiguous() if state.match is not None else None
+            ),
             simulation_indices=indices,
         )
 
