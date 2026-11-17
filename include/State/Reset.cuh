@@ -36,8 +36,11 @@ CARL_D CARL_FI void resetCar(CarState* __restrict__ cars, int carIdx, int locIdx
     cars->ballHitTick[carIdx] = -1;
     cars->ballContactTick[carIdx] = -1;
     cars->controls[carIdx] = {};
+
     for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
+    {
         cars->wheelContact[carIdx * NUM_WHEELS + wheel] = 0;
+    }
 
     CarInternalState internal{};
     internal.isOnGround = true;

@@ -214,6 +214,7 @@ CARL_D CARL_FI void packObservations(
     obs[o++] = flipAvailable
         ? fmaxf(0.f, DOUBLEJUMP_MAX_DELAY - egoInternal.airTimeSinceJump)
         : 0.f;
+
     // Packet-visible controller state is always included.
     const int ego = carBase + observerIdx;
     obs[o++] = (float)egoInternal.hasJumped;

@@ -267,7 +267,6 @@ class CARLObservation(_CARLTensor):
 
     @property
     def ego_controller(self) -> th.Tensor:
-        """Mandatory ego-only v3 state; times remain seconds when normalized."""
         start = self._goal_start + carl.OBS_RELATIVE_GOALS + carl.OBS_EGO_DODGE
         end = start + carl.OBS_EGO_CONTROLLER
         if self.shape[-1] not in (end, end + carl.OBS_PREVIOUS_CONTROLS):

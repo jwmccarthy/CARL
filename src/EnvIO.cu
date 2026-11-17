@@ -583,8 +583,7 @@ void EnvIO::setBall(
     CUDA_CHECK(cudaGetLastError());
 }
 
-// Run after every selected car pose is installed: wheel rays can hit another
-// restored car. No integration, control processing or impulses occur.
+// Rebuild contacts after all car poses are restored.
 __global__ void refreshRestoredCarContactsKernel(
     GameState* __restrict__ state,
     Workspace* __restrict__ space,
@@ -593,10 +592,14 @@ __global__ void refreshRestoredCarContactsKernel(
     int nSelected)
 {
     const int source = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (source >= nSelected * state->nCars) return;
+
     const int sim = source / state->nCars;
     const int64_t target = indices ? indices[sim] : sim;
+
     if (target < 0 || target >= state->nSim) return;
+
     const int car = static_cast<int>(target) * state->nCars + source % state->nCars;
 
     if (state->cars.isDemoed[car])
@@ -611,8 +614,12 @@ __global__ void refreshRestoredCarContactsKernel(
     carArenaBroadPhase(state, space, arena, car);
     raycastCarSuspension(state, space, arena, car);
     int contacts = 0;
+
     for (int wheel = 0; wheel < NUM_WHEELS; wheel++)
+    {
         contacts += state->cars.wheelContact[car * NUM_WHEELS + wheel] != 0;
+    }
+
     state->cars.internal[car].isOnGround = contacts >= 3;
 }
 

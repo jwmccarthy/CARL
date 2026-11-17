@@ -36,47 +36,6 @@ env.close()
 
 Each car is an actor. Cars are grouped by simulation.
 
-### Ego-controller observations
-
-Every observation includes the five-value ego-controller state block (schema v3).
-A 1v1 actor has 144 values by default, preserving the preceding 139-value
-physics/relative/dodge prefix. Pass `previous_controls=True` to
-`CARLTorchVectorEnv` or native `carl.Env` to append eight previous controls,
-giving 152 values. The state flags and timers are always included.
-These fields are available through RLBot V5; simulator-only timers, torques,
-wheel-contact bits and auto-flip state are not exposed. Earlier controller
-schemas use different layouts and require compatible checkpoints.
-
-`observation.ego_controller` exposes the appended block. Its offsets are:
-
-| Offset | Field |
-|---|---|
-| 0 | Has-jumped |
-| 1 | Is-jumping |
-| 2 | Is-flipping |
-| 3 | Elapsed flip time |
-| 4 | Demo respawn timer |
-
-Named state properties are `ego_has_jumped`, `ego_is_jumping`,
-`ego_is_flipping`, `ego_flip_time` and `ego_demo_respawn_time`. Times remain in
-seconds even with `normalize=True`. Controls are car-local and are not inverted
-for orange actors. When enabled, `ego_previous_controls` exposes the appended
-throttle, steer, yaw, pitch, roll, jump, boost and slide values, in that order;
-accessing it when disabled raises `ValueError`. The environment configures its
-action codec automatically; standalone users should pass the matching
-`previous_controls` setting to `CARLActionCodec`.
-Native constants `OBS_CONTROLLER_VERSION` (3), `OBS_EGO_CONTROLLER` (5) and
-`OBS_PREVIOUS_CONTROLS` (8) identify the schema and block sizes.
-
-Restoring cars through `set_car` reconstructs suspension/wheel contacts and the
-grounded flag from the restored geometry before returning observations. All car
-poses are installed before this query, so car-on-car contacts are independent
-of actor order. No settling physics tick is run. A supplied internal-state
-last-jump latch also initializes the previous jump control; other previous
-controls are reset to zero. Demoed cars retain no internal wheel contacts.
-Contact reconstruction and internal jump/boost/flip state restoration still run;
-removing their observation fields does not remove the reset fixes.
-
 ## Custom rewards
 
 Reward functions return a tensor of shape `[n_sim, n_cars]`:
