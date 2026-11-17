@@ -91,6 +91,7 @@ class CARLTorchVectorEnv(VectorEnv):
         no_touch_timeout_seconds: float | None = None,
         invert_orange:            bool = True,
         normalize:                bool = False,
+        ego_controller:           bool = False,
         copy_outputs:             bool = True,
         synchronize:              bool = False,
         reward_funcs:             Iterable[RewardFunction] | None = None,
@@ -124,6 +125,7 @@ class CARLTorchVectorEnv(VectorEnv):
             frameskip=frameskip,
             invert_orange=invert_orange,
             normalize=normalize,
+            ego_controller=ego_controller,
         )
         self._stream = th.cuda.ExternalStream(self._env.stream, device=self.device)
         self._env.max_ticks = max_ticks
@@ -145,7 +147,7 @@ class CARLTorchVectorEnv(VectorEnv):
             BOOST_PAD_POSITIONS, dtype=th.float32, device=self.device
         )
         self.action_codec = (
-            CARLActionCodec().to(self.device) if discrete_actions else None
+            CARLActionCodec(ego_controller=ego_controller).to(self.device) if discrete_actions else None
         )
 
         self._episode_return = th.zeros(self.n_envs, device=self.device)

@@ -210,6 +210,8 @@ CARL_D CARL_FI void storeWheelHits(
         susp.rayDist[wheelBase + w] = best[w].dist;
         susp.rayNormal[wheelBase + w] = best[w].normal;
         state->cars.wheelSource[wheelBase + w] = best[w].source;
+        state->cars.wheelContact[wheelBase + w] =
+            best[w].source != WHEEL_SOURCE_NONE && best[w].dist <= suspRayLength(w);
     }
 }
 

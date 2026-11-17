@@ -254,9 +254,10 @@ public:
         int seed,
         int frameskip,
         bool invertOrange,
-        bool normalize)
+        bool normalize,
+        bool egoController)
         : env(nSim, nBlue, nOrange, seed)
-        , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize)
+        , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize, egoController)
         , frameskip(frameskip)
     {
         if (frameskip < 1)
@@ -441,7 +442,7 @@ public:
             internalData = static_cast<const float*>(data(internalTensor->tensor));
         }
 
-        io.setCar(env.getDeviceState(), env.getDeviceWorkspace(),
+        io.setCar(env.getDeviceState(), env.getDeviceWorkspace(), env.getDeviceArena(),
             static_cast<const float*>(data(pos.tensor)),
             static_cast<const float*>(data(rot.tensor)),
             static_cast<const float*>(data(vel.tensor)),
@@ -671,6 +672,9 @@ PYBIND11_MODULE(_carl, m)
     m.attr("OBS_EGO_BOOST_INDEX") = OBS_BALL + OBS_BOOST;
     m.attr("OBS_EGO_ON_GROUND_INDEX") = OBS_BALL + OBS_ON_GROUND;
     m.attr("OBS_EGO_FLIP_INDEX") = OBS_EGO_FLIP_INDEX;
+    m.attr("OBS_EGO_CONTROLLER") = OBS_EGO_CONTROLLER;
+    m.attr("OBS_CONTROLLER_VERSION") = OBS_CONTROLLER_VERSION;
+    m.attr("CAR_INTERNAL_SIZE") = static_cast<int>(CAR_INTERNAL_SIZE);
     m.attr("OBS_EGO_DODGE_TIME_INDEX") = OBS_EGO_DODGE_TIME_INDEX;
 
     m.attr("PHYS_TICKS_PER_SECOND") = PHYS_TICKS_PER_SECOND;
@@ -694,12 +698,13 @@ PYBIND11_MODULE(_carl, m)
     m.attr("BOOST_PAD_POSITIONS") = boostPadPositions;
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int, int, bool, bool>(),
+        .def(py::init<int, int, int, int, int, bool, bool, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
              py::arg("frameskip") = 1,
              py::arg("invert_orange") = true,
-             py::arg("normalize") = false)
+             py::arg("normalize") = false,
+             py::arg("ego_controller") = false)
 
         .def("step",  &EnvWrapper::step, py::arg("actions"))
         .def("step_continuous", &EnvWrapper::stepContinuous, py::arg("actions"))

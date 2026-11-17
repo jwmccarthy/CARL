@@ -36,6 +36,40 @@ env.close()
 
 Each car is an actor. Cars are grouped by simulation.
 
+### Optional ego-controller observations
+
+Pass `ego_controller=True` to `CARLTorchVectorEnv` (or native `carl.Env`) to
+append controller schema v1. This adds 27 values to each actor's observation;
+the default observation layout and existing prefix are unchanged. A 1v1 actor
+has 166 values with this option, versus 139 without it.
+
+`observation.ego_controller` exposes the appended block. Its offsets are:
+
+| Offset | Field |
+|---|---|
+| 0–7 | Previous throttle, steer, yaw, pitch, roll, jump, boost, slide |
+| 8–11 | Last-jump latch, has-jumped, is-jumping, jump time |
+| 12 | Remaining minimum boost duration |
+| 13–17 | Is-flipping, flip time, car-relative flip torque XYZ |
+| 18 | Handbrake value |
+| 19–22 | Four wheel-contact flags |
+| 23–25 | Is-auto-flipping, auto-flip timer, auto-flip torque scale |
+| 26 | Demo respawn timer |
+
+Named properties include `ego_previous_controls`, `ego_last_jump`,
+`ego_wheel_contacts`, and the corresponding timer/flip fields. Times remain in
+seconds even with `normalize=True`. Controls and torques are car-local and are
+not inverted for orange actors. The discrete action codec adjusts its dodge
+window indexing automatically. Native constants `OBS_CONTROLLER_VERSION` and
+`OBS_EGO_CONTROLLER` identify the schema and block size.
+
+Restoring cars through `set_car` reconstructs suspension/wheel contacts and the
+grounded flag from the restored geometry before returning observations. All car
+poses are installed before this query, so car-on-car contacts are independent
+of actor order. No settling physics tick is run. A supplied internal-state
+last-jump latch also initializes the previous jump control; other previous
+controls are reset to zero. Demoed cars expose no wheel contacts.
+
 ## Custom rewards
 
 Reward functions return a tensor of shape `[n_sim, n_cars]`:

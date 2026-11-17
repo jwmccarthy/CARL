@@ -57,6 +57,7 @@ public:
 
     GameState* getDeviceState() { return d_state; }
     Workspace* getDeviceWorkspace() { return d_space; }
+    ArenaMesh* getDeviceArena() { return d_arena; }
     cudaStream_t getStream() const { return stream; }
 
     int getNSim()  const { return h_state.nSim; }

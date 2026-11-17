@@ -89,12 +89,16 @@ constexpr int OBS_EGO_DODGE = 2;  // hasFlipOrJump + seconds remaining
 constexpr int OBS_EGO_FLIP_INDEX = -OBS_EGO_DODGE;
 constexpr int OBS_EGO_DODGE_TIME_INDEX = OBS_EGO_FLIP_INDEX + 1;
 
-constexpr CARL_HD int observationDim(int nCars)
+constexpr int OBS_EGO_CONTROLLER = 27;
+constexpr int OBS_CONTROLLER_VERSION = 1;
+
+constexpr CARL_HD int observationDim(int nCars, bool egoController = false)
 {
     return OBS_BALL + nCars * OBS_PER_CAR + OBS_BOOST_PADS
         + OBS_RELATIVE_EGO_BALL
         + (nCars - 1) * OBS_RELATIVE_PER_OTHER_CAR
-        + OBS_RELATIVE_GOALS + OBS_EGO_DODGE;
+        + OBS_RELATIVE_GOALS + OBS_EGO_DODGE
+        + (egoController ? OBS_EGO_CONTROLLER : 0);
 }
 
 constexpr CARL_HD int packedStateDim(int nCars)
