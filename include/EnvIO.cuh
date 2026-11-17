@@ -65,6 +65,7 @@ private:
     int  noTouchTimeoutTicks = 0;
     bool invertOrange;
     bool normalize;
+    bool previousControls;
 
     cudaStream_t stream;
     KernelConfig perSimConfig;
@@ -76,7 +77,8 @@ public:
         int nCars,
         cudaStream_t stream,
         bool invertOrange,
-        bool normalize);
+        bool normalize,
+        bool previousControls = false);
     ~EnvIO();
 
     // Pack state into observation buffer

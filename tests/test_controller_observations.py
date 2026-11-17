@@ -10,36 +10,44 @@ from carl.gymnasium.state import CARLObservation
 
 
 class ControllerViewTests(unittest.TestCase):
-    def test_v2_views_and_action_masks(self):
-        self.assertEqual(carl.OBS_CONTROLLER_VERSION, 2)
-        self.assertEqual(carl.OBS_EGO_CONTROLLER, 13)
+    def test_v3_views_and_action_masks(self):
+        self.assertEqual(carl.OBS_CONTROLLER_VERSION, 3)
+        self.assertEqual(carl.OBS_EGO_CONTROLLER, 5)
+        self.assertEqual(carl.OBS_PREVIOUS_CONTROLS, 8)
         for cars in (2, 4, 6):
             base_size = 85 + 27 * cars
             base = th.zeros((3, base_size))
             base[:, -2] = 1
             base[:, -1] = th.tensor([.5, 0., .5])
             base[2, 25] = 1
-            extended = th.cat((base, th.zeros((3, 13))), -1)
+            default = th.cat((base, th.zeros((3, 5))), -1)
+            extended = th.cat((default, th.zeros((3, 8))), -1)
             # New trailing fields must not be mistaken for the dodge window.
             extended[:, -2:] = -1
             new = CARLObservation.from_tensor(extended, cars)
             th.testing.assert_close(new.ego_has_flip_or_jump, th.ones(3, dtype=th.bool))
             th.testing.assert_close(new.ego_flip_window_remaining, base[:, -1])
-            th.testing.assert_close(CARLActionCodec().mask(extended)[:, 17],
+            th.testing.assert_close(CARLActionCodec(True).mask(extended)[:, 17],
                                     th.tensor([True, False, True]))
-            self.assertEqual(new.ego_controller.shape, (3, 13))
+            th.testing.assert_close(CARLActionCodec(True).mask(extended),
+                                    CARLActionCodec().mask(default))
+            default_view = CARLObservation.from_tensor(default, cars)
+            th.testing.assert_close(new.ego_controller, default_view.ego_controller)
+            with self.assertRaisesRegex(ValueError, "does not include previous controls"):
+                _ = default_view.ego_previous_controls
+            self.assertEqual(new.ego_controller.shape, (3, 5))
             new.ego_previous_controls.fill_(.25)
-            th.testing.assert_close(extended[:, base_size:base_size + 8], th.full((3, 8), .25))
+            th.testing.assert_close(extended[:, -8:], th.full((3, 8), .25))
             for old_size in (base_size, base_size + 27):
                 old = CARLObservation.from_tensor(th.zeros((3, old_size)), cars)
-                with self.assertRaisesRegex(ValueError, "ego controller v2"):
+                with self.assertRaisesRegex(ValueError, "ego controller v3"):
                     _ = old.ego_controller
             for name in ("ego_last_jump", "ego_jump_time", "ego_boost_min_time_remaining",
                          "ego_flip_relative_torque", "ego_handbrake", "ego_wheel_contacts",
                          "ego_is_auto_flipping", "ego_auto_flip_time", "ego_auto_flip_torque_scale"):
                 self.assertFalse(hasattr(new, name), name)
 
-    def test_observation_schema_has_no_opt_out(self):
+    def test_controller_state_has_no_opt_out(self):
         with self.assertRaises(TypeError):
             CARLTorchVectorEnv(1, 1, 1, ego_controller=False)
         with self.assertRaises(TypeError):
@@ -89,11 +97,10 @@ class ControllerResetTests(unittest.TestCase):
         result = self.restore(env, positions, rotations, internal, demo=demo)
         expected = th.tensor([1, 0, 1, 1, 0, 0], device="cuda", dtype=th.bool)
         th.testing.assert_close(result[:, 0, 25].bool(), expected)
-        controller = result[..., -13:]
-        self.assertEqual(controller[4, 0, 5].item(), 1)  # previous jump input from latch
-        self.assertEqual(controller[4, 0, 8].item(), 1)  # hasJumped
-        self.assertEqual(controller[4, 0, 9].item(), 1)  # isJumping
-        self.assertGreater(controller[5, 0, 12].item(), 0)  # demo timer
+        controller = result[..., -5:]
+        self.assertEqual(controller[4, 0, 0].item(), 1)  # hasJumped
+        self.assertEqual(controller[4, 0, 1].item(), 1)  # isJumping
+        self.assertGreater(controller[5, 0, 4].item(), 0)  # demo timer
         th.testing.assert_close(result[:, 0, 9:12], positions[:, 0], rtol=0, atol=0)
         th.testing.assert_close(result[:, 0, 12:18], th.zeros((6, 6), device="cuda"), rtol=0, atol=0)
         th.testing.assert_close(env._tensor(env._env.get_episode_ticks()), ticks, rtol=0, atol=0)
@@ -101,7 +108,7 @@ class ControllerResetTests(unittest.TestCase):
 
     def test_selected_simulations_sentinel_and_all_team_views(self):
         for team in (1, 2, 3):
-            env = self.make_env(simulations=3, team=team)
+            env = self.make_env(simulations=3, team=team, previous_controls=True)
             before = env._observe().as_subclass(th.Tensor).clone().reshape(3, team * 2, -1)
             positions = th.zeros((2, team * 2, 3), device="cuda")
             positions[..., 2] = 17
@@ -112,13 +119,13 @@ class ControllerResetTests(unittest.TestCase):
             result = self.restore(env, positions, internal=internal, indices=indices)
             th.testing.assert_close(result[:2], before[:2], rtol=0, atol=0)
             self.assertTrue(result[2, :, 25].bool().all())
-            self.assertTrue((result[2, :, -8] == 1).all())  # previous jump input
+            self.assertTrue((result[2, :, -3] == 1).all())  # previous jump input
             action = th.zeros((env.n_envs, 7), device="cuda", dtype=th.int32)
             action[2 * env.n_cars:, 6] = 1
             next_obs = env.step(action)[0].as_subclass(th.Tensor).reshape_as(result)
             # Holding the restored jump latch must not produce a fresh jump.
-            self.assertFalse(next_obs[2, :, -5].bool().any())  # hasJumped
-            self.assertFalse(next_obs[2, :, -4].bool().any())  # isJumping
+            self.assertFalse(next_obs[2, :, -13].bool().any())  # hasJumped
+            self.assertFalse(next_obs[2, :, -12].bool().any())  # isJumping
 
     def test_contacts_with_other_restored_car_are_order_independent(self):
         env = self.make_env(simulations=2)
@@ -138,31 +145,46 @@ class ControllerResetTests(unittest.TestCase):
         self.assertFalse(result[1, 0, 25].bool())
         th.testing.assert_close(result[..., -5:-1], th.zeros((2, 2, 4), device="cuda"))
 
-    def test_default_schema_and_controller_is_car_local(self):
+    def test_optional_controls_preserve_default_prefix_and_are_car_local(self):
         for team in (1, 2, 3):
             for normalize in (False, True):
                 env = self.make_env(simulations=1, team=team, normalize=normalize)
+                extended = self.make_env(simulations=1, team=team, normalize=normalize,
+                                         previous_controls=True)
                 actions = th.tensor([[.3, -.4, .5, 1., 1., -.6, 0.]], device="cuda")
                 actions = actions.expand(team * 2, -1).contiguous()
                 # Exercise the native continuous path to verify the actual
                 # throttle/steer/yaw/pitch/roll/jump/boost/slide ordering.
                 env._env.step_continuous(actions.reshape(1, team * 2, 7))
-                observation = env._observe()
+                extended._env.step_continuous(actions.reshape(1, team * 2, 7))
+                default = env._observe()
+                observation = extended._observe()
+                th.testing.assert_close(observation.as_subclass(th.Tensor)[..., :-8],
+                                        default.as_subclass(th.Tensor), rtol=0, atol=0)
+                th.testing.assert_close(env.action_codec.mask(default),
+                                        extended.action_codec.mask(observation))
                 expected = th.tensor([[.5, .3, .3, -.4, -.6, 0., 1., 1.]], device="cuda")
                 th.testing.assert_close(observation.ego_previous_controls.as_subclass(th.Tensor),
                                         expected.expand(team * 2, -1))
                 self.assertEqual(observation.shape[-1], 98 + 27 * team * 2)
-                self.assertEqual(observation.ego_controller.shape[-1], 13)
+                self.assertEqual(default.shape[-1], 90 + 27 * team * 2)
+                self.assertEqual(observation.ego_controller.shape[-1], 5)
+                self.assertEqual(default.ego_controller.shape[-1], 5)
 
     def test_timeout_final_observation_keeps_controller_before_autoreset(self):
-        env = self.make_env(simulations=1, no_touch_timeout_ticks=1)
-        action = th.ones((2, 7), device="cuda", dtype=th.int32)
-        observation, _, terminated, truncated, info = env.step(action)
-        self.assertTrue(truncated.all())
-        self.assertFalse(terminated.any())
-        self.assertEqual(info["final_obs"].shape, observation.shape)
-        self.assertTrue(info["final_obs"].ego_previous_controls[..., 5].bool().all())
-        self.assertFalse(observation.ego_previous_controls.bool().any())
+        for previous_controls in (False, True):
+            env = self.make_env(simulations=1, no_touch_timeout_ticks=1,
+                                previous_controls=previous_controls)
+            action = th.ones((2, 7), device="cuda", dtype=th.int32)
+            observation, _, terminated, truncated, info = env.step(action)
+            self.assertTrue(truncated.all())
+            self.assertFalse(terminated.any())
+            self.assertEqual(info["final_obs"].shape, observation.shape)
+            self.assertTrue(info["final_obs"].ego_has_jumped.all())
+            self.assertFalse(observation.ego_has_jumped.any())
+            if previous_controls:
+                self.assertTrue(info["final_obs"].ego_previous_controls[..., 5].bool().all())
+                self.assertFalse(observation.ego_previous_controls.bool().any())
 
 
 if __name__ == "__main__":

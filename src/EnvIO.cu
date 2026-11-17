@@ -51,7 +51,8 @@ __global__ void packObsKernel(
     int nSim,
     int nCars,
     bool invertOrange,
-    bool normalize)
+    bool normalize,
+    bool previousControls)
 {
     const int agentIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (agentIdx >= nSim * nCars)
@@ -65,12 +66,12 @@ __global__ void packObsKernel(
         return;
     }
     const int observerIdx = agentIdx % nCars;
-    const int obsDim = observationDim(nCars);
+    const int obsDim = observationDim(nCars, previousControls);
 
     packObservations(
         state, simIdx, observerIdx,
         nCars, invertOrange,
-        obs + agentIdx * obsDim);
+        obs + agentIdx * obsDim, previousControls);
         
     if (normalize)
     {
@@ -347,14 +348,16 @@ EnvIO::EnvIO(
     int nCars,
     cudaStream_t stream,
     bool invertOrange,
-    bool normalize)
+    bool normalize,
+    bool previousControls)
     : nSim(nSim)
     , nCars(nCars)
-    , obsDim(observationDim(nCars))
+    , obsDim(observationDim(nCars, previousControls))
     , stateDim(packedStateDim(nCars))
     , actDim(nCars * ACT_PER_CAR)
     , invertOrange(invertOrange)
     , normalize(normalize)
+    , previousControls(previousControls)
     , stream(stream)
 {
     obsShape[0] = nSim;
@@ -433,7 +436,7 @@ void EnvIO::packObs(GameState* d_state)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_obs, nullptr, nSim, nCars, invertOrange, normalize);
+        d_state, d_obs, nullptr, nSim, nCars, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -441,7 +444,7 @@ void EnvIO::packTransitionObs(GameState* d_state)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_transitionObs, d_dones, nSim, nCars, invertOrange, normalize);
+        d_state, d_transitionObs, d_dones, nSim, nCars, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
