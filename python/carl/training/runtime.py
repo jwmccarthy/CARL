@@ -1,23 +1,44 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 import math
+from typing import TYPE_CHECKING
 
 import torch as th
 
 from ..events import (
-    ArenaSurface, BallTouch, Demoed, Dodge, DoubleJump, Event, FlipReset, Goal, Jump,
-    LeaveSurface, StateCondition, SurfaceContact,
+    ArenaSurface, BallTouch, BallTouchBatch, CarlEvents, Condition, ContactSurface,
+    Demoed, Dodge, DoubleJump, Event, FlipReset, Goal, Jump, LeaveSurface,
+    StateCondition, SurfaceContact,
 )
+from .definitions import TrainingPack
+
+if TYPE_CHECKING:
+    from ..gymnasium.state import CarlState
+    from .reset import TrainingPackResetProvider
+    from .targets import TrainingTarget
 
 
-CAR_EVENT = 1
-BALL_GOAL = 2
-CAR_CONTACT = 3
-CAR_LEAVE = 4
-BALL_CONTACT = 5
-BALL_LEAVE = 6
-TOUCH_SURFACE = 7
-STATE_VALUE = 8
-TOUCH_GAIN = 9
+EVENT = 1
+GOAL = 2
+CONTACT = 3
+LEAVE = 4
+TOUCH = 5
+STATE = 6
+
+CAR = 1
+BALL = 2
+
+ALL_ARENA_SURFACES = sum(int(surface) for surface in ArenaSurface)
+ALL_CAR_PARTS = sum(1 << int(part) for part in ContactSurface)
+
+EVENT_FLAGS = {
+    Jump: Event.JUMP,
+    DoubleJump: Event.DOUBLE_JUMP,
+    Dodge: Event.DODGE,
+    FlipReset: Event.FLIP_RESET,
+    Demoed: Event.DEMOED,
+}
 
 STATE_METRICS = {
     "ball_x":      0,
@@ -31,261 +52,275 @@ STATE_METRICS = {
     "car_boost":   8,
 }
 
+STATE_ENTITIES = {
+    "ball_x": BALL,
+    "ball_y": BALL,
+    "ball_height": BALL,
+    "ball_speed": BALL,
+    "car_x": CAR,
+    "car_y": CAR,
+    "car_height": CAR,
+    "car_speed": CAR,
+    "car_boost": CAR,
+}
 
-def _condition(condition, target_goal):
-    flags = {
-        Jump: Event.JUMP,
-        DoubleJump: Event.DOUBLE_JUMP,
-        Dodge: Event.DODGE,
-        FlipReset: Event.FLIP_RESET,
-        Demoed: Event.DEMOED,
+CONDITION_DTYPES = {
+    "kind": th.int64,
+    "entity": th.int64,
+    "event_flags": th.int64,
+    "arena_surfaces": th.int64,
+    "car_parts": th.int64,
+    "state_metric": th.int64,
+    "goal_side": th.int64,
+    "state_min": th.float32,
+    "state_max": th.float32,
+    "gain_min": th.float32,
+    "gain_max": th.float32,
+    "has_state_min": th.bool,
+    "has_state_max": th.bool,
+    "has_gain_min": th.bool,
+    "has_gain_max": th.bool,
+}
+
+
+def _bounds(
+    prefix:  str,
+    minimum: float | None,
+    maximum: float | None,
+    name:    str,
+) -> dict[str, float | bool]:
+    for bound in (minimum, maximum):
+        if bound is not None and not math.isfinite(bound):
+            raise ValueError(f"{name} bounds must be finite")
+    if minimum is not None and maximum is not None and minimum > maximum:
+        raise ValueError(f"{name} minimum must not exceed maximum")
+
+    return {
+        f"{prefix}_min": minimum if minimum is not None else 0,
+        f"{prefix}_max": maximum if maximum is not None else 0,
+        f"has_{prefix}_min": minimum is not None,
+        f"has_{prefix}_max": maximum is not None,
     }
 
-    if type(condition) in flags:
-        return CAR_EVENT, int(flags[type(condition)]), 0
+
+def _condition(
+    condition:   Condition,
+    target_goal: str,
+) -> dict[str, int | float | bool]:
+    if type(condition) in EVENT_FLAGS:
+        return dict(kind=EVENT, entity=CAR, event_flags=int(EVENT_FLAGS[type(condition)]))
 
     if isinstance(condition, StateCondition):
         if condition.metric not in STATE_METRICS:
             raise ValueError(f"unsupported state metric: {condition.metric}")
-
         if condition.minimum is None and condition.maximum is None:
             raise ValueError("state conditions require a minimum or maximum")
 
-        for bound in (condition.minimum, condition.maximum):
-            if bound is not None and not math.isfinite(bound):
-                raise ValueError("state condition bounds must be finite")
-
-        if (condition.minimum is not None and condition.maximum is not None
-                and condition.minimum > condition.maximum):
-            raise ValueError("state condition minimum must not exceed maximum")
-
-        return STATE_VALUE, STATE_METRICS[condition.metric], 0
+        return dict(
+            kind=STATE, entity=STATE_ENTITIES[condition.metric],
+            state_metric=STATE_METRICS[condition.metric],
+            **_bounds("state", condition.minimum, condition.maximum, "state condition"),
+        )
 
     if isinstance(condition, BallTouch):
-        if condition.min_height is not None:
-            raise ValueError("ball-touch height filters are not supported")
+        has_gain = condition.min_speed_gain is not None or condition.max_speed_gain is not None
+        car_parts = ALL_CAR_PARTS
+        if condition.surface is not None:
+            parts = condition.surface if isinstance(condition.surface, tuple) else (condition.surface,)
+            if not parts:
+                raise ValueError("ball-touch car parts must not be empty")
+            car_parts = 0
+            for part in parts:
+                car_parts |= 1 << int(ContactSurface(part))
 
-        if condition.min_speed_gain is not None or condition.max_speed_gain is not None:
-            for bound in (condition.min_speed_gain, condition.max_speed_gain):
-                if bound is not None and not math.isfinite(bound):
-                    raise ValueError("ball-touch speed changes must be finite")
-            if (condition.min_speed_gain is not None and condition.max_speed_gain is not None
-                    and condition.min_speed_gain > condition.max_speed_gain):
-                raise ValueError("minimum ball-touch speed change must not exceed maximum")
-            return TOUCH_GAIN, (1 << int(condition.surface)) if condition.surface is not None else 63, 0
-
-        if condition.surface is None:
-            return CAR_EVENT, int(Event.BALL_TOUCH), 0
-
-        return TOUCH_SURFACE, 1 << int(condition.surface), 0
+        return dict(
+            kind=TOUCH, entity=CAR,
+            car_parts=car_parts,
+            # The unqualified condition uses the car flag, not touch capture.
+            event_flags=int(Event.BALL_TOUCH) if car_parts == ALL_CAR_PARTS and not has_gain else 0,
+            **_bounds("gain", condition.min_speed_gain, condition.max_speed_gain, "ball-touch speed change"),
+        )
 
     if isinstance(condition, (SurfaceContact, LeaveSurface)):
         if condition.entity not in ("car", "ball"):
             raise ValueError("surface condition entity must be 'car' or 'ball'")
-
-        if isinstance(condition, LeaveSurface) and condition.entity == "car" and condition.surface is None:
-            return CAR_EVENT, int(Event.LEAVE_SURFACE), 0
-
-        mask = int(condition.surface) if condition.surface is not None else 31
-
-        if mask <= 0 or mask & ~31:
+        surfaces = int(condition.surface) if condition.surface is not None else ALL_ARENA_SURFACES
+        if surfaces <= 0 or surfaces & ~ALL_ARENA_SURFACES:
             raise ValueError("invalid arena surface mask")
+        wildcard_leave = (isinstance(condition, LeaveSurface) and condition.entity == "car"
+                          and condition.surface is None)
 
-        if condition.entity == "car":
-            kind = CAR_CONTACT if isinstance(condition, SurfaceContact) else CAR_LEAVE
-        else:
-            kind = BALL_CONTACT if isinstance(condition, SurfaceContact) else BALL_LEAVE
-
-        return kind, mask, 0
+        return dict(
+            kind=CONTACT if isinstance(condition, SurfaceContact) else LEAVE,
+            entity=CAR if condition.entity == "car" else BALL,
+            arena_surfaces=surfaces,
+            event_flags=int(Event.LEAVE_SURFACE) if wildcard_leave else 0,
+        )
 
     if isinstance(condition, Goal):
         sides = {"positive_y": 1, "negative_y": -1}
-
         if target_goal not in sides:
             raise ValueError("target_goal must be 'positive_y' or 'negative_y'")
 
-        return BALL_GOAL, int(Event.GOAL), sides[target_goal]
+        return dict(kind=GOAL, entity=BALL, event_flags=int(Event.GOAL), goal_side=sides[target_goal])
 
     raise ValueError(f"unsupported training condition: {type(condition).__name__}")
 
 
-@dataclass
-class CompiledTrainingPack:
-    source:                object
-    kind:                  th.Tensor
-    mask:                  th.Tensor
-    parameter:             th.Tensor
-    minimum:               th.Tensor
-    maximum:               th.Tensor
-    deadline:              th.Tensor
-    min_ticks:             th.Tensor
-    deadline_from_start:   th.Tensor
-    repeat_kind:           th.Tensor
-    repeat_mask:           th.Tensor
-    repeat_parameter:      th.Tensor
-    repeat_minimum:        th.Tensor
-    repeat_maximum:        th.Tensor
-    max_repeats:           th.Tensor
+@dataclass(frozen=True)
+class ConditionColumns:
+    kind:           th.Tensor
+    entity:         th.Tensor
+    event_flags:    th.Tensor
+    arena_surfaces: th.Tensor
+    car_parts:      th.Tensor
+    state_metric:   th.Tensor
+    goal_side:      th.Tensor
+    state_min:      th.Tensor
+    state_max:      th.Tensor
+    gain_min:       th.Tensor
+    gain_max:       th.Tensor
+    has_state_min:  th.Tensor
+    has_state_max:  th.Tensor
+    has_gain_min:   th.Tensor
+    has_gain_max:   th.Tensor
+
+
+@dataclass(frozen=True)
+class CompiledTrainingPack(ConditionColumns):
+    source:                 TrainingPack
+    deadline:               th.Tensor
+    has_deadline:           th.Tensor
+    min_ticks:              th.Tensor
+    deadline_from_start:    th.Tensor
+    repeat_kind:            th.Tensor
+    repeat_entity:          th.Tensor
+    repeat_event_flags:     th.Tensor
+    repeat_arena_surfaces:  th.Tensor
+    repeat_car_parts:       th.Tensor
+    repeat_state_metric:    th.Tensor
+    repeat_goal_side:       th.Tensor
+    repeat_state_min:       th.Tensor
+    repeat_state_max:       th.Tensor
+    repeat_gain_min:        th.Tensor
+    repeat_gain_max:        th.Tensor
+    repeat_has_state_min:   th.Tensor
+    repeat_has_state_max:   th.Tensor
+    repeat_has_gain_min:    th.Tensor
+    repeat_has_gain_max:    th.Tensor
+    max_repeats:            th.Tensor
+    has_max_repeats:        th.Tensor
     max_total_matches:      th.Tensor
-    valid:                 th.Tensor
-    failure_kind:          th.Tensor
-    failure_mask:          th.Tensor
-    failure_parameter:     th.Tensor
-    failure_minimum:       th.Tensor
-    failure_maximum:       th.Tensor
-    failure_exercise_wide: th.Tensor
-    lengths:               th.Tensor
-    needs_touch:           bool
-    needs_touch_speed:     bool
-    needs_state:           bool
+    has_max_total_matches:  th.Tensor
+    valid:                  th.Tensor
+    failure_kind:           th.Tensor
+    failure_entity:         th.Tensor
+    failure_event_flags:    th.Tensor
+    failure_arena_surfaces: th.Tensor
+    failure_car_parts:      th.Tensor
+    failure_state_metric:   th.Tensor
+    failure_goal_side:      th.Tensor
+    failure_state_min:      th.Tensor
+    failure_state_max:      th.Tensor
+    failure_gain_min:       th.Tensor
+    failure_gain_max:       th.Tensor
+    failure_has_state_min:  th.Tensor
+    failure_has_state_max:  th.Tensor
+    failure_has_gain_min:   th.Tensor
+    failure_has_gain_max:   th.Tensor
+    failure_exercise_wide:  th.Tensor
+    lengths:                th.Tensor
+    needs_touch:            bool
+    needs_touch_speed:      bool
+    needs_state:            bool
+
+    def conditions(
+        self,
+        index:  th.Tensor | tuple[th.Tensor, ...],
+        prefix: str = "",
+    ) -> ConditionColumns:
+        return ConditionColumns(**{
+            name: getattr(self, prefix + name)[index] for name in CONDITION_DTYPES
+        })
 
     @classmethod
-    def compile(cls, pack, device="cuda:0"):
+    def compile(
+        cls,
+        pack:   TrainingPack,
+        device: str | th.device = "cuda:0",
+    ) -> CompiledTrainingPack:
         exercises = pack.exercises
         width = max(len(exercise.stages) for exercise in exercises)
         failures = max(1, max(len(exercise.fail_on) + len(stage.fail_on)
                               for exercise in exercises for stage in exercise.stages))
         shape = (len(exercises), width)
+        columns = {
+            prefix + name: th.zeros((*shape, failures) if prefix == "failure_" else shape, dtype=dtype)
+            for prefix in ("", "repeat_", "failure_")
+            for name, dtype in CONDITION_DTYPES.items()
+        }
+        for name, dtype in {
+            "deadline": th.int64, "has_deadline": th.bool, "min_ticks": th.int64,
+            "deadline_from_start": th.bool, "max_repeats": th.int64,
+            "has_max_repeats": th.bool, "max_total_matches": th.int64,
+            "has_max_total_matches": th.bool, "valid": th.bool,
+        }.items():
+            columns[name] = th.zeros(shape, dtype=dtype)
+        columns["failure_exercise_wide"] = th.zeros((*shape, failures), dtype=th.bool)
 
-        kinds = th.zeros(shape, dtype=th.int64)
-        masks = th.zeros_like(kinds)
-        parameters = th.zeros_like(kinds)
-        minimum = th.full(shape, -math.inf, dtype=th.float32)
-        maximum = th.full(shape, math.inf, dtype=th.float32)
-        deadlines = th.full(shape, -1, dtype=th.int64)
-        min_ticks = th.zeros(shape, dtype=th.int64)
-        deadline_from_start = th.zeros(shape, dtype=th.bool)
-        repeat_kind = th.zeros(shape, dtype=th.int64)
-        repeat_mask = th.zeros_like(repeat_kind)
-        repeat_parameter = th.zeros_like(repeat_kind)
-        repeat_minimum = th.full(shape, -math.inf, dtype=th.float32)
-        repeat_maximum = th.full(shape, math.inf, dtype=th.float32)
-        max_repeats = th.full(shape, -1, dtype=th.int64)
-        max_total_matches = th.full(shape, -1, dtype=th.int64)
-        valid = th.zeros(shape, dtype=th.bool)
-        failure_kind = th.zeros((*shape, failures), dtype=th.int64)
-        failure_mask = th.zeros_like(failure_kind)
-        failure_parameter = th.zeros_like(failure_kind)
-        failure_minimum = th.full((*shape, failures), -math.inf, dtype=th.float32)
-        failure_maximum = th.full((*shape, failures), math.inf, dtype=th.float32)
-        failure_exercise_wide = th.zeros((*shape, failures), dtype=th.bool)
+        needs_touch = needs_touch_speed = needs_state = False
 
-        needs_touch = False
-        needs_touch_speed = False
-        needs_state = False
+        def store(
+            condition:   Condition,
+            target_goal: str,
+            index:       tuple[int, ...],
+            prefix:      str = "",
+        ) -> dict[str, int | float | bool]:
+            nonlocal needs_touch, needs_touch_speed, needs_state
+            values = _condition(condition, target_goal)
+            for name, value in values.items():
+                columns[prefix + name][index] = value
+            gain = values.get("has_gain_min", False) or values.get("has_gain_max", False)
+            needs_touch |= values["kind"] == TOUCH and (values["car_parts"] != ALL_CAR_PARTS or gain)
+            needs_touch_speed |= values["kind"] == TOUCH and gain
+            needs_state |= values["kind"] == STATE
+
+            return values
 
         for index, exercise in enumerate(exercises):
             for stage_index, stage in enumerate(exercise.stages):
-                kind, mask, parameter = _condition(stage.event, exercise.target_goal)
-                kinds[index, stage_index] = kind
-                masks[index, stage_index] = mask
-                parameters[index, stage_index] = parameter
+                # Definitions are mutable; revalidate with the same single source of rules.
+                stage.__post_init__()
+                slot = index, stage_index
+                event = store(stage.event, exercise.target_goal, slot)
+                columns["valid"][slot] = True
+                columns["min_ticks"][slot] = stage.min_ticks
+                columns["deadline_from_start"][slot] = stage.from_exercise_start
+                for name, value in (("deadline", stage.within_ticks), ("max_repeats", stage.max_repeats),
+                                    ("max_total_matches", stage.max_total_matches)):
+                    if value is not None:
+                        columns[name][slot] = value
+                        columns["has_" + name][slot] = True
 
-                if stage.within_ticks is not None and stage.within_ticks <= 0:
-                    raise ValueError("within_ticks must be positive")
-
-                if (not isinstance(stage.min_ticks, int) or isinstance(stage.min_ticks, bool)
-                        or stage.min_ticks < 0 or (stage.within_ticks is not None
-                                                   and stage.min_ticks >= stage.within_ticks)):
-                    raise ValueError("invalid min_ticks")
-
-                deadlines[index, stage_index] = stage.within_ticks if stage.within_ticks is not None else -1
-                min_ticks[index, stage_index] = stage.min_ticks
-                deadline_from_start[index, stage_index] = stage.from_exercise_start
-                valid[index, stage_index] = True
-                max_total_matches[index, stage_index] = (stage.max_total_matches
-                                                        if stage.max_total_matches is not None else -1)
-                needs_touch |= kind in (TOUCH_SURFACE, TOUCH_GAIN)
-                needs_touch_speed |= kind == TOUCH_GAIN
-                needs_state |= kind == STATE_VALUE
-
-                if kind == STATE_VALUE:
-                    if stage.event.minimum is not None:
-                        minimum[index, stage_index] = stage.event.minimum
-                    if stage.event.maximum is not None:
-                        maximum[index, stage_index] = stage.event.maximum
-
-                if kind == TOUCH_GAIN:
-                    if stage.event.min_speed_gain is not None:
-                        minimum[index, stage_index] = stage.event.min_speed_gain
-                    if stage.event.max_speed_gain is not None:
-                        maximum[index, stage_index] = stage.event.max_speed_gain
-
-                if stage.repeat_on is not None:
-                    max_repeats[index, stage_index] = stage.max_repeats if stage.max_repeats is not None else -1
-                    repeat = stage.repeat_on
-                    kind, mask, parameter = _condition(repeat, exercise.target_goal)
-                    repeat_kind[index, stage_index] = kind
-                    repeat_mask[index, stage_index] = mask
-                    repeat_parameter[index, stage_index] = parameter
-                    needs_touch |= kind in (TOUCH_SURFACE, TOUCH_GAIN)
-                    needs_touch_speed |= kind == TOUCH_GAIN
-                    needs_state |= kind == STATE_VALUE
-
-                    if kind in (STATE_VALUE, TOUCH_GAIN):
-                        lower = repeat.minimum if kind == STATE_VALUE else repeat.min_speed_gain
-                        upper = repeat.maximum if kind == STATE_VALUE else repeat.max_speed_gain
-                        if lower is not None:
-                            repeat_minimum[index, stage_index] = lower
-                        if upper is not None:
-                            repeat_maximum[index, stage_index] = upper
-
-                if stage.max_total_matches is not None:
-                    event_kind = kinds[index, stage_index].item()
-                    repeated_kind = repeat_kind[index, stage_index].item()
-                    if event_kind != TOUCH_GAIN and repeated_kind != TOUCH_GAIN:
-                        raise ValueError("max_total_matches requires a speed-qualified touch or repeat")
+                repeat = (store(stage.repeat_on, exercise.target_goal, slot, "repeat_")
+                          if stage.repeat_on is not None else {})
+                if stage.max_total_matches is not None and not any(
+                    condition.get("kind") == TOUCH and (
+                        condition.get("has_gain_min", False) or condition.get("has_gain_max", False)
+                    ) for condition in (event, repeat)
+                ):
+                    raise ValueError("max_total_matches requires a speed-qualified touch or repeat")
 
                 for failure_index, condition in enumerate(exercise.fail_on + stage.fail_on):
-                    kind, mask, parameter = _condition(condition, exercise.target_goal)
-                    failure_kind[index, stage_index, failure_index] = kind
-                    failure_mask[index, stage_index, failure_index] = mask
-                    failure_parameter[index, stage_index, failure_index] = parameter
-                    failure_exercise_wide[index, stage_index, failure_index] = failure_index < len(exercise.fail_on)
-                    needs_touch |= kind in (TOUCH_SURFACE, TOUCH_GAIN)
-                    needs_touch_speed |= kind == TOUCH_GAIN
-                    needs_state |= kind == STATE_VALUE
-
-                    if kind == STATE_VALUE:
-                        if condition.minimum is not None:
-                            failure_minimum[index, stage_index, failure_index] = condition.minimum
-                        if condition.maximum is not None:
-                            failure_maximum[index, stage_index, failure_index] = condition.maximum
-
-                    if kind == TOUCH_GAIN:
-                        if condition.min_speed_gain is not None:
-                            failure_minimum[index, stage_index, failure_index] = condition.min_speed_gain
-                        if condition.max_speed_gain is not None:
-                            failure_maximum[index, stage_index, failure_index] = condition.max_speed_gain
+                    failure_slot = *slot, failure_index
+                    store(condition, exercise.target_goal, failure_slot, "failure_")
+                    columns["failure_exercise_wide"][failure_slot] = failure_index < len(exercise.fail_on)
 
         return cls(
-            source                = pack,
-            kind                  = kinds.to(device),
-            mask                  = masks.to(device),
-            parameter             = parameters.to(device),
-            minimum               = minimum.to(device),
-            maximum               = maximum.to(device),
-            deadline              = deadlines.to(device),
-            min_ticks             = min_ticks.to(device),
-            deadline_from_start   = deadline_from_start.to(device),
-            repeat_kind           = repeat_kind.to(device),
-            repeat_mask           = repeat_mask.to(device),
-            repeat_parameter      = repeat_parameter.to(device),
-            repeat_minimum        = repeat_minimum.to(device),
-            repeat_maximum        = repeat_maximum.to(device),
-            max_repeats           = max_repeats.to(device),
-            max_total_matches     = max_total_matches.to(device),
-            valid                 = valid.to(device),
-            failure_kind          = failure_kind.to(device),
-            failure_mask          = failure_mask.to(device),
-            failure_parameter     = failure_parameter.to(device),
-            failure_minimum       = failure_minimum.to(device),
-            failure_maximum       = failure_maximum.to(device),
-            failure_exercise_wide = failure_exercise_wide.to(device),
-            lengths               = th.tensor([len(e.stages) for e in exercises], device=device),
-            needs_touch           = needs_touch,
-            needs_touch_speed     = needs_touch_speed,
-            needs_state           = needs_state,
+            source=pack,
+            **{name: value.to(device) for name, value in columns.items()},
+            lengths=th.tensor([len(e.stages) for e in exercises], device=device),
+            needs_touch=needs_touch, needs_touch_speed=needs_touch_speed, needs_state=needs_state,
         )
 
 
@@ -298,32 +333,61 @@ class TrainingStep:
     repeated:  th.Tensor | None = None
 
 
+def _has_gain(condition: ConditionColumns) -> th.Tensor:
+    return (condition.kind == TOUCH) & (condition.has_gain_min | condition.has_gain_max)
+
+
+def _gain_matches(
+    condition: ConditionColumns,
+    touch:     BallTouchBatch,
+) -> th.Tensor:
+    surfaces = touch.tick_surfaces[:, :, 0].unsqueeze(-1)
+    gain = (touch.tick_speed[:, :, 0] - touch.tick_speed_before[:, :, 0]).unsqueeze(-1)
+    return (((surfaces & condition.car_parts.unsqueeze(0)) != 0) &
+            (~condition.has_gain_min.unsqueeze(0) | (gain >= condition.gain_min.unsqueeze(0))) &
+            (~condition.has_gain_max.unsqueeze(0) | (gain <= condition.gain_max.unsqueeze(0))))
+
+
 class TrainingPackRuntime:
 
-    def __init__(self, pack: CompiledTrainingPack, n_sim: int):
+    def __init__(
+        self,
+        pack:      CompiledTrainingPack,
+        n_sim:     int,
+        *,
+        team_sign: int | th.Tensor = 1,
+    ) -> None:
         if n_sim < 1:
             raise ValueError("n_sim must be positive")
 
         self.pack = pack
         self.n_sim = n_sim
         device = pack.kind.device
+        from .targets import _feature_constants
+
+        self._feature_constants = _feature_constants(device)
+        # As in CarlState: blue attacks positive Y (+1), orange negative Y (-1).
+        self.team_sign = th.broadcast_to(th.as_tensor(team_sign, dtype=th.float32, device=device), (n_sim,)).clone()
+        th._assert_async(((self.team_sign == 1) | (self.team_sign == -1)).all(), "team_sign must be +1 or -1")
 
         self.exercise_index = th.zeros(n_sim, dtype=th.int64, device=device)
         self.stage_index = th.zeros_like(self.exercise_index)
-        self.ticks_remaining = th.full_like(self.exercise_index, -1)
+        self.ticks_remaining = th.zeros_like(self.exercise_index)
         self.elapsed_ticks = th.zeros_like(self.exercise_index)
         self.stage_elapsed_ticks = th.zeros_like(self.exercise_index)
         self.repeat_count = th.zeros_like(self.exercise_index)
         self.total_matches = th.zeros_like(self.exercise_index)
         self.active = th.zeros(n_sim, dtype=th.bool, device=device)
 
-    def reset(self, selected: th.Tensor, exercise_index: th.Tensor):
+    def reset(
+        self,
+        selected:       th.Tensor,
+        exercise_index: th.Tensor,
+    ) -> None:
         if selected.dtype != th.bool or selected.shape != (self.n_sim,):
             raise ValueError("selected must be a per-simulation boolean mask")
-
         if exercise_index.dtype != th.int64 or exercise_index.shape != (self.n_sim,):
             raise ValueError("exercise_index must be a per-simulation int64 tensor")
-
         if selected.device != self.active.device or exercise_index.device != self.active.device:
             raise ValueError("reset tensors must be on the runtime device")
 
@@ -341,84 +405,88 @@ class TrainingPackRuntime:
         self.total_matches = th.where(selected, 0, self.total_matches)
         self.active = self.active | selected
 
-    def target_sequence(self):
+    def target_sequence(self) -> TrainingTarget:
         from .targets import training_target
-
         return training_target(self)
 
-    def _matches(self, kind, mask, parameter, minimum, maximum, events, state_values):
+    def _matches(
+        self,
+        condition:    ConditionColumns,
+        events:       CarlEvents,
+        state_values: th.Tensor | None,
+    ) -> th.Tensor:
         car = events.cars.flags[:, 0].unsqueeze(-1)
         ball = events.ball.flags.unsqueeze(-1)
         goal_side = events.ball.goal_side.unsqueeze(-1)
-
         car_contact = events.cars.surface_contacted[:, 0].unsqueeze(-1)
         car_left = events.cars.surface_left[:, 0].unsqueeze(-1)
         ball_contact = events.ball.surface_entered.unsqueeze(-1)
         ball_left = events.ball.surface_left.unsqueeze(-1)
-
         touch = (events.ball_touches.surfaces[:, 0].unsqueeze(-1)
                  if events.ball_touches is not None else th.zeros_like(car))
 
-        state_match = th.zeros_like(kind, dtype=th.bool)
-        speed_match = th.zeros_like(kind, dtype=th.bool)
-
+        state_match = th.zeros_like(condition.kind, dtype=th.bool)
+        speed_match = th.zeros_like(state_match)
+        has_gain = _has_gain(condition)
         if (events.ball_touches is not None and events.ball_touches.tick_speed is not None
                 and events.ball_touches.tick_speed_before is not None):
-            surfaces = events.ball_touches.tick_surfaces[:, :, 0].unsqueeze(-1)
-            speed = (events.ball_touches.tick_speed[:, :, 0] -
-                     events.ball_touches.tick_speed_before[:, :, 0]).unsqueeze(-1)
-            speed_match = (((surfaces & mask.unsqueeze(0)) != 0) &
-                           (speed >= minimum.unsqueeze(0)) & (speed <= maximum.unsqueeze(0))).any(dim=0)
+            speed_match = _gain_matches(condition, events.ball_touches).any(dim=0)
 
         if state_values is not None:
-            values = state_values.gather(1, mask.clamp(0, len(STATE_METRICS) - 1))
-            state_match = (kind == STATE_VALUE) & (values >= minimum) & (values <= maximum)
+            values = state_values.gather(1, condition.state_metric)
+            state_match = ((condition.kind == STATE) &
+                           (~condition.has_state_min | (values >= condition.state_min)) &
+                           (~condition.has_state_max | (values <= condition.state_max)))
             # Goal detection resets the ball before the transition state is captured.
-            # Its state metrics therefore cannot describe the scoring transition.
             goal = (ball & int(Event.GOAL)) != 0
-            state_match = state_match & ~(goal & (mask <= STATE_METRICS["ball_speed"]))
+            state_match = state_match & ~(goal & (condition.entity == BALL))
+
+        is_car = condition.entity == CAR
+        flag_leave = (condition.event_flags & int(Event.LEAVE_SURFACE)) != 0
+        flag_touch = (condition.event_flags & int(Event.BALL_TOUCH)) != 0
+        contact = th.where(is_car, car_contact, ball_contact) & condition.arena_surfaces
+        ceiling = (is_car & ((condition.arena_surfaces & int(ArenaSurface.CEILING)) != 0) &
+                   ((car & int(Event.CEILING_BODY_CONTACT)) != 0))
+        left = th.where(is_car, car_left, ball_left) & condition.arena_surfaces
 
         return (
-            ((kind == CAR_EVENT) & ((car & mask) != 0)) |
-            ((kind == BALL_GOAL) & ((ball & mask) != 0) & (goal_side == parameter)) |
-            ((kind == CAR_CONTACT) & (((car_contact & mask) != 0) |
-             (((mask & int(ArenaSurface.CEILING)) != 0) & ((car & int(Event.CEILING_BODY_CONTACT)) != 0)))) |
-            ((kind == CAR_LEAVE) & ((car_left & mask) != 0)) |
-            ((kind == BALL_CONTACT) & ((ball_contact & mask) != 0)) |
-            ((kind == BALL_LEAVE) & ((ball_left & mask) != 0)) |
-            ((kind == TOUCH_SURFACE) & ((touch & mask) != 0)) |
-            ((kind == TOUCH_GAIN) & speed_match) |
+            ((condition.kind == EVENT) & ((car & condition.event_flags) != 0)) |
+            ((condition.kind == GOAL) & ((ball & int(Event.GOAL)) != 0) & (goal_side == condition.goal_side)) |
+            ((condition.kind == CONTACT) & ((contact != 0) | ceiling)) |
+            ((condition.kind == LEAVE) & th.where(flag_leave, (car & int(Event.LEAVE_SURFACE)) != 0, left != 0)) |
+            ((condition.kind == TOUCH) & th.where(
+                has_gain, speed_match,
+                th.where(flag_touch, (car & int(Event.BALL_TOUCH)) != 0, (touch & condition.car_parts) != 0),
+            )) |
             state_match
         )
 
-    def step(self, events, frameskip: int, state=None) -> TrainingStep:
+    def step(
+        self,
+        events:    CarlEvents,
+        frameskip: int,
+        state:     CarlState | None = None,
+    ) -> TrainingStep:
         if frameskip < 1:
             raise ValueError("frameskip must be positive")
-
         if events.cars is None or events.ball is None:
             raise ValueError("training requires event capture")
-
         if events.cars.flags.shape != (self.n_sim, 1):
             raise ValueError("training requires one car per simulation")
-
         if self.pack.needs_touch and events.ball_touches is None:
             raise ValueError("surface-qualified ball touches require touch capture")
-
         if self.pack.needs_touch_speed and (events.ball_touches.tick_speed is None
                                             or events.ball_touches.tick_surfaces is None
                                             or events.ball_touches.tick_speed_before is None):
             raise ValueError("ball-touch speed conditions require per-tick touch capture")
-
         if self.pack.needs_state and state is None:
             raise ValueError("state conditions require the transition state")
 
         events.wait()
         state_values = None
-
         if self.pack.needs_state:
             if state.ball_position.shape != (self.n_sim, 3) or state.car_position.shape != (self.n_sim, 1, 3):
                 raise ValueError("state conditions require one car per simulation")
-
             state_values = th.stack((
                 state.ball_position[:, 0],
                 state.ball_position[:, 1],
@@ -432,53 +500,35 @@ class TrainingPackRuntime:
             ), dim=-1)
 
         index = self.exercise_index, self.stage_index
-        kind = self.pack.kind[index].unsqueeze(-1)
-        mask = self.pack.mask[index].unsqueeze(-1)
-        parameter = self.pack.parameter[index].unsqueeze(-1)
-
-        matched = self._matches(
-            kind, mask, parameter, self.pack.minimum[index].unsqueeze(-1),
-            self.pack.maximum[index].unsqueeze(-1), events, state_values,
-        ).squeeze(-1)
+        expanded_index = self.exercise_index.unsqueeze(-1), self.stage_index.unsqueeze(-1)
+        condition = self.pack.conditions(expanded_index)
+        repeat = self.pack.conditions(expanded_index, "repeat_")
+        matched = self._matches(condition, events, state_values).squeeze(-1)
         elapsed_for_minimum = th.where(self.pack.deadline_from_start[index], self.elapsed_ticks,
                                        self.stage_elapsed_ticks)
         matched = matched & (elapsed_for_minimum >= self.pack.min_ticks[index])
-        repeat_match = self._matches(
-            self.pack.repeat_kind[index].unsqueeze(-1), self.pack.repeat_mask[index].unsqueeze(-1),
-            self.pack.repeat_parameter[index].unsqueeze(-1), self.pack.repeat_minimum[index].unsqueeze(-1),
-            self.pack.repeat_maximum[index].unsqueeze(-1), events, state_values,
-        ).squeeze(-1)
+        repeat_match = self._matches(repeat, events, state_values).squeeze(-1)
         repeat_events = repeat_match.long()
         total_events = th.zeros_like(repeat_events)
+        event_has_gain = _has_gain(condition).squeeze(-1)
+        repeat_has_gain = _has_gain(repeat).squeeze(-1)
 
         if events.ball_touches is not None and events.ball_touches.tick_speed_before is not None:
-            touch = events.ball_touches
-            surfaces = touch.tick_surfaces[:, :, 0]
-            gain = touch.tick_speed[:, :, 0] - touch.tick_speed_before[:, :, 0]
-            gain_count = (((surfaces & self.pack.repeat_mask[index].unsqueeze(0)) != 0) &
-                          (gain >= self.pack.repeat_minimum[index].unsqueeze(0)) &
-                          (gain <= self.pack.repeat_maximum[index].unsqueeze(0))).sum(dim=0)
-            repeat_events = th.where(self.pack.repeat_kind[index] == TOUCH_GAIN, gain_count, repeat_events)
-            event_count = (((surfaces & self.pack.mask[index].unsqueeze(0)) != 0) &
-                           (gain >= self.pack.minimum[index].unsqueeze(0)) &
-                           (gain <= self.pack.maximum[index].unsqueeze(0))).sum(dim=0)
-            total_events = th.where(self.pack.kind[index] == TOUCH_GAIN, event_count, repeat_events)
-        failed_event = self._matches(
-            self.pack.failure_kind[index], self.pack.failure_mask[index],
-            self.pack.failure_parameter[index], self.pack.failure_minimum[index],
-            self.pack.failure_maximum[index], events, state_values,
-        ).any(dim=-1)
+            gain_count = _gain_matches(repeat, events.ball_touches).sum(dim=0).squeeze(-1)
+            repeat_events = th.where(repeat_has_gain, gain_count, repeat_events)
+            event_count = _gain_matches(condition, events.ball_touches).sum(dim=0).squeeze(-1)
+            total_events = th.where(event_has_gain, event_count, repeat_events)
+        failed_event = self._matches(self.pack.conditions(index, "failure_"), events, state_values).any(dim=-1)
 
         remaining = self.ticks_remaining
-        has_deadline = self.pack.deadline[index] >= 0
+        has_deadline = self.pack.has_deadline[index]
         in_time = ~has_deadline | (remaining >= frameskip)
         timed_out = has_deadline & (remaining <= frameskip) & ~((matched | repeat_match) & in_time)
-
         limit = self.pack.max_repeats[index]
-        overflow = (limit >= 0) & (self.repeat_count + repeat_events > limit) & ~matched & in_time
+        overflow = self.pack.has_max_repeats[index] & (self.repeat_count + repeat_events > limit) & ~matched & in_time
         total_limit = self.pack.max_total_matches[index]
-        total_overflow = ((total_limit >= 0) & (self.total_matches + total_events > total_limit) &
-                          ~((self.pack.kind[index] != TOUCH_GAIN) & matched) & in_time)
+        total_overflow = (self.pack.has_max_total_matches[index] & (self.total_matches + total_events > total_limit) &
+                          ~(~event_has_gain & matched) & in_time)
         failed = self.active & (failed_event | overflow | total_overflow)
         timed_out = self.active & timed_out & ~failed
         advanced = self.active & matched & in_time & ~failed & ~timed_out
@@ -493,14 +543,13 @@ class TrainingPackRuntime:
             next_deadline - exercise_elapsed, next_deadline,
         )
         elapsed = th.where(has_deadline, remaining - frameskip, remaining)
-
         self.ticks_remaining = th.where(
             self.active, th.where(advanced & ~succeeded, next_deadline,
                                   th.where(repeated, self.pack.deadline[index], elapsed)), remaining,
         )
         self.stage_index = next_stage
         self.repeat_count = th.where(advanced, 0, self.repeat_count + repeated.long() * repeat_events)
-        counted = self.active & ~failed & ~timed_out & in_time & (total_limit >= 0)
+        counted = self.active & ~failed & ~timed_out & in_time & self.pack.has_max_total_matches[index]
         self.total_matches = self.total_matches + counted.long() * total_events
         self.elapsed_ticks = th.where(self.active, exercise_elapsed, self.elapsed_ticks)
         self.stage_elapsed_ticks = th.where(self.active, th.where(advanced, 0, self.stage_elapsed_ticks + frameskip),
@@ -513,21 +562,28 @@ class TrainingPackRuntime:
 
 class TrainingPackTerminationManager:
 
-    def __init__(self, runtime: TrainingPackRuntime, provider):
+    def __init__(
+        self,
+        runtime:  TrainingPackRuntime,
+        provider: TrainingPackResetProvider,
+    ) -> None:
         if runtime.n_sim != len(provider.exercise_index):
             raise ValueError("runtime and reset provider must have the same simulation count")
-
         if runtime.pack.kind.shape[0] != len(provider.pack.exercises):
             raise ValueError("runtime and reset provider must have the same exercise count")
-
         if runtime.pack.source is not provider.pack:
             raise ValueError("runtime and reset provider must use the same training pack")
 
         self.runtime = runtime
         self.provider = provider
 
-    def reset(self, reset_mask: th.Tensor):
+    def reset(self, reset_mask: th.Tensor) -> None:
         self.runtime.reset(reset_mask, self.provider.exercise_index)
 
-    def step(self, events, frameskip: int, state=None) -> TrainingStep:
+    def step(
+        self,
+        events:    CarlEvents,
+        frameskip: int,
+        state:     CarlState | None = None,
+    ) -> TrainingStep:
         return self.runtime.step(events, frameskip, state=state)

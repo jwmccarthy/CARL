@@ -10,7 +10,7 @@ from carl.training import (
 
 class TrainingDefinitionTests(unittest.TestCase):
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.initial = InitialState(
             ego = CarState(
                 placement = OnSurface(position=Box2D((-500, -1000), (500, 0))),
@@ -22,14 +22,14 @@ class TrainingDefinitionTests(unittest.TestCase):
             ),
         )
 
-    def test_pack_definition(self):
+    def test_pack_definition(self) -> None:
         exercise = Exercise(
             name    = "Aerial touch",
             initial = self.initial,
             stages  = [
                 Stage(LeaveSurface(), within_ticks=120),
                 Stage(
-                    BallTouch(surface=ContactSurface.FRONT, min_height=400),
+                    BallTouch(surface=ContactSurface.FRONT),
                     within_ticks = 240,
                     fail_on      = [SurfaceContact()],
                 ),
@@ -42,7 +42,7 @@ class TrainingDefinitionTests(unittest.TestCase):
         self.assertEqual(exercise.stages[1].within_ticks, 240)
         self.assertEqual(exercise.initial.ego.boost, Uniform(60, 100))
 
-    def test_airborne_physics(self):
+    def test_airborne_physics(self) -> None:
         car = CarState(
             placement        = InAir((0, 0, 800), Euler(pitch=Uniform(-0.5, 0.5))),
             velocity         = (100, 200, -300),
@@ -53,13 +53,13 @@ class TrainingDefinitionTests(unittest.TestCase):
         self.assertEqual(car.velocity, (100, 200, -300))
         self.assertEqual(car.angular_velocity[0], Uniform(-1, 1))
 
-    def test_optional_stage_settings(self):
+    def test_optional_stage_settings(self) -> None:
         stage = Stage(FlipReset())
 
         self.assertIsNone(stage.within_ticks)
         self.assertEqual(stage.fail_on, [])
 
-    def test_mutable_definitions_and_independent_defaults(self):
+    def test_mutable_definitions_and_independent_defaults(self) -> None:
         first = Stage(FlipReset())
         second = Stage(FlipReset())
 
@@ -69,8 +69,8 @@ class TrainingDefinitionTests(unittest.TestCase):
         self.assertEqual(first.within_ticks, 120)
         self.assertEqual(second.fail_on, [])
 
-    def test_basic_validation(self):
-        for ticks in (0, -1):
+    def test_basic_validation(self) -> None:
+        for ticks in (0, -1, True, 1.5, float("inf")):
             with self.subTest(ticks=ticks), self.assertRaises(ValueError):
                 Stage(BallTouch(), within_ticks=ticks)
         with self.assertRaises(ValueError):

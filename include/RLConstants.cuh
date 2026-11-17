@@ -17,6 +17,11 @@ constexpr CARL_HD Vec3 WORLD_AXES[3] = { WORLD_X, WORLD_Y, WORLD_Z };
 
 // --- Arena dimensions ---
 
+// Flat Soccar collision planes, distinct from the broader observation bounds.
+constexpr float SOCCAR_SIDE_WALL = 4096.f;
+constexpr float SOCCAR_BACK_WALL = 5120.f;
+constexpr float SOCCAR_CEILING = 2048.f;
+
 constexpr CARL_HD Vec3 ARENA_MIN = { -4108.f, -6000.f,  -14.f };
 constexpr CARL_HD Vec3 ARENA_MAX = {  4108.f,  6000.f, 2076.f };
 constexpr CARL_HD Vec3 OBS_POSITION_SCALE = {
@@ -243,7 +248,7 @@ constexpr float BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
 // --- Goal detection ---
 
-constexpr float SOCCAR_GOAL_CENTER_Y = 5120.f;
+constexpr float SOCCAR_GOAL_CENTER_Y = SOCCAR_BACK_WALL;
 constexpr float SOCCAR_GOAL_CENTER_Z = 321.3875f;
 constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5124.25f;
 

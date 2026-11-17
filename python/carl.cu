@@ -53,7 +53,8 @@ static py::object tensorToCapsule(DLManagedTensor* tensor)
 template<typename T>
 static py::object eventTensor(
     const DeviceArray<T>& array,
-    int64_t* shape, int ndim)
+    int64_t* shape,
+    int ndim)
 {
     if (!array.ptr)
     {
@@ -305,12 +306,19 @@ public:
     }
 
     EnvWrapper(
-        int nSim, int nBlue, int nOrange, int seed, int frameskip,
-        bool invertOrange, bool normalize,
-        bool captureBallTouches, bool captureEvents)
+        int nSim,
+        int nBlue,
+        int nOrange,
+        int seed,
+        int frameskip,
+        bool invertOrange,
+        bool normalize,
+        bool captureBallTouches,
+        bool captureEvents,
+        bool egoController)
         : env(nSim, nBlue, nOrange, seed)
         , io(nSim, env.getNCars(), env.getStream(), invertOrange, normalize,
-             frameskip, captureBallTouches, captureEvents)
+             frameskip, captureBallTouches, captureEvents, egoController)
         , frameskip(frameskip)
     {
         if (frameskip < 1)
@@ -399,7 +407,9 @@ public:
 
 
     void setBall(
-        py::object position, py::object velocity, py::object angularVelocity,
+        py::object position,
+        py::object velocity,
+        py::object angularVelocity,
         py::object simulationIndices)
     {
         int nSelected = env.getNSim();
@@ -436,10 +446,14 @@ public:
     }
 
     void setCar(
-        py::object position, py::object rotation,
-        py::object velocity, py::object angularVelocity,
-        py::object demoed, py::object boost,
-        py::object internalState, py::object simulationIndices)
+        py::object position,
+        py::object rotation,
+        py::object velocity,
+        py::object angularVelocity,
+        py::object demoed,
+        py::object boost,
+        py::object internalState,
+        py::object simulationIndices)
     {
         int nSelected = env.getNSim();
         std::optional<TensorView> selection;
@@ -504,7 +518,7 @@ public:
             internalData = static_cast<const float*>(data(internalTensor->tensor));
         }
 
-        io.setCar(env.getDeviceState(), env.getDeviceWorkspace(),
+        io.setCar(env.getDeviceState(), env.getDeviceWorkspace(), env.getDeviceArena(),
             static_cast<const float*>(data(pos.tensor)),
             static_cast<const float*>(data(rot.tensor)),
             static_cast<const float*>(data(vel.tensor)),
@@ -523,8 +537,11 @@ public:
         retainInputs(std::move(inputs));
     }
 
-    void setMatchState(py::object blueScore, py::object orangeScore,
-                       py::object episodeTicks, py::object simulationIndices)
+    void setMatchState(
+        py::object blueScore,
+        py::object orangeScore,
+        py::object episodeTicks,
+        py::object simulationIndices)
     {
         int nSelected = env.getNSim();
         std::optional<TensorView> selection;
@@ -743,6 +760,8 @@ PYBIND11_MODULE(_carl, m)
     m.attr("OBS_EGO_BOOST_INDEX") = OBS_BALL + OBS_BOOST;
     m.attr("OBS_EGO_ON_GROUND_INDEX") = OBS_BALL + OBS_ON_GROUND;
     m.attr("OBS_EGO_FLIP_INDEX") = OBS_EGO_FLIP_INDEX;
+    m.attr("OBS_EGO_CONTROLLER") = OBS_EGO_CONTROLLER;
+    m.attr("OBS_CONTROLLER_VERSION") = OBS_CONTROLLER_VERSION;
     m.attr("OBS_EGO_DODGE_TIME_INDEX") = OBS_EGO_DODGE_TIME_INDEX;
 
     m.attr("EVENT_BALL_TOUCH") = static_cast<int>(EVENT_BALL_TOUCH);
@@ -782,6 +801,9 @@ PYBIND11_MODULE(_carl, m)
     m.attr("BALL_REST_Z") = BALL_REST_Z;
     m.attr("ARENA_MIN") = py::make_tuple(ARENA_MIN.x, ARENA_MIN.y, ARENA_MIN.z);
     m.attr("ARENA_MAX") = py::make_tuple(ARENA_MAX.x, ARENA_MAX.y, ARENA_MAX.z);
+    m.attr("SOCCAR_SIDE_WALL") = SOCCAR_SIDE_WALL;
+    m.attr("SOCCAR_BACK_WALL") = SOCCAR_BACK_WALL;
+    m.attr("SOCCAR_CEILING") = SOCCAR_CEILING;
     m.attr("CAR_INTERNAL_SIZE") = static_cast<int>(CAR_INTERNAL_SIZE);
     m.attr("CAR_INT_ON_GROUND") = static_cast<int>(CAR_INT_ON_GROUND);
     m.attr("BOOST_MAX") = BOOST_MAX;
@@ -836,14 +858,15 @@ PYBIND11_MODULE(_carl, m)
         });
 
     py::class_<EnvWrapper>(m, "Env")
-        .def(py::init<int, int, int, int, int, bool, bool, bool, bool>(),
+        .def(py::init<int, int, int, int, int, bool, bool, bool, bool, bool>(),
              py::arg("n_sim"), py::arg("n_blue"),
              py::arg("n_orange"), py::arg("seed"),
              py::arg("frameskip") = 1,
              py::arg("invert_orange") = true,
              py::arg("normalize") = false,
              py::arg("capture_ball_touches") = false,
-             py::arg("capture_events") = false)
+             py::arg("capture_events") = false,
+             py::arg("ego_controller") = false)
 
         .def_property_readonly("events", &EnvWrapper::getEvents,
                               py::return_value_policy::reference_internal)

@@ -11,7 +11,7 @@ from carl.gymnasium import CARLTorchVectorEnv, StepContext
 @unittest.skipUnless(th.cuda.is_available(), "requires a CUDA GPU")
 class EventViewTests(unittest.TestCase):
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.env = _carl.Env(
             2, 1, 0, 7, frameskip=8,
             capture_events=True, capture_ball_touches=True,
@@ -19,7 +19,7 @@ class EventViewTests(unittest.TestCase):
         self.actions = th.zeros((2, 1, 7), device="cuda")
         self.actions[..., -1] = 1
 
-    def test_views_share_native_storage(self):
+    def test_views_share_native_storage(self) -> None:
         self.env.step_continuous(self.actions)
 
         with mock.patch("torch.cuda.synchronize", side_effect=AssertionError("blocking sync")):
@@ -34,7 +34,7 @@ class EventViewTests(unittest.TestCase):
         self.assertEqual(batch.ego.jumped.shape, (2,))
         self.assertEqual(batch.ego.flags.data_ptr(), batch.cars.flags.data_ptr())
 
-    def test_snapshot_survives_step_reset_and_resize(self):
+    def test_snapshot_survives_step_reset_and_resize(self) -> None:
         self.env.step_continuous(self.actions)
         views = CarlEvents.from_native(self.env.events)
         snapshot = views.snapshot()
@@ -49,7 +49,7 @@ class EventViewTests(unittest.TestCase):
         self.assertEqual(snapshot.cars.flags.shape, (2, 1))
         self.assertTrue(snapshot.cars.jumped.all().item())
 
-    def test_cross_stream_reads_complete_before_buffer_reuse(self):
+    def test_cross_stream_reads_complete_before_buffer_reuse(self) -> None:
         consumer = th.cuda.Stream()
         consumer.wait_stream(th.cuda.current_stream())
         finished = th.cuda.Event()
@@ -71,7 +71,7 @@ class EventViewTests(unittest.TestCase):
         self.assertTrue(snapshot.cars.jumped.all().item())
         self.assertFalse(latest.cars.jumped.any().item())
 
-    def test_touch_only_capture(self):
+    def test_touch_only_capture(self) -> None:
         env = _carl.Env(1, 1, 0, 7, capture_ball_touches=True)
         batch = CarlEvents.from_native(env.events)
 
@@ -79,10 +79,10 @@ class EventViewTests(unittest.TestCase):
         self.assertIsNone(batch.ball)
         self.assertEqual(batch.ball_touches.surfaces.tolist(), [[0]])
 
-    def test_reward_context_uses_environment_event_batch(self):
+    def test_reward_context_uses_environment_event_batch(self) -> None:
         received = []
 
-        def reward(context):
+        def reward(context: StepContext) -> th.Tensor:
             self.assertIsInstance(context, StepContext)
             received.append(context.events)
             return context.events.cars.jumped.float()
@@ -110,17 +110,17 @@ class EventViewTests(unittest.TestCase):
         self.assertEqual(snapshot.score_delta.tolist(), [0, 0])
         self.assertTrue(snapshot.cars.jumped.all().item())
 
-    def test_ego_requires_one_car(self):
+    def test_ego_requires_one_car(self) -> None:
         env = _carl.Env(1, 1, 1, 7, capture_events=True)
         batch = CarlEvents.from_native(env.events)
 
         with self.assertRaises(ValueError):
             _ = batch.ego
 
-    def test_context_observation_is_before_autoreset(self):
+    def test_context_observation_is_before_autoreset(self) -> None:
         received = []
 
-        def reward(context):
+        def reward(context: StepContext) -> th.Tensor:
             received.append(context)
             return th.zeros((2, 1), device="cuda")
 

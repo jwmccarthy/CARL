@@ -7,12 +7,14 @@
 #include "State/GameState.cuh"
 #include "State/Workspace.cuh"
 
+struct ArenaMesh;
+
 // --- DLPack capsule helpers ---
 
 DLManagedTensor* makeFloatTensor(
-    void* data, 
-    int64_t* shape, 
-    int ndim, 
+    void* data,
+    int64_t* shape,
+    int ndim,
     int deviceId = 0);
 
 DLManagedTensor* makeIntTensor(
@@ -65,6 +67,7 @@ private:
     int  noTouchTimeoutTicks = 0;
     bool invertOrange;
     bool normalize;
+    bool egoController;
 
     cudaStream_t stream;
     KernelConfig perSimConfig;
@@ -74,9 +77,15 @@ public:
     EventState events;
 
     EnvIO(
-        int nSim, int nCars, cudaStream_t stream,
-        bool invertOrange, bool normalize, int frameskip = 1,
-        bool captureBallTouches = false, bool captureEvents = false);
+        int nSim,
+        int nCars,
+        cudaStream_t stream,
+        bool invertOrange,
+        bool normalize,
+        int frameskip = 1,
+        bool captureBallTouches = false,
+        bool captureEvents = false,
+        bool egoController = false);
     ~EnvIO();
 
     // Pack state into observation buffer
@@ -118,21 +127,40 @@ public:
 
     // Set state from contiguous device buffers
     void setBall(
-        GameState* d_state, const float* pos, const float* vel, const float* ang,
-        const int64_t* simulationIndices = nullptr, int nSelected = -1);
+        GameState* d_state,
+        const float* pos,
+        const float* vel,
+        const float* ang,
+        const int64_t* simulationIndices = nullptr,
+        int nSelected = -1);
 
     void setCar(
-        GameState* d_state, Workspace* d_space,
-        const float* pos, const float* rot, 
-        const float* vel, const float* ang,
-        const void* demoed, bool byteDemoed,
-        const float* boost = nullptr, const float* internalState = nullptr,
-        const int64_t* simulationIndices = nullptr, int nSelected = -1);
-    void setMatchState(GameState* d_state, const int32_t* blueScore,
-        const int32_t* orangeScore, const int32_t* episodeTicks,
-        const int64_t* simulationIndices = nullptr, int nSelected = -1);
-    void resetBoostPads(GameState* d_state,
-        const int64_t* simulationIndices = nullptr, int nSelected = -1);
+        GameState* d_state,
+        Workspace* d_space,
+        ArenaMesh* d_arena,
+        const float* pos,
+        const float* rot,
+        const float* vel,
+        const float* ang,
+        const void* demoed,
+        bool byteDemoed,
+        const float* boost = nullptr,
+        const float* internalState = nullptr,
+        const int64_t* simulationIndices = nullptr,
+        int nSelected = -1);
+
+    void setMatchState(
+        GameState* d_state,
+        const int32_t* blueScore,
+        const int32_t* orangeScore,
+        const int32_t* episodeTicks,
+        const int64_t* simulationIndices = nullptr,
+        int nSelected = -1);
+
+    void resetBoostPads(
+        GameState* d_state,
+        const int64_t* simulationIndices = nullptr,
+        int nSelected = -1);
 
     // Properties
     int getObsDim() const { return obsDim; }

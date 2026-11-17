@@ -9,7 +9,7 @@ class Uniform:
     low:  float
     high: float
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.low > self.high:
             raise ValueError("low must not exceed high")
 
@@ -47,7 +47,7 @@ class OnSurface:
     heading:  Scalar       = 0.0
     side:     int          = 1
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.side not in (-1, 1):
             raise ValueError("side must be -1 or 1")
 

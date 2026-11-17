@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 import torch as th
@@ -14,13 +16,14 @@ class BallTouchBatch:
     tick_speed:        th.Tensor        | None = None
     tick_speed_before: th.Tensor        | None = None
 
-    def wait(self):
+    def wait(self) -> BallTouchBatch:
         if self._native is not None:
             self._native.acquire(th.cuda.current_stream().cuda_stream)
         return self
 
-    def snapshot(self):
+    def snapshot(self) -> BallTouchBatch:
         self.wait()
+
         return BallTouchBatch(
             self.surfaces.clone(),
             tick_surfaces=None if self.tick_surfaces is None else self.tick_surfaces.clone(),

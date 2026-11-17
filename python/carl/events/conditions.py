@@ -17,10 +17,11 @@ class StateCondition(Condition):
 
 @dataclass
 class BallTouch(Condition):
-    surface:        ContactSurface | None = None
-    min_height:     float          | None = None
-    min_speed_gain: float          | None = None
-    max_speed_gain: float          | None = None
+    """Match a touch on one car part, any part in a tuple, or any part with None."""
+
+    surface:        ContactSurface | tuple[ContactSurface, ...] | None = None
+    min_speed_gain: float | None = None
+    max_speed_gain: float | None = None
 
 
 @dataclass

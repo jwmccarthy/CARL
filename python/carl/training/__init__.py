@@ -23,11 +23,15 @@ from .runtime import (
     TrainingStep,
 )
 from .targets import (
+    POLICY_FEATURE_DIM,
+    POLICY_FEATURE_SLICES,
+    PolicyFeatures,
     StateMetric,
     TargetConditions,
     TargetEntity,
     TargetKind,
     TrainingTarget,
+    policy_features,
 )
 from ..events import (
     BallAccelerates,
@@ -74,4 +78,8 @@ __all__ = [
     "TargetEntity",
     "TargetKind",
     "TrainingTarget",
+    "PolicyFeatures",
+    "policy_features",
+    "POLICY_FEATURE_DIM",
+    "POLICY_FEATURE_SLICES",
 ]

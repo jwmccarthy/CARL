@@ -272,7 +272,7 @@ CARL_D __noinline__ int buildLocalManifold(
 {
     int pointCount = 0;
 
-    const float offsets[4] = { 0.f, -2044.f, -4096.f, -4096.f };
+    const float offsets[4] = { 0.f, -2044.f, -SOCCAR_SIDE_WALL, -SOCCAR_SIDE_WALL };
 
     // Add contacts against the analytic arena planes
     for (int plane = 0; plane < 4; plane++)

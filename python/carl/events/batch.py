@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch as th
 
 from dataclasses import dataclass, field, fields, replace
@@ -24,13 +26,18 @@ class CarlEvents:
             raise RuntimeError("ego events require capture_events=True")
         if self.cars.flags.shape[1] != 1:
             raise ValueError("ego events require exactly one car per simulation")
+
         return CarEvents(
             self.cars.flags[:, 0], self.cars._native,
             self.cars.surface_contacted[:, 0], self.cars.surface_left[:, 0],
         )
 
     @classmethod
-    def from_native(cls, native: _carl.EventState, **kwargs):
+    def from_native(
+        cls,
+        native:   _carl.EventState,
+        **kwargs: th.Tensor | None,
+    ) -> CarlEvents:
         native.acquire(th.cuda.current_stream().cuda_stream)
         batch = cls(_native=native, **kwargs)
 
@@ -60,18 +67,18 @@ class CarlEvents:
 
         return batch
 
-    def wait(self):
+    def wait(self) -> CarlEvents:
         if self._native is not None:
             self._native.acquire(th.cuda.current_stream().cuda_stream)
         return self
 
-    def snapshot(self):
+    def snapshot(self) -> CarlEvents:
         self.wait()
         snapshot = replace(self, _native=None)
 
         for item in fields(self):
             value = getattr(self, item.name)
-            
+
             if isinstance(value, th.Tensor):
                 setattr(snapshot, item.name, value.clone())
             elif isinstance(value, (EntityEvents, BallTouchBatch)):

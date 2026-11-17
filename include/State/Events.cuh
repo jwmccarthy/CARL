@@ -67,13 +67,16 @@ CARL_HD CARL_FI int carArenaSurface(const Vec3& normal)
 
 struct BallTouchBuffer
 {
-    int* surfaces = nullptr;
-    int* tickSurfaces = nullptr;
+    int*   surfaces = nullptr;
+    int*   tickSurfaces = nullptr;
     float* tickSpeedBefore = nullptr;
 
     CARL_HD CARL_FI bool enabled() const { return surfaces != nullptr; }
 
-    CARL_D CARL_FI void record(int carIdx, BallTouchSurface surface, float speedBefore) const
+    CARL_D CARL_FI void record(
+        int carIdx,
+        BallTouchSurface surface,
+        float speedBefore) const
     {
         if (!enabled()) return;
 
@@ -178,6 +181,5 @@ struct EventBuffer
 
         ballSurfaceEntered[simIdx] |= entered;
         ballSurfaceLeft[simIdx] |= left;
-
     }
 };

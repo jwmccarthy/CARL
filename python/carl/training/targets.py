@@ -1,33 +1,36 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import IntEnum
+import math
 
 import torch as th
 
+import carl
+
+from ..events import ArenaSurface, ContactSurface
 from .runtime import (
-    BALL_CONTACT, BALL_GOAL, BALL_LEAVE, CAR_CONTACT, CAR_EVENT, CAR_LEAVE,
-    STATE_METRICS, STATE_VALUE, TOUCH_GAIN, TOUCH_SURFACE,
+    BALL, CAR, CONTACT, EVENT, EVENT_FLAGS, GOAL, LEAVE, STATE, STATE_METRICS,
+    TOUCH, CompiledTrainingPack, ConditionColumns, TrainingPackRuntime,
 )
 
 
 class TargetKind(IntEnum):
 
-    PADDING       = 0
-    CAR_EVENT     = CAR_EVENT
-    BALL_GOAL     = BALL_GOAL
-    CAR_CONTACT   = CAR_CONTACT
-    CAR_LEAVE     = CAR_LEAVE
-    BALL_CONTACT  = BALL_CONTACT
-    BALL_LEAVE    = BALL_LEAVE
-    TOUCH_SURFACE = TOUCH_SURFACE
-    STATE_VALUE   = STATE_VALUE
-    TOUCH_GAIN    = TOUCH_GAIN
+    PADDING = 0
+    EVENT   = EVENT
+    GOAL    = GOAL
+    CONTACT = CONTACT
+    LEAVE   = LEAVE
+    TOUCH   = TOUCH
+    STATE   = STATE
 
 
 class TargetEntity(IntEnum):
 
     NONE = 0
-    CAR  = 1
-    BALL = 2
+    CAR  = CAR
+    BALL = BALL
 
 
 class StateMetric(IntEnum):
@@ -44,24 +47,12 @@ class StateMetric(IntEnum):
 
 
 @dataclass(frozen=True)
-class TargetConditions:
-    valid:              th.Tensor
-    kind:               th.Tensor
-    entity:             th.Tensor
-    event_mask:         th.Tensor
-    arena_surface_mask: th.Tensor
-    touch_surface_mask: th.Tensor
-    state_metric:       th.Tensor
-    has_state_metric:   th.Tensor
-    minimum:            th.Tensor
-    has_minimum:        th.Tensor
-    maximum:            th.Tensor
-    has_maximum:        th.Tensor
-    goal_side:          th.Tensor
-    min_touch_speed_gain:     th.Tensor
-    has_min_touch_speed_gain: th.Tensor
-    max_touch_speed_gain:     th.Tensor
-    has_max_touch_speed_gain: th.Tensor
+class TargetConditions(ConditionColumns):
+    valid: th.Tensor
+
+    @property
+    def has_state_metric(self) -> th.Tensor:
+        return (self.kind == STATE) & self.valid
 
 
 @dataclass(frozen=True)
@@ -87,80 +78,36 @@ class TrainingTarget:
     active:                th.Tensor
 
 
-def _conditions(kind, mask, parameter, minimum, maximum, valid):
-    is_state = (kind == STATE_VALUE) & valid
-    arena = ((kind == CAR_CONTACT) | (kind == CAR_LEAVE) |
-             (kind == BALL_CONTACT) | (kind == BALL_LEAVE)) & valid
-    touch = ((kind == TOUCH_SURFACE) | (kind == TOUCH_GAIN)) & valid
-    touch_speed = (kind == TOUCH_GAIN) & valid
-    event = ((kind == CAR_EVENT) | (kind == BALL_GOAL)) & valid
-
-    car = ((kind == CAR_EVENT) | (kind == CAR_CONTACT) | (kind == CAR_LEAVE) |
-           (kind == TOUCH_SURFACE) | (kind == TOUCH_GAIN) | (is_state & (mask >= StateMetric.CAR_X))) & valid
-    ball = ((kind == BALL_GOAL) | (kind == BALL_CONTACT) | (kind == BALL_LEAVE) |
-            (is_state & (mask < StateMetric.CAR_X))) & valid
-    entity = th.where(car, int(TargetEntity.CAR), th.where(ball, int(TargetEntity.BALL), 0))
-
-    has_minimum = is_state & th.isfinite(minimum)
-    has_maximum = is_state & th.isfinite(maximum)
-
-    return TargetConditions(
-        valid              = valid,
-        kind               = th.where(valid, kind, 0),
-        entity             = entity,
-        event_mask         = th.where(event, mask, 0),
-        arena_surface_mask = th.where(arena, mask, 0),
-        touch_surface_mask = th.where(touch, mask, 0),
-        state_metric       = th.where(is_state, mask, 0),
-        has_state_metric   = is_state,
-        minimum            = th.where(has_minimum, minimum, 0),
-        has_minimum        = has_minimum,
-        maximum            = th.where(has_maximum, maximum, 0),
-        has_maximum        = has_maximum,
-        goal_side          = th.where((kind == BALL_GOAL) & valid, parameter, 0),
-        min_touch_speed_gain     = th.where(touch_speed & th.isfinite(minimum), minimum, 0),
-        has_min_touch_speed_gain = touch_speed & th.isfinite(minimum),
-        max_touch_speed_gain     = th.where(touch_speed & th.isfinite(maximum), maximum, 0),
-        has_max_touch_speed_gain = touch_speed & th.isfinite(maximum),
-    )
+def _conditions(
+    pack:   CompiledTrainingPack,
+    index:  th.Tensor,
+    prefix: str,
+    valid:  th.Tensor,
+) -> TargetConditions:
+    return TargetConditions(**vars(pack.conditions(index, prefix)), valid=valid)
 
 
-def training_target(runtime):
+def training_target(runtime: TrainingPackRuntime) -> TrainingTarget:
     pack = runtime.pack
     index = runtime.exercise_index
     valid = pack.valid[index]
-    failure_kind = pack.failure_kind[index]
-    failure_valid = (failure_kind != 0) & valid.unsqueeze(-1)
-    deadlines = pack.deadline[index]
-    has_deadline = (deadlines >= 0) & valid
-    has_remaining = (pack.deadline[index, runtime.stage_index] >= 0) & runtime.active
-
-    stages = _conditions(
-        pack.kind[index], pack.mask[index], pack.parameter[index],
-        pack.minimum[index], pack.maximum[index], valid,
-    )
-    failures = _conditions(
-        failure_kind, pack.failure_mask[index], pack.failure_parameter[index],
-        pack.failure_minimum[index], pack.failure_maximum[index], failure_valid,
-    )
-    repeats = _conditions(
-        pack.repeat_kind[index], pack.repeat_mask[index], pack.repeat_parameter[index],
-        pack.repeat_minimum[index], pack.repeat_maximum[index], (pack.repeat_kind[index] != 0) & valid,
-    )
+    failure_valid = (pack.failure_kind[index] != 0) & valid.unsqueeze(-1)
+    has_deadline = pack.has_deadline[index] & valid
+    has_remaining = pack.has_deadline[index, runtime.stage_index] & runtime.active
 
     return TrainingTarget(
-        stages                = stages,
-        failures              = failures,
-        repeats               = repeats,
-        max_repeats           = pack.max_repeats[index].clamp_min(0),
-        has_repeat_limit      = (pack.max_repeats[index] >= 0) & valid,
+        stages                = _conditions(pack, index, "", valid),
+        failures              = _conditions(pack, index, "failure_", failure_valid),
+        repeats               = _conditions(pack, index, "repeat_", (pack.repeat_kind[index] != 0) & valid),
+        max_repeats           = pack.max_repeats[index],
+        has_repeat_limit      = pack.has_max_repeats[index] & valid,
         repeat_count          = runtime.repeat_count.clone(),
-        max_total_matches     = pack.max_total_matches[index].clamp_min(0),
-        has_total_match_limit = (pack.max_total_matches[index] >= 0) & valid,
+        max_total_matches     = pack.max_total_matches[index],
+        has_total_match_limit = pack.has_max_total_matches[index] & valid,
         total_matches         = runtime.total_matches.clone(),
         failure_exercise_wide = pack.failure_exercise_wide[index] & failure_valid,
-        deadline_ticks        = th.where(has_deadline, deadlines, 0),
-        min_ticks             = th.where(valid, pack.min_ticks[index], 0),
+        deadline_ticks        = pack.deadline[index],
+        min_ticks             = pack.min_ticks[index],
         has_deadline          = has_deadline,
         deadline_from_start   = pack.deadline_from_start[index] & has_deadline,
         exercise_index        = runtime.exercise_index.clone(),
@@ -169,3 +116,185 @@ def training_target(runtime):
         has_remaining         = has_remaining,
         active                = runtime.active.clone(),
     )
+
+
+# Use the same physical-unit scales as gymnasium/state.py and RLConstants.cuh.
+# Signed positions/gains retain their sign; no learned or pack-specific scales.
+FEATURE_SCALES = {
+    "ball_x": carl.OBS_POSITION_SCALE[0],
+    "ball_y": carl.OBS_POSITION_SCALE[1],
+    "ball_height": carl.OBS_POSITION_SCALE[2],
+    "ball_speed": carl.BALL_MAX_SPEED,
+    "car_x": carl.OBS_POSITION_SCALE[0],
+    "car_y": carl.OBS_POSITION_SCALE[1],
+    "car_height": carl.OBS_POSITION_SCALE[2],
+    "car_speed": carl.CAR_MAX_SPEED,
+    "car_boost": carl.BOOST_MAX,
+    "gain": carl.BALL_MAX_SPEED,
+    "ticks": carl.REGULATION_TICKS,
+}
+
+_FEATURE_WIDTHS = {
+    "kind": len(TargetKind) - 1,
+    "entity": len(TargetEntity) - 1,
+    "arena_surfaces": len(ArenaSurface),
+    "car_parts": len(ContactSurface),
+    "state_metric": len(StateMetric),
+    "state_min": 2,
+    "state_max": 2,
+    "gain_min": 2,
+    "gain_max": 2,
+    "goal_side": 1,
+    "deadline": 2,
+    "min_ticks": 2,
+    "progress": 3,
+    "event_flags": len(EVENT_FLAGS),
+    "valid": 1,
+}
+POLICY_FEATURE_SLICES = {}
+POLICY_FEATURE_DIM = sum(_FEATURE_WIDTHS.values())
+_offset = 0
+for _name, _width in _FEATURE_WIDTHS.items():
+    POLICY_FEATURE_SLICES[_name] = slice(_offset, _offset + _width)
+    _offset += _width
+
+
+@dataclass(frozen=True)
+class PolicyFeatures:
+    window:   th.Tensor
+    failures: th.Tensor
+
+    @property
+    def window_valid(self) -> th.Tensor:
+        return self.window[..., POLICY_FEATURE_SLICES["valid"]].squeeze(-1)
+
+    @property
+    def failure_valid(self) -> th.Tensor:
+        return self.failures[..., POLICY_FEATURE_SLICES["valid"]].squeeze(-1)
+
+
+def _feature_constants(device: th.device) -> dict[str, th.Tensor]:
+    """Allocate once at runtime construction, never in the policy hot path."""
+    values = {
+        "kind": list(range(EVENT, STATE + 1)),
+        "entity": [CAR, BALL],
+        "arena_surfaces": [int(surface) for surface in ArenaSurface],
+        "car_parts": [1 << int(part) for part in ContactSurface],
+        "state_metric": list(StateMetric),
+        "event_flags": [int(flag) for flag in EVENT_FLAGS.values()],
+    }
+    constants = {name: th.tensor(value, device=device) for name, value in values.items()}
+    constants["state_scales"] = th.tensor(
+        [FEATURE_SCALES[name] for name in STATE_METRICS], dtype=th.float32, device=device,
+    )
+
+    return constants
+
+
+def _multi_hot(
+    mask: th.Tensor,
+    bits: th.Tensor,
+) -> th.Tensor:
+    return (mask.unsqueeze(-1) & bits) != 0
+
+
+def _condition_features(
+    condition:    ConditionColumns,
+    valid:        th.Tensor,
+    team_sign:    th.Tensor,
+    tick_cap:     float,
+    constants:    dict[str, th.Tensor],
+    *,
+    deadline:     th.Tensor | None = None,
+    has_deadline: th.Tensor | None = None,
+    min_ticks:    th.Tensor | None = None,
+    progress:     th.Tensor | None = None,
+) -> th.Tensor:
+    zeros = th.zeros_like(condition.kind, dtype=th.float32)
+    scale = constants["state_scales"][condition.state_metric]
+
+    def bound(
+        value: th.Tensor,
+        has:   th.Tensor,
+        scale: th.Tensor | float,
+    ) -> th.Tensor:
+        return th.stack((value / scale, has), dim=-1)
+
+    if deadline is None:
+        deadline = has_deadline = min_ticks = zeros
+    if progress is None:
+        progress = zeros.unsqueeze(-1).expand(*zeros.shape, 3)
+    time_scale = math.log1p(tick_cap)
+    features = th.cat((
+        condition.kind.unsqueeze(-1) == constants["kind"],
+        condition.entity.unsqueeze(-1) == constants["entity"],
+        _multi_hot(condition.arena_surfaces, constants["arena_surfaces"]),
+        _multi_hot(condition.car_parts, constants["car_parts"]),
+        ((condition.state_metric.unsqueeze(-1) == constants["state_metric"]) &
+         (condition.kind == STATE).unsqueeze(-1)),
+        bound(condition.state_min, condition.has_state_min, scale),
+        bound(condition.state_max, condition.has_state_max, scale),
+        bound(condition.gain_min, condition.has_gain_min, FEATURE_SCALES["gain"]),
+        bound(condition.gain_max, condition.has_gain_max, FEATURE_SCALES["gain"]),
+        (condition.goal_side * team_sign.unsqueeze(-1)).unsqueeze(-1),
+        th.stack((deadline.float().log1p() / time_scale, has_deadline), dim=-1),
+        th.stack((min_ticks.float().log1p() / time_scale, min_ticks > 0), dim=-1),
+        progress,
+        (_multi_hot(condition.event_flags, constants["event_flags"]) &
+         (condition.kind == EVENT).unsqueeze(-1)),
+        valid.unsqueeze(-1),
+    ), dim=-1).to(th.float32)
+
+    return th.where(valid.unsqueeze(-1), features, 0)
+
+
+def policy_features(
+    runtime:  TrainingPackRuntime,
+    K:        int = 3,
+    *,
+    tick_cap: float = FEATURE_SCALES["ticks"],
+) -> PolicyFeatures:
+    """Fixed float32 features on the runtime device, with no exercise identity.
+
+    ``window`` is [n_sim, K, POLICY_FEATURE_DIM], starting at the current stage;
+    ``failures`` is [n_sim, F, POLICY_FEATURE_DIM] for that stage only. Each
+    exercise-wide failure appears once. The last component is a valid bit;
+    padded slots are entirely zero. See POLICY_FEATURE_SLICES for the layout.
+
+    Bounds are divided by FEATURE_SCALES. Deadline and minimum ticks are
+    (log1p(ticks) / log1p(tick_cap), has), with has=min_ticks>0 for minimum
+    ticks. Only slot 0 has progress ratios (remaining time, repeats, total
+    matches); unlimited quantities are zero. Goal side is +1 for the opponent's
+    goal using runtime.team_sign (blue=+1, orange=-1).
+    """
+    if not isinstance(K, int) or isinstance(K, bool) or K < 1:
+        raise ValueError("K must be a positive integer")
+    if not math.isfinite(tick_cap) or tick_cap <= 0:
+        raise ValueError("tick_cap must be positive and finite")
+
+    pack = runtime.pack
+    exercise = runtime.exercise_index.unsqueeze(-1)
+    stages = runtime.stage_index.unsqueeze(-1) + th.arange(K, device=pack.kind.device)
+    valid = stages < pack.lengths[runtime.exercise_index].unsqueeze(-1)
+    index = exercise, stages.clamp_max(pack.kind.shape[1] - 1)
+    valid = valid & pack.valid[index]
+    progress = th.zeros((runtime.n_sim, K, 3), dtype=th.float32, device=pack.kind.device)
+    current = runtime.exercise_index, runtime.stage_index
+    for column, (value, limit, has_limit) in enumerate((
+        (runtime.ticks_remaining, pack.deadline[current], pack.has_deadline[current]),
+        (runtime.repeat_count, pack.max_repeats[current], pack.has_max_repeats[current]),
+        (runtime.total_matches, pack.max_total_matches[current], pack.has_max_total_matches[current]),
+    )):
+        progress[:, 0, column] = th.where(has_limit, value.float() / limit.clamp_min(1), 0)
+
+    window = _condition_features(
+        pack.conditions(index), valid, runtime.team_sign, tick_cap, runtime._feature_constants,
+        deadline=pack.deadline[index], has_deadline=pack.has_deadline[index],
+        min_ticks=pack.min_ticks[index], progress=progress,
+    )
+    failure_conditions = pack.conditions(current, "failure_")
+    failures = _condition_features(
+        failure_conditions, failure_conditions.kind != 0, runtime.team_sign, tick_cap, runtime._feature_constants,
+    )
+
+    return PolicyFeatures(window=window, failures=failures)

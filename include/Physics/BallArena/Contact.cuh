@@ -485,7 +485,7 @@ CARL_D CARL_FI int finishNativeBallArenaContacts(
     }
 
     // Add contacts for the analytic arena planes
-    const float offsets[4] = { 0.f, -2044.f, -4096.f, -4096.f };
+    const float offsets[4] = { 0.f, -2044.f, -SOCCAR_SIDE_WALL, -SOCCAR_SIDE_WALL };
 
     for (int plane = 0; plane < 4; plane++)
     {

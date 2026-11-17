@@ -44,8 +44,10 @@ private:
 
 public:
     RLEnvironment(
-        const int nSim, const int nBlue,
-        const int nOrange, const int seed);
+        const int nSim,
+        const int nBlue,
+        const int nOrange,
+        const int seed);
     ~RLEnvironment();
 
     void step(const DiscreteControls* actions, EventBuffer events = {});
@@ -55,11 +57,14 @@ public:
     void reset();
     void resetSelected(const bool* mask, EventBuffer events = {});
     void resetDones(
-        int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks,
+        int maxTicks,
+        int overtimeTimeoutTicks,
+        int noTouchTimeoutTicks,
         EventBuffer events = {});
 
     GameState* getDeviceState() { return d_state; }
     Workspace* getDeviceWorkspace() { return d_space; }
+    ArenaMesh* getDeviceArena() { return d_arena; }
     cudaStream_t getStream() const { return stream; }
 
     int getNSim()  const { return h_state.nSim; }

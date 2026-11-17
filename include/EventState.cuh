@@ -12,7 +12,7 @@ class EventState
 
     bool captureEvents;
     bool captureTouches;
-    
+
     int nSim;
     int nCars;
     int capacity = 0;
@@ -46,8 +46,12 @@ public:
     int64_t touchTickShape[3] = {};
 
     EventState(
-        int nSim, int nCars, int frameskip, cudaStream_t stream,
-        bool captureEvents, bool captureTouches);
+        int nSim,
+        int nCars,
+        int frameskip,
+        cudaStream_t stream,
+        bool captureEvents,
+        bool captureTouches);
 
     void resize(int frameskip);
     void clear();

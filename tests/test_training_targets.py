@@ -15,7 +15,7 @@ from carl.training import (
 
 class TrainingTargetTests(unittest.TestCase):
 
-    def make_runtime(self, device):
+    def make_runtime(self, device: str) -> TrainingPackRuntime:
         initial = InitialState(ego=CarState(placement=OnSurface()), ball=BallState((0, 0, 500)))
         pack = TrainingPack(name="targets", exercises=[
             Exercise(
@@ -38,7 +38,7 @@ class TrainingTargetTests(unittest.TestCase):
 
         return runtime
 
-    def test_full_sequence_and_failure_metadata(self):
+    def test_full_sequence_and_failure_metadata(self) -> None:
         for device in (["cpu", "cuda"] if th.cuda.is_available() else ["cpu"]):
             with self.subTest(device=device):
                 runtime = self.make_runtime(device)
@@ -56,18 +56,18 @@ class TrainingTargetTests(unittest.TestCase):
 
                 self.assertEqual(target.stages.valid.tolist(), [[True, True], [True, False]])
                 self.assertEqual(target.stages.kind.tolist(), [
-                    [TargetKind.CAR_EVENT, TargetKind.TOUCH_SURFACE],
-                    [TargetKind.STATE_VALUE, TargetKind.PADDING],
+                    [TargetKind.EVENT, TargetKind.TOUCH],
+                    [TargetKind.STATE, TargetKind.PADDING],
                 ])
                 self.assertEqual(target.stages.entity.tolist(), [
                     [TargetEntity.CAR, TargetEntity.CAR], [TargetEntity.CAR, TargetEntity.NONE],
                 ])
-                self.assertEqual(target.stages.event_mask[0, 0].item(), Event.JUMP)
-                self.assertEqual(target.stages.touch_surface_mask[0, 1].item(), 1 << int(ContactSurface.ROOF))
+                self.assertEqual(target.stages.event_flags[0, 0].item(), Event.JUMP)
+                self.assertEqual(target.stages.car_parts[0, 1].item(), 1 << int(ContactSurface.ROOF))
                 self.assertEqual(target.stages.state_metric[1, 0].item(), StateMetric.CAR_SPEED)
                 self.assertTrue(target.stages.has_state_metric[1, 0].item())
-                self.assertEqual(target.stages.minimum[1, 0].item(), 1500)
-                self.assertEqual(target.stages.maximum[1, 0].item(), 2300)
+                self.assertEqual(target.stages.state_min[1, 0].item(), 1500)
+                self.assertEqual(target.stages.state_max[1, 0].item(), 2300)
                 self.assertEqual(target.deadline_ticks.tolist(), [[8, 0], [0, 0]])
                 self.assertEqual(target.has_deadline.tolist(), [[True, False], [False, False]])
                 self.assertEqual(target.ticks_remaining.tolist(), [8, 0])
@@ -76,15 +76,15 @@ class TrainingTargetTests(unittest.TestCase):
                 self.assertEqual(target.failures.valid[0, 0].tolist(), [True, True])
                 self.assertEqual(target.failure_exercise_wide[0, 0].tolist(), [True, False])
                 self.assertEqual(target.failures.state_metric[0, 0, 0].item(), StateMetric.BALL_HEIGHT)
-                self.assertEqual(target.failures.maximum[0, 0, 0].item(), 300)
-                self.assertFalse(target.failures.has_minimum[0, 0, 0].item())
-                self.assertEqual(target.failures.minimum[0, 0, 0].item(), 0)
-                self.assertEqual(target.failures.arena_surface_mask[0, 0, 1].item(), ArenaSurface.SIDE_WALL)
+                self.assertEqual(target.failures.state_max[0, 0, 0].item(), 300)
+                self.assertFalse(target.failures.has_state_min[0, 0, 0].item())
+                self.assertEqual(target.failures.state_min[0, 0, 0].item(), 0)
+                self.assertEqual(target.failures.arena_surfaces[0, 0, 1].item(), ArenaSurface.SIDE_WALL)
                 self.assertFalse(target.failures.valid[1].any().item())
-                self.assertTrue(th.isfinite(target.failures.minimum).all().item())
-                self.assertTrue(th.isfinite(target.failures.maximum).all().item())
+                self.assertTrue(th.isfinite(target.failures.state_min).all().item())
+                self.assertTrue(th.isfinite(target.failures.state_max).all().item())
 
-    def test_progress_and_partial_reassignment(self):
+    def test_progress_and_partial_reassignment(self) -> None:
         runtime = self.make_runtime("cpu")
         zeros = th.zeros((2, 1), dtype=th.int32)
         ball = th.zeros(2, dtype=th.int32)
@@ -102,8 +102,8 @@ class TrainingTargetTests(unittest.TestCase):
         before = runtime.target_sequence()
 
         self.assertEqual(before.stage_index.tolist(), [1, 0])
-        self.assertEqual(before.stages.kind[0, 0].item(), TargetKind.CAR_EVENT)
-        self.assertEqual(before.stages.kind[0, 1].item(), TargetKind.TOUCH_SURFACE)
+        self.assertEqual(before.stages.kind[0, 0].item(), TargetKind.EVENT)
+        self.assertEqual(before.stages.kind[0, 1].item(), TargetKind.TOUCH)
 
         runtime.reset(th.tensor([True, False]), th.tensor([1, 0]))
         after = runtime.target_sequence()

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import torch as th
 import carl
 
 from typing import Any
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from carl import BOOST_PAD_POSITIONS, REGULATION_TICKS
 from ..events import CarlEvents
@@ -17,11 +19,17 @@ class RewardResult:
 class _CARLTensor(th.Tensor):
 
     @classmethod
-    def from_tensor(cls, tensor: th.Tensor):
+    def from_tensor(cls, tensor: th.Tensor) -> _CARLTensor:
         return tensor.as_subclass(cls)
 
     @classmethod
-    def __torch_function__(cls, function, types, args=(), kwargs=None):
+    def __torch_function__(
+        cls,
+        function: Callable[..., Any],
+        types:    tuple[type[th.Tensor], ...],
+        args:     tuple[Any, ...] = (),
+        kwargs:   dict[str, Any] | None = None,
+    ) -> Any:
         if kwargs is None:
             kwargs = {}
 
@@ -94,7 +102,10 @@ class CARLCar(_CARLTensor):
 class CARLCars(_CARLTensor):
 
     @staticmethod
-    def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLCars":
+    def from_tensor(
+        tensor: th.Tensor,
+        n_cars: int,
+    ) -> CARLCars:
         cars = tensor.as_subclass(CARLCars)
         cars._n_cars = n_cars
         return cars
@@ -183,7 +194,10 @@ class CARLObservation(_CARLTensor):
     _n_cars: int
 
     @staticmethod
-    def from_tensor(tensor: th.Tensor, n_cars: int) -> "CARLObservation":
+    def from_tensor(
+        tensor: th.Tensor,
+        n_cars: int,
+    ) -> CARLObservation:
         observation = tensor.as_subclass(CARLObservation)
         observation._n_cars = n_cars
         return observation
@@ -290,6 +304,7 @@ class CARLObservation(_CARLTensor):
     def ego_other_relative(self) -> th.Tensor:
         start = self.car_end + carl.OBS_BOOST_PADS + carl.OBS_RELATIVE_EGO_BALL
         end = start + carl.OBS_RELATIVE_PER_OTHER_CAR * (self._n_cars - 1)
+
         return self[..., start:end].view(
             *self.shape[:-1],
             self._n_cars - 1,
@@ -313,11 +328,79 @@ class CARLObservation(_CARLTensor):
 
     @property
     def ego_has_flip_or_jump(self) -> th.Tensor:
-        return self[..., carl.OBS_EGO_FLIP_INDEX].bool()
+        return self[..., self._goal_start + carl.OBS_RELATIVE_GOALS].bool()
 
     @property
     def ego_flip_window_remaining(self) -> th.Tensor:
-        return self[..., carl.OBS_EGO_DODGE_TIME_INDEX]
+        return self[..., self._goal_start + carl.OBS_RELATIVE_GOALS + 1]
+
+    @property
+    def ego_controller(self) -> th.Tensor:
+        """Ego-only v1 block; times remain seconds even when normalized."""
+        start = self._goal_start + carl.OBS_RELATIVE_GOALS + carl.OBS_EGO_DODGE
+        if self.shape[-1] != start + carl.OBS_EGO_CONTROLLER:
+            raise ValueError("observation does not include ego controller v1")
+        return self[..., start:]
+
+    @property
+    def ego_previous_controls(self) -> th.Tensor:
+        return self.ego_controller[..., :8]
+
+    @property
+    def ego_last_jump(self) -> th.Tensor:
+        return self.ego_controller[..., 8].bool()
+
+    @property
+    def ego_has_jumped(self) -> th.Tensor:
+        return self.ego_controller[..., 9].bool()
+
+    @property
+    def ego_is_jumping(self) -> th.Tensor:
+        return self.ego_controller[..., 10].bool()
+
+    @property
+    def ego_jump_time(self) -> th.Tensor:
+        return self.ego_controller[..., 11]
+
+    @property
+    def ego_boost_min_time_remaining(self) -> th.Tensor:
+        return self.ego_controller[..., 12]
+
+    @property
+    def ego_is_flipping(self) -> th.Tensor:
+        return self.ego_controller[..., 13].bool()
+
+    @property
+    def ego_flip_time(self) -> th.Tensor:
+        return self.ego_controller[..., 14]
+
+    @property
+    def ego_flip_relative_torque(self) -> th.Tensor:
+        return self.ego_controller[..., 15:18]
+
+    @property
+    def ego_handbrake(self) -> th.Tensor:
+        return self.ego_controller[..., 18]
+
+    @property
+    def ego_wheel_contacts(self) -> th.Tensor:
+        return self.ego_controller[..., 19:23].bool()
+
+    @property
+    def ego_is_auto_flipping(self) -> th.Tensor:
+        return self.ego_controller[..., 23].bool()
+
+    @property
+    def ego_auto_flip_time(self) -> th.Tensor:
+        return self.ego_controller[..., 24]
+
+    @property
+    def ego_auto_flip_torque_scale(self) -> th.Tensor:
+        return self.ego_controller[..., 25]
+
+    @property
+    def ego_demo_respawn_time(self) -> th.Tensor:
+        return self.ego_controller[..., 26]
 
     @property
     def car_end(self) -> int:
@@ -350,7 +433,7 @@ class CARLResetState:
 
         ball = CARLBall.from_tensor(self.ball.clone())
         cars = CARLCars.from_tensor(self.cars.clone(), self.cars.n_cars)
-        
+
         position_scale = ball.position.new_tensor(carl.OBS_POSITION_SCALE)
 
         ball.position.mul_(position_scale)

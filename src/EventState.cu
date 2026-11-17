@@ -36,8 +36,12 @@ void EventState::waitForConsumers()
 }
 
 EventState::EventState(
-    int nSim, int nCars, int frameskip, cudaStream_t stream,
-    bool captureEvents, bool captureTouches)
+    int nSim,
+    int nCars,
+    int frameskip,
+    cudaStream_t stream,
+    bool captureEvents,
+    bool captureTouches)
     : stream(stream)
     , captureEvents(captureEvents)
     , captureTouches(captureTouches)
@@ -170,7 +174,7 @@ EventBuffer EventState::buffer() const
 
     result.nSim = nSim;
     result.nCars = nCars;
-    
+
     return result;
 }
 
@@ -184,5 +188,6 @@ EventBuffer EventState::tickBuffer(int tick) const
         result.touches.tickSpeedBefore = touchTickSpeedBefore.ptr + offset;
         result.touchSpeed = touchTickSpeed.ptr + offset;
     }
+
     return result;
 }

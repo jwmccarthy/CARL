@@ -120,6 +120,7 @@ struct CarState
     DeviceArray<int>   ballHitTick;         // Last extra impulse tick
     DeviceArray<int>   ballContactTick;     // Last live contact tick
     DeviceArray<int>   wheelSource;         // Source of last wheel hit
+    DeviceArray<int>   wheelContact;        // Last controller suspension contact
     DeviceArray<int>   arenaContactTick;    // Last arena contact tick
 
     DeviceArray<CarControls>      controls;
@@ -139,6 +140,7 @@ struct CarState
         , ballHitTick(nTotalCars)
         , ballContactTick(nTotalCars)
         , wheelSource(nTotalCars * NUM_WHEELS)
+        , wheelContact(nTotalCars * NUM_WHEELS)
         , arenaContactTick(nTotalCars)
         , controls(nTotalCars)
         , internal(nTotalCars)
@@ -162,6 +164,7 @@ struct CarState
         ballHitTick.fill(0xFF);
         ballContactTick.fill(0xFF);
         wheelSource.fill(WHEEL_SOURCE_NONE);
+        wheelContact.fill(0);
         arenaContactTick.fill(0xFF);
 
         std::vector<CarInternalState> hInternal(internal.count);

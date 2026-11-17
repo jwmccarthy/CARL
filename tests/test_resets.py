@@ -6,6 +6,7 @@ import torch as th
 from carl import _carl
 from carl.events import ArenaSurface, Jump
 from carl.gymnasium import CARLTorchVectorEnv
+from carl.gymnasium.state import CARLResetState
 from carl.training import (
     BallState, Box2D, Box3D, CarState, Euler, Exercise, ExerciseResetProvider,
     InitialState, InAir, OnSurface, ResetSampler, Stage, TrainingPack,
@@ -16,10 +17,10 @@ from carl.training import (
 @unittest.skipUnless(th.cuda.is_available(), "requires a CUDA GPU")
 class ResetSamplingTests(unittest.TestCase):
 
-    def indices(self, values):
+    def indices(self, values: list[int]) -> th.Tensor:
         return th.tensor(values, device="cuda", dtype=th.int64)
 
-    def exercise(self):
+    def exercise(self) -> Exercise:
         return Exercise(
             name = "random aerial",
             initial = InitialState(
@@ -32,7 +33,7 @@ class ResetSamplingTests(unittest.TestCase):
             stages = [Stage(Jump())],
         )
 
-    def test_exercise_provider_partial_and_seeded_resets(self):
+    def test_exercise_provider_partial_and_seeded_resets(self) -> None:
         exercise = self.exercise()
         first = ExerciseResetProvider(exercise, 4, seed=17)
         second = ExerciseResetProvider(exercise, 4, seed=17)
@@ -56,7 +57,7 @@ class ResetSamplingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "boolean mask"):
             first(th.zeros(4, dtype=th.int64, device="cuda"))
 
-    def test_training_pack_provider_selects_per_simulation(self):
+    def test_training_pack_provider_selects_per_simulation(self) -> None:
         exercises = [self.exercise(), self.exercise()]
         exercises[0].initial.ball.position = (0, 0, 300)
         exercises[1].initial.ball.position = (0, 0, 700)
@@ -82,7 +83,7 @@ class ResetSamplingTests(unittest.TestCase):
         self.assertTrue((state.simulation_indices[::2] == -1).all().item())
         self.assertEqual(first.sampler.reset_counts.tolist(), [1, 2] * 32)
 
-    def test_training_pack_provider_avoids_torch_synchronization(self):
+    def test_training_pack_provider_avoids_torch_synchronization(self) -> None:
         pack = TrainingPack(name="two starts", exercises=[self.exercise(), self.exercise()])
         provider = TrainingPackResetProvider(pack, 8, seed=1)
         mask = th.ones(8, dtype=th.bool, device="cuda")
@@ -94,7 +95,7 @@ class ResetSamplingTests(unittest.TestCase):
         finally:
             th.cuda.set_sync_debug_mode(previous)
 
-    def test_exercise_provider_environment_reset(self):
+    def test_exercise_provider_environment_reset(self) -> None:
         provider = ExerciseResetProvider(self.exercise(), 2, seed=5)
         env = CARLTorchVectorEnv(n_sim=2, n_blue=1, n_orange=0, reset_state_provider=provider)
         self.addCleanup(env.close)
@@ -122,7 +123,7 @@ class ResetSamplingTests(unittest.TestCase):
         self.assertEqual(provider.sampler.reset_counts.tolist(), [2, 1])
         self.assertEqual(reset_observation.car_position[0, 0, 2].item(), 800)
 
-    def test_exercise_reset_path_does_not_synchronize_torch(self):
+    def test_exercise_reset_path_does_not_synchronize_torch(self) -> None:
         provider = ExerciseResetProvider(self.exercise(), 2, seed=5)
         env = CARLTorchVectorEnv(n_sim=2, n_blue=1, n_orange=0, reset_state_provider=provider)
         self.addCleanup(env.close)
@@ -135,7 +136,7 @@ class ResetSamplingTests(unittest.TestCase):
         finally:
             th.cuda.set_sync_debug_mode(previous)
 
-    def test_native_setters_do_not_wait_for_input_stream(self):
+    def test_native_setters_do_not_wait_for_input_stream(self) -> None:
         env = _carl.Env(1, 1, 0, 7)
         producer = th.cuda.Stream()
         ready = th.cuda.Event()
@@ -170,12 +171,12 @@ class ResetSamplingTests(unittest.TestCase):
 
         th.testing.assert_close(state[0, :3], th.tensor([100, 200, 500], device="cuda", dtype=th.float32))
 
-    def test_seeded_stream_is_reproducible(self):
+    def test_seeded_stream_is_reproducible(self) -> None:
         first = ResetSampler(3, seed=123)
         second = ResetSampler(3, seed=123)
         different = ResetSampler(3, seed=124)
 
-        def draw(sampler):
+        def draw(sampler: ResetSampler) -> th.Tensor:
             return sampler.select(self.indices([2, 0])).uniform(shape=(4,))
 
         values = draw(first)
@@ -188,7 +189,7 @@ class ResetSamplingTests(unittest.TestCase):
         self.assertTrue(values.is_cuda)
         self.assertTrue(((values >= 0) & (values < 1)).all().item())
 
-    def test_uniform_choice_and_partial_counters(self):
+    def test_uniform_choice_and_partial_counters(self) -> None:
         sampler = ResetSampler(4, seed=17)
         mask = th.tensor([False, True, False, True], device="cuda")
         batch = sampler.select(mask)
@@ -202,7 +203,7 @@ class ResetSamplingTests(unittest.TestCase):
         self.assertEqual(sampler.reset_counts.tolist(), [0, 1, 0, 1])
         self.assertEqual(batch.simulation_indices.tolist(), [1, 3])
 
-    def test_floor_placement_and_correlated_ball(self):
+    def test_floor_placement_and_correlated_ball(self) -> None:
         batch = ResetSampler(3).select(self.indices([0, 2]))
         batch.ego.on_floor(
             position=Box2D((-200, -1500), (200, -1000)),
@@ -227,7 +228,7 @@ class ResetSamplingTests(unittest.TestCase):
         )
         self.assertTrue(((state.cars.boost >= 60) & (state.cars.boost < 80)).all().item())
 
-    def test_sample_initial_state_in_air(self):
+    def test_sample_initial_state_in_air(self) -> None:
         initial = InitialState(
             ego = CarState(
                 placement = InAir(
@@ -255,7 +256,7 @@ class ResetSamplingTests(unittest.TestCase):
         th.testing.assert_close(state.ball.angular_velocity, th.tensor([[1, 2, 3]] * 2, device="cuda", dtype=th.float32))
         self.assertFalse(state.car_internal_state.any().item())
 
-    def test_empty_selection(self):
+    def test_empty_selection(self) -> None:
         batch = ResetSampler(4).select(self.indices([]))
         state = batch.build()
 
@@ -263,7 +264,7 @@ class ResetSamplingTests(unittest.TestCase):
         self.assertEqual(state.ball.shape, (0, _carl.OBS_BALL))
         self.assertEqual(state.cars.shape, (0, 1, _carl.OBS_PER_CAR))
 
-    def test_ceiling_and_side_wall_placement(self):
+    def test_ceiling_and_side_wall_placement(self) -> None:
         batch = ResetSampler(2).select(self.indices([0, 1]))
         ceiling_z = 2048 - _carl.CAR_REST_Z
 
@@ -312,7 +313,7 @@ class ResetSamplingTests(unittest.TestCase):
             th.tensor([[[1, 0, 0]]] * 2, device="cuda", dtype=th.float32),
         )
 
-    def test_back_wall_and_ball_surface_placement(self):
+    def test_back_wall_and_ball_surface_placement(self) -> None:
         batch = ResetSampler(2).select(self.indices([0, 1]))
         wall_y = 5120 - _carl.CAR_REST_Z
 
@@ -363,7 +364,7 @@ class ResetSamplingTests(unittest.TestCase):
             th.tensor([[400, ball_y, 600]] * 2, device="cuda"),
         )
 
-    def test_surface_sampling_and_side_validation(self):
+    def test_surface_sampling_and_side_validation(self) -> None:
         initial = InitialState(
             ego = CarState(
                 placement = OnSurface(
@@ -396,14 +397,14 @@ class ResetSamplingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             batch.ego.on_surface(ArenaSurface.FLOOR | ArenaSurface.CEILING)
 
-    def test_surface_reset_steps_without_divergence(self):
+    def test_surface_reset_steps_without_divergence(self) -> None:
         sampler = ResetSampler(2, seed=5)
         initial = InitialState(
             ego  = CarState(OnSurface(surface=ArenaSurface.CEILING)),
             ball = BallState(position=(0, 0, 500)),
         )
 
-        def provider(mask):
+        def provider(mask: th.Tensor) -> CARLResetState:
             return sampler.select(mask).sample(initial)
 
         env = CARLTorchVectorEnv(
@@ -423,7 +424,7 @@ class ResetSamplingTests(unittest.TestCase):
             rtol=0, atol=100,
         )
 
-    def test_wall_and_ceiling_car_starts_do_not_launch(self):
+    def test_wall_and_ceiling_car_starts_do_not_launch(self) -> None:
         cases = [
             (ArenaSurface.SIDE_WALL, 1, (0, 700), 0),
             (ArenaSurface.SIDE_WALL, -1, (0, 700), 0),
@@ -440,7 +441,7 @@ class ResetSamplingTests(unittest.TestCase):
                 )
                 sampler = ResetSampler(1, seed=5)
 
-                def provider(mask):
+                def provider(mask: th.Tensor) -> CARLResetState:
                     return sampler.select(mask).sample(initial)
 
                 env = CARLTorchVectorEnv(
@@ -456,7 +457,7 @@ class ResetSamplingTests(unittest.TestCase):
                 finally:
                     env.close()
 
-    def test_provider_round_trip_and_neutral_partial_reset(self):
+    def test_provider_round_trip_and_neutral_partial_reset(self) -> None:
         sampler = ResetSampler(2, seed=19)
         initial = InitialState(
             ego = CarState(
@@ -468,7 +469,7 @@ class ResetSamplingTests(unittest.TestCase):
             ball = BallState(position=(1000, 1000, 500), velocity=(300, 0, 0)),
         )
 
-        def provider(mask):
+        def provider(mask: th.Tensor) -> CARLResetState:
             return sampler.select(mask).sample(initial)
 
         env = CARLTorchVectorEnv(

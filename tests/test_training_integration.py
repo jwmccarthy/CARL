@@ -4,27 +4,32 @@ import torch as th
 
 from carl.events import Event, Goal, Jump, StateCondition
 from carl.gymnasium import CARLTorchVectorEnv
+from carl.gymnasium.state import StepContext
 from carl.training import (
     BallState, CarState, CompiledTrainingPack, Exercise, InitialState, OnSurface,
     Stage, TargetKind, TrainingPack, TrainingPackResetProvider, TrainingPackRuntime,
-    TrainingPackTerminationManager,
+    TrainingPackTerminationManager, TrainingTarget,
 )
 
 
 class TargetDrivenPolicy(th.nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.jump_embedding = th.nn.Embedding(2, 1)
 
         with th.no_grad():
             self.jump_embedding.weight[:, 0] = th.tensor([0.0, 1.0])
 
-    def forward(self, observation, target):
+    def forward(
+        self,
+        observation: th.Tensor,
+        target:      TrainingTarget,
+    ) -> th.Tensor:
         rows = th.arange(observation.shape[0], device=observation.device)
         kind = target.stages.kind[rows, target.stage_index]
-        event = target.stages.event_mask[rows, target.stage_index]
-        jump = ((kind == TargetKind.CAR_EVENT) & ((event & int(Event.JUMP)) != 0)).long()
+        event = target.stages.event_flags[rows, target.stage_index]
+        jump = ((kind == TargetKind.EVENT) & ((event & int(Event.JUMP)) != 0)).long()
 
         actions = th.zeros((observation.shape[0], 7), device=observation.device)
         actions[:, -1] = self.jump_embedding(jump).squeeze(-1)
@@ -35,7 +40,7 @@ class TargetDrivenPolicy(th.nn.Module):
 @unittest.skipUnless(th.cuda.is_available(), "requires a CUDA GPU")
 class TrainingIntegrationTests(unittest.TestCase):
 
-    def test_goal_is_not_failed_by_reset_ball_height(self):
+    def test_goal_is_not_failed_by_reset_ball_height(self) -> None:
         initial = InitialState(ego=CarState(placement=OnSurface(position=(0, -1000))),
                                ball=BallState(position=(0, 5300, 200)))
         pack = TrainingPack(name="goal", exercises=[Exercise(
@@ -55,8 +60,8 @@ class TrainingIntegrationTests(unittest.TestCase):
         self.assertTrue(info["exercise_success"][0].item())
         self.assertFalse(info["exercise_failure"][0].item())
 
-    def test_target_driven_mixed_pack_loop(self):
-        def start(ball_position):
+    def test_target_driven_mixed_pack_loop(self) -> None:
+        def start(ball_position: tuple[float, float, float]) -> InitialState:
             return InitialState(
                 ego  = CarState(placement=OnSurface(position=(0, -1000))),
                 ball = BallState(position=ball_position),
@@ -80,9 +85,10 @@ class TrainingIntegrationTests(unittest.TestCase):
         reward_events = []
         reward_scores = []
 
-        def reward(context):
+        def reward(context: StepContext) -> th.Tensor:
             reward_events.append(context.events.done.clone())
             reward_scores.append(context.events.score_delta.clone())
+
             return context.events.done[:, None].float()
 
         env = CARLTorchVectorEnv(
@@ -147,7 +153,7 @@ class TrainingIntegrationTests(unittest.TestCase):
 
         self.assertTrue(seen.all().item())
 
-    def test_state_failure_uses_transition_before_reset(self):
+    def test_state_failure_uses_transition_before_reset(self) -> None:
         initial = InitialState(
             ego  = CarState(placement=OnSurface(position=(0, -1000))),
             ball = BallState(position=(0, 0, 500)),
@@ -190,7 +196,7 @@ class TrainingIntegrationTests(unittest.TestCase):
         self.assertLess(info["final_obs"].ball_position[0, 2].item(), 300)
         self.assertEqual(observation.ball_position[0, 2].item(), 500)
 
-    def test_parallel_endings_and_resets(self):
+    def test_parallel_endings_and_resets(self) -> None:
         initial = InitialState(
             ego  = CarState(placement=OnSurface(position=(0, -1000))),
             ball = BallState(position=(0, 0, 500)),

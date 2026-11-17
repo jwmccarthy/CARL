@@ -6,6 +6,9 @@ from carl import ACTION_NVECS
 
 
 class CARLActionCodec(nn.Module):
+    def __init__(self, ego_controller: bool = False):
+        super().__init__()
+        self._controller_size = carl.OBS_EGO_CONTROLLER if ego_controller else 0
     
     @property
     def action_shape(self) -> tuple[int, ...]:
@@ -15,9 +18,9 @@ class CARLActionCodec(nn.Module):
         on_ground = observation[..., carl.OBS_EGO_ON_GROUND_INDEX].bool()
         has_boost = observation[..., carl.OBS_EGO_BOOST_INDEX].gt(0)
 
-        flip_available = observation[..., carl.OBS_EGO_FLIP_INDEX].bool()
+        flip_available = observation[..., carl.OBS_EGO_FLIP_INDEX - self._controller_size].bool()
         jump_available = on_ground | (flip_available & (
-            observation[..., carl.OBS_EGO_DODGE_TIME_INDEX] > carl.PHYS_DT
+            observation[..., carl.OBS_EGO_DODGE_TIME_INDEX - self._controller_size] > carl.PHYS_DT
         ))
 
         mask = th.ones(

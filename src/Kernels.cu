@@ -46,8 +46,10 @@ __global__ void resetDonesKernel(
 }
 
 __global__ void resetSelectedKernel(
-    GameState* __restrict__ state, Workspace* __restrict__ space,
-    const bool* __restrict__ mask, EventBuffer events)
+    GameState* __restrict__ state,
+    Workspace* __restrict__ space,
+    const bool* __restrict__ mask,
+    EventBuffer events)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim || !mask[simIdx]) return;
@@ -201,7 +203,9 @@ __global__ void integrateCarsKernel(GameState* __restrict__ state)
     integrateCar(state, carIdx);
 }
 
-__global__ void applyImpulseCacheKernel(GameState* __restrict__ state, EventBuffer events)
+__global__ void applyImpulseCacheKernel(
+    GameState* __restrict__ state,
+    EventBuffer events)
 {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 

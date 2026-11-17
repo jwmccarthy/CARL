@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch as th
 
 from dataclasses import dataclass, field, fields, replace
@@ -11,7 +13,7 @@ class EntityEvents:
     flags:   th.Tensor
     _native: _carl.EventState | None = field(default=None, repr=False, compare=False)
 
-    def wait(self):
+    def wait(self) -> EntityEvents:
         if self._native is not None:
             self._native.acquire(th.cuda.current_stream().cuda_stream)
         return self
@@ -20,12 +22,13 @@ class EntityEvents:
         self.wait()
         return (self.flags & int(event)) != 0
 
-    def snapshot(self):
+    def snapshot(self) -> EntityEvents:
         self.wait()
         snapshot = replace(self, _native=None)
 
         for item in fields(self):
             value = getattr(self, item.name)
+
             if isinstance(value, th.Tensor):
                 setattr(snapshot, item.name, value.clone())
 

@@ -32,8 +32,10 @@ void PrefixSum::scanOnStream(cudaStream_t stream)
 }
 
 RLEnvironment::RLEnvironment(
-    const int nSim, const int nBlue,
-    const int nOrange, const int seed)
+    const int nSim,
+    const int nBlue,
+    const int nOrange,
+    const int seed)
     : h_state(nSim, nBlue, nOrange, seed)
     , h_space(nSim, h_state.nCars, h_state.nTotalCars)
     , carTriCandPrefix(
@@ -206,7 +208,9 @@ void RLEnvironment::step(const CarControls *actions, EventBuffer events)
 }
 
 void RLEnvironment::resetDones(
-    int maxTicks, int overtimeTimeoutTicks, int noTouchTimeoutTicks,
+    int maxTicks,
+    int overtimeTimeoutTicks,
+    int noTouchTimeoutTicks,
     EventBuffer events)
 {
     PROFILE("reset dones", threadPerSimKernelConfig.launch(

@@ -1,4 +1,6 @@
 import unittest
+from collections.abc import Callable
+from typing import Any
 
 import torch as th
 
@@ -8,7 +10,7 @@ from carl import _carl
 @unittest.skipUnless(th.cuda.is_available(), "requires a CUDA GPU")
 class NativeEventTests(unittest.TestCase):
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.env = _carl.Env(
             n_sim=2,
             n_blue=1,
@@ -20,17 +22,22 @@ class NativeEventTests(unittest.TestCase):
         )
         self.actions = th.zeros((2, 1, 7), device="cuda")
 
-    def tensor(self, getter):
+    def tensor(self, getter: Callable[[], Any]) -> th.Tensor:
         owner = getter.__self__
         native = owner if isinstance(owner, _carl.EventState) else owner.events
         native.acquire(th.cuda.current_stream().cuda_stream)
         return th.from_dlpack(getter())
 
-    def step(self):
+    def step(self) -> th.Tensor:
         self.env.step_continuous(self.actions)
         return self.tensor(self.env.events.get_car_flags)
 
-    def set_car(self, position, velocity=(0, 0, 0), rotation=(0, 0, 0, 1)):
+    def set_car(
+        self,
+        position: tuple[float, float, float],
+        velocity: tuple[float, float, float] = (0, 0, 0),
+        rotation: tuple[float, float, float, float] = (0, 0, 0, 1),
+    ) -> None:
         positions = th.tensor([[position]] * 2, device="cuda", dtype=th.float32)
         rotations = th.tensor([[rotation]] * 2, device="cuda", dtype=th.float32)
         velocities = th.tensor([[velocity]] * 2, device="cuda", dtype=th.float32)
@@ -43,14 +50,18 @@ class NativeEventTests(unittest.TestCase):
             demoed=th.zeros((2, 1), device="cuda", dtype=th.bool),
         )
 
-    def set_ball(self, position, velocity=(0, 0, 0)):
+    def set_ball(
+        self,
+        position: tuple[float, float, float],
+        velocity: tuple[float, float, float] = (0, 0, 0),
+    ) -> None:
         self.env.set_ball(
             position=th.tensor([position] * 2, device="cuda", dtype=th.float32),
             velocity=th.tensor([velocity] * 2, device="cuda", dtype=th.float32),
             angular_velocity=th.zeros((2, 3), device="cuda"),
         )
 
-    def test_jump_is_accumulated_and_cleared_next_window(self):
+    def test_jump_is_accumulated_and_cleared_next_window(self) -> None:
         self.actions[..., -1] = 1
         flags = self.step()
 
@@ -60,7 +71,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertEqual(((flags & _carl.EVENT_JUMP) != 0).tolist(), [[True], [True]])
         self.assertFalse((self.step() & _carl.EVENT_JUMP).any().item())
 
-    def test_airborne_double_jump_and_dodge(self):
+    def test_airborne_double_jump_and_dodge(self) -> None:
         for directional, event in ((0, _carl.EVENT_DOUBLE_JUMP), (1, _carl.EVENT_DODGE)):
             with self.subTest(directional=directional):
                 self.env.reset()
@@ -73,7 +84,7 @@ class NativeEventTests(unittest.TestCase):
                 self.assertFalse((flags & _carl.EVENT_JUMP).any().item())
                 self.assertEqual(((flags & event) != 0).sum().item(), 2)
 
-    def test_reset_and_surface_baselines(self):
+    def test_reset_and_surface_baselines(self) -> None:
         flags = self.step()
         departures = _carl.EVENT_LEAVE_SURFACE
         self.assertFalse((flags & departures).any().item())
@@ -86,7 +97,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertFalse(self.tensor(self.env.events.get_car_flags).any().item())
         self.assertFalse(self.tensor(self.env.events.get_ball_flags).any().item())
 
-    def test_surface_departure_is_accumulated_for_the_window(self):
+    def test_surface_departure_is_accumulated_for_the_window(self) -> None:
         self.env.frameskip = 32
         self.step()
         self.actions[..., -1] = 1
@@ -100,7 +111,7 @@ class NativeEventTests(unittest.TestCase):
         self.step()
         self.assertFalse(self.tensor(self.env.events.get_car_surface_left).any().item())
 
-    def test_ball_floor_contact_changes(self):
+    def test_ball_floor_contact_changes(self) -> None:
         self.env.frameskip = 64
         self.set_ball((0, 0, 300), (0, 0, -1000))
         self.step()
@@ -110,7 +121,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertTrue(((entered & _carl.ARENA_FLOOR) != 0).all().item())
         self.assertTrue(((left & _carl.ARENA_FLOOR) != 0).all().item())
 
-    def test_ball_wall_categories(self):
+    def test_ball_wall_categories(self) -> None:
         self.env.frameskip = 32
         self.env.set_ball(
             position=th.tensor([[3980, 0, 1000], [0, 5000, 1000]], device="cuda", dtype=th.float32),
@@ -123,7 +134,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertTrue((entered[0] & _carl.ARENA_SIDE_WALL).item())
         self.assertTrue((entered[1] & _carl.ARENA_BACK_WALL).item())
 
-    def test_car_side_wall_requires_flat_vertical_surface(self):
+    def test_car_side_wall_requires_flat_vertical_surface(self) -> None:
         self.env.frameskip = 1
         self.env.set_car(
             position=th.tensor([[[3800, 0, 17]], [[-3800, 0, 17]]], device="cuda", dtype=th.float32),
@@ -151,7 +162,7 @@ class NativeEventTests(unittest.TestCase):
 
         self.assertTrue(contacted.all().item())
 
-    def test_ball_touch_flags_share_existing_contact_records(self):
+    def test_ball_touch_flags_share_existing_contact_records(self) -> None:
         self.env.frameskip = 24
         self.set_car((0, 0, 17))
         self.set_ball((-300, 0, 90), (1500, 0, 0))
@@ -177,7 +188,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertEqual(resized.data_ptr(), pointer)
         self.assertFalse(resized.any().item())
 
-    def test_flip_reset_restores_spent_jump(self):
+    def test_flip_reset_restores_spent_jump(self) -> None:
         self.env.frameskip = 1
         self.set_car((0, 0, 1000))
         self.actions[..., -1] = 1
@@ -191,7 +202,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertTrue(((flags & _carl.EVENT_FLIP_RESET) != 0).all().item())
         self.assertFalse((self.step() & _carl.EVENT_FLIP_RESET).any().item())
 
-    def test_demo_is_captured_on_victim(self):
+    def test_demo_is_captured_on_victim(self) -> None:
         env = _carl.Env(1, 1, 1, 7, frameskip=4, capture_events=True)
         env.set_car(
             position=th.tensor([[[-50, 0, 17], [50, 0, 17]]], device="cuda", dtype=th.float32),
@@ -205,7 +216,7 @@ class NativeEventTests(unittest.TestCase):
 
         self.assertEqual(((flags & _carl.EVENT_DEMOED) != 0).sum().item(), 1)
 
-    def test_ceiling_body_contact_is_captured(self):
+    def test_ceiling_body_contact_is_captured(self) -> None:
         self.env.frameskip = 8
         self.set_car((0, 0, 1000), velocity=(0, 0, 1000))
         self.assertFalse((self.step() & _carl.EVENT_CEILING_BODY_CONTACT).any().item())
@@ -215,7 +226,7 @@ class NativeEventTests(unittest.TestCase):
 
         self.assertTrue(((flags & _carl.EVENT_CEILING_BODY_CONTACT) != 0).all().item())
 
-    def test_goal_survives_autoreset(self):
+    def test_goal_survives_autoreset(self) -> None:
         self.set_ball((0, 5300, 200))
         self.step()
         flags = self.tensor(self.env.events.get_ball_flags)
@@ -226,7 +237,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertEqual(((flags & _carl.EVENT_GOAL) != 0).sum().item(), 2)
         self.assertTrue(self.tensor(self.env.get_dones).all().item())
 
-    def test_disabled_capture_and_independent_touch_capture(self):
+    def test_disabled_capture_and_independent_touch_capture(self) -> None:
         env = _carl.Env(1, 1, 0, 7, capture_ball_touches=True)
 
         with self.assertRaises(ValueError):
@@ -235,7 +246,7 @@ class NativeEventTests(unittest.TestCase):
         surfaces = self.tensor(env.events.get_ball_touch_surfaces)
         self.assertEqual(surfaces.tolist(), [[0]])
 
-    def test_capture_does_not_change_physics(self):
+    def test_capture_does_not_change_physics(self) -> None:
         plain = _carl.Env(2, 1, 0, 7, frameskip=8)
 
         for _ in range(3):
@@ -247,7 +258,7 @@ class NativeEventTests(unittest.TestCase):
         actual = self.tensor(self.env.get_state)
         self.assertTrue(th.equal(expected, actual))
 
-    def test_flag_storage_is_independent_of_frameskip(self):
+    def test_flag_storage_is_independent_of_frameskip(self) -> None:
         flags = self.tensor(self.env.events.get_car_flags)
         pointer = flags.data_ptr()
         self.env.frameskip = 64
@@ -256,7 +267,7 @@ class NativeEventTests(unittest.TestCase):
         self.assertEqual(resized.shape, (2, 1))
         self.assertEqual(resized.data_ptr(), pointer)
 
-    def test_speed_change_is_peak_tick_gain(self):
+    def test_speed_change_is_peak_tick_gain(self) -> None:
         single = _carl.Env(2, 1, 0, 7, frameskip=1, capture_events=True)
         position = th.tensor([[0, 0, 1000]] * 2, device="cuda", dtype=th.float32)
         velocity = th.tensor([[0, 0, -100]] * 2, device="cuda", dtype=th.float32)
@@ -277,7 +288,7 @@ class NativeEventTests(unittest.TestCase):
         th.testing.assert_close(aggregate, peak)
         self.assertTrue((aggregate > 0).all().item())
 
-    def test_selected_setters_leave_other_simulation_untouched(self):
+    def test_selected_setters_leave_other_simulation_untouched(self) -> None:
         selected = th.tensor([0], device="cuda", dtype=th.int64)
         self.set_car((0, 0, 1000))
         self.env.set_car(
