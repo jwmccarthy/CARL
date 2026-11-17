@@ -601,7 +601,8 @@ def train(config: PPOConfig) -> Path:
         frameskip=config.frameskip, max_ticks=config.max_ticks,
         normalize=True, discrete_actions=True, capture_events=True,
         capture_ball_touches=compiled.needs_touch,
-        reset_state_provider=provider, termination_manager=manager, reward_funcs=[manager.reward],
+        reset_state_provider=provider, masked_resets=True,
+        termination_manager=manager, reward_funcs=[manager.reward],
     )
     with ExitStack() as resources:
         resources.callback(env.close)
