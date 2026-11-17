@@ -496,6 +496,38 @@ class ResetTests(unittest.TestCase):
         candidate.close()
         control.close()
 
+    def test_deferred_episode_reports_match_immediate_reports(self):
+        for copy_outputs in (False, True):
+            with self.subTest(copy_outputs=copy_outputs):
+                self.check_deferred_reports(copy_outputs)
+
+    def check_deferred_reports(self, copy_outputs):
+        reference = self.make_env(copy_outputs=copy_outputs)
+        env = self.make_env(copy_outputs=copy_outputs, defer_episode_reporting=True)
+        reference.reset()
+        env.reset()
+        actions = zeros(*env.action_space.shape)
+        expected = {"reward": [], "length": []}
+
+        for _ in range(5):
+            control = reference.step(actions)
+            with FixedShapeOnly():
+                actual = env.step(actions)
+
+            self.assert_equal(actual[:4], control[:4])
+            self.assert_equal(actual[4]["final_obs"], control[4]["final_obs"])
+            expected["reward"].extend(control[4]["reward"])
+            expected["length"].extend(control[4]["length"])
+            self.assertNotIn("reward", actual[4])
+
+        self.assertEqual(env.drain_episode_reports(), expected)
+        self.assertEqual(len(expected["reward"]), 5 * env.n_envs)
+        self.assertEqual(env.drain_episode_reports(), {"reward": [], "length": []})
+
+        env.step(actions)
+        env.reset()
+        self.assertEqual(env.drain_episode_reports(), {"reward": [], "length": []})
+
 
 class FixedShapeOnly(TorchDispatchMode):
     """Fail on scalar readback or dynamic compaction in the masked wrapper path."""

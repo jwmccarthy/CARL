@@ -110,6 +110,7 @@ class CARLTorchVectorEnv(VectorEnv):
         reward_scale:             float = 1.0,
         reset_state_provider:     ResetStateProvider | None = None,
         masked_resets:            bool = False,
+        defer_episode_reporting:  bool = False,
         discrete_actions:         bool = False,
     ) -> None:
         super().__init__()
@@ -127,6 +128,8 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
         self.masked_resets = masked_resets
+        self.defer_episode_reporting = defer_episode_reporting
+        self._episode_reports: list[tuple[th.Tensor, th.Tensor, th.Tensor]] = []
         self.discrete_actions = discrete_actions
         self._state: CarlState | None = None
         self._observation: CARLObservation | None = None
@@ -342,6 +345,7 @@ class CARLTorchVectorEnv(VectorEnv):
 
     def _clear_sim_stats(self, mask: th.Tensor | None = None) -> None:
         if mask is None:
+            self._episode_reports.clear()
             self._episode_return.zero_()
             self._episode_length.zero_()
             self._score_difference.zero_()
@@ -530,6 +534,26 @@ class CARLTorchVectorEnv(VectorEnv):
 
         self._episode_return += reward
         self._episode_length += 1
+
+        if self.defer_episode_reporting:
+            self._episode_reports.append((
+                self._episode_return.clone(), self._episode_length.clone(), done.clone(),
+            ))
+            self._episode_return.masked_fill_(done, 0)
+            self._episode_length.masked_fill_(done, 0)
+
+            info = {
+                **reward_info,
+                "final_obs": CARLObservation.from_tensor(
+                    self._tensor(self._env.get_transition_obs()).view(
+                        self.n_envs, self._env.obs_dim,
+                    ),
+                    self.n_cars,
+                ),
+                "_final_obs": done,
+            }
+            return obs, reward, terminated, truncated, info
+
         finished = done.nonzero(as_tuple=True)[0]
         info: dict[str, Any] = {"reward": [], "length": []}
 
@@ -550,6 +574,25 @@ class CARLTorchVectorEnv(VectorEnv):
             self._episode_length[finished] = 0
 
         return obs, reward, terminated, truncated, info
+
+    def drain_episode_reports(self) -> dict[str, list[Any]]:
+        """Transfer completed episodes at a rollout boundary, in step/actor order.
+
+        Every completion is retained, including repeated episodes for one actor.
+        Explicit reset discards pending reports along with the episode counters.
+        """
+        self._check_open()
+        if not self._episode_reports:
+            return {"reward": [], "length": []}
+
+        returns, lengths, dones = zip(*self._episode_reports)
+        finished = th.stack(dones).flatten().nonzero(as_tuple=True)[0]
+        reports = {
+            "reward": th.stack(returns).flatten()[finished].cpu().tolist(),
+            "length": th.stack(lengths).flatten()[finished].cpu().tolist(),
+        }
+        self._episode_reports.clear()
+        return reports
 
     def render(self) -> None:
         return None
