@@ -52,6 +52,29 @@ env = CARLTorchVectorEnv(1024, 1, 1, reward_funcs=[speed_reward])
 
 Custom rewards replace the default score reward.
 
+## Replay resets
+
+`CARLTorchVectorEnv(reset_state_provider=...)` applies both `CARLResetState`
+and mapping-based resets through the native `Env.apply_reset_state` operation.
+It restores selected ball/car poses, velocities, demo flags, optional boost and
+controller state, resets boost pads, and optionally restores match scores/clock.
+Suspension contacts are reconstructed after every selected car pose is installed;
+restoration does not advance physics or generate touches.
+
+The native operation accepts contiguous CUDA tensors with the same layouts as
+`set_ball` and `set_car`, using `ball_`/`car_` argument prefixes. Optional
+`simulation_indices` is an int64 tensor; omitted indices select every arena.
+`blue_score`, `orange_score`, and `episode_ticks` must be supplied together.
+Omitted boost/controller/match fields retain the standalone setters' semantics.
+Current observations, canonical state, and match outputs are packed once after
+restoration. Pre-reset transition outputs, rewards, and done flags are preserved.
+An empty selection is a no-op. Selected indices must be unique and in range.
+
+Inputs are validated before mutation and retained until one final native stream
+synchronization completes. This consolidates the setters' waits; GPU-mask reset
+selection and fully deferred reporting are separate follow-up optimizations.
+Standalone setters remain available.
+
 ## Optional arena metadata
 
 To build the RocketSim metadata exporter:

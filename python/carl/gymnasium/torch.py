@@ -221,37 +221,28 @@ class CARLTorchVectorEnv(VectorEnv):
         if not indices.numel():
             return
 
-        self._env.reset_boost_pads(indices.contiguous())
-        self._env.set_ball(
+        self._env.apply_reset_state(
             state["ball_position"].contiguous(),
             state["ball_velocity"].contiguous(),
             state["ball_angular_velocity"].contiguous(),
-            simulation_indices=indices.contiguous(),
-        )
-        self._env.set_car(
             state["car_position"].contiguous(),
             state["car_rotation"].contiguous(),
             state["car_velocity"].contiguous(),
             state["car_angular_velocity"].contiguous(),
             state["car_demoed"].contiguous(),
-            boost=(
+            car_boost=(
                 state["car_boost"].contiguous()
                 if "car_boost" in state else None
             ),
-            internal_state=(
+            car_internal_state=(
                 state["car_internal_state"].contiguous()
                 if "car_internal_state" in state else None
             ),
+            blue_score=state["blue_score"].contiguous() if "blue_score" in state else None,
+            orange_score=state["orange_score"].contiguous() if "orange_score" in state else None,
+            episode_ticks=state["episode_ticks"].contiguous() if "episode_ticks" in state else None,
             simulation_indices=indices.contiguous(),
         )
-
-        if "blue_score" in state:
-            self._env.set_match_state(
-                state["blue_score"].contiguous(),
-                state["orange_score"].contiguous(),
-                state["episode_ticks"].contiguous(),
-                simulation_indices=indices.contiguous(),
-            )
 
     def _apply_typed_reset_state(
         self, state: CARLResetState, reset_mask: th.Tensor,
@@ -263,28 +254,21 @@ class CARLTorchVectorEnv(VectorEnv):
         ball, cars = state.physical()
         rotation = _forward_up_to_quat(cars.forward, cars.up).contiguous()
         indices = state.simulation_indices.contiguous()
-        self._env.reset_boost_pads(indices)
-        self._env.set_ball(
+        self._env.apply_reset_state(
             ball.position.contiguous(), ball.velocity.contiguous(),
-            ball.angular_velocity.contiguous(), simulation_indices=indices,
-        )
-        self._env.set_car(
+            ball.angular_velocity.contiguous(),
             cars.position.contiguous(), rotation, cars.velocity.contiguous(),
             cars.angular_velocity.contiguous(), cars.demoed.contiguous(),
-            boost=cars.boost.contiguous(),
-            internal_state=(
+            car_boost=cars.boost.contiguous(),
+            car_internal_state=(
                 state.car_internal_state.contiguous()
                 if state.car_internal_state is not None else None
             ),
+            blue_score=state.match.blue_score.contiguous() if state.match is not None else None,
+            orange_score=state.match.orange_score.contiguous() if state.match is not None else None,
+            episode_ticks=state.match.episode_ticks.contiguous() if state.match is not None else None,
             simulation_indices=indices,
         )
-        if state.match is not None:
-            self._env.set_match_state(
-                state.match.blue_score.contiguous(),
-                state.match.orange_score.contiguous(),
-                state.match.episode_ticks.contiguous(),
-                simulation_indices=indices,
-            )
 
     def _clear_sim_stats(self, mask: th.Tensor | None = None) -> None:
         if mask is None:
