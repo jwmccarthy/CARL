@@ -1,13 +1,16 @@
 """GPU regression coverage for native and Gymnasium environment resets."""
 
 import unittest
+from dataclasses import replace
 from functools import partial
 from itertools import product
+from unittest import mock
 
 import carl
 import torch
 from carl.gymnasium.state import CARLBall, CARLCars, CARLMatchReset, CARLResetState
 from carl.gymnasium.torch import CARLTorchVectorEnv
+from torch.utils._python_dispatch import TorchDispatchMode
 
 CURRENT = ("obs", "state", "score_difference", "episode_ticks", "overtime")
 TRANSITION = (
@@ -21,42 +24,43 @@ TRANSITION = (
 )
 
 
-def zeros(*shape):
-    return torch.zeros(shape, device="cuda", dtype=torch.float32)
+def zeros(*shape, device="cuda"):
+    return torch.zeros(shape, device=device, dtype=torch.float32)
 
 
-def reset_inputs(n_selected, n_cars, *, match=True, internal=True):
-    ball_position = zeros(n_selected, 3)
+def reset_inputs(n_selected, n_cars, *, match=True, internal=True, device="cuda"):
+    empty = partial(zeros, device=device)
+    ball_position = empty(n_selected, 3)
     ball_position[:, 2] = 800
 
-    ball_velocity = zeros(n_selected, 3)
+    ball_velocity = empty(n_selected, 3)
     ball_velocity[:, 0] = 170
 
-    car_position = zeros(n_selected, n_cars, 3)
-    car_position[..., 0] = torch.arange(n_cars, device="cuda") * 250 - 500
+    car_position = empty(n_selected, n_cars, 3)
+    car_position[..., 0] = torch.arange(n_cars, device=device) * 250 - 500
     car_position[..., 1] = -1000
     car_position[..., 2] = 17
 
-    car_rotation = zeros(n_selected, n_cars, 4)
+    car_rotation = empty(n_selected, n_cars, 4)
     car_rotation[..., 3] = 1
 
-    demoed = torch.zeros((n_selected, n_cars), device="cuda", dtype=torch.bool)
+    demoed = torch.zeros((n_selected, n_cars), device=device, dtype=torch.bool)
     demoed[:, -1] = True
 
     result = {
         "ball_position": ball_position,
         "ball_velocity": ball_velocity,
-        "ball_angular_velocity": zeros(n_selected, 3),
+        "ball_angular_velocity": empty(n_selected, 3),
         "car_position": car_position,
         "car_rotation": car_rotation,
-        "car_velocity": zeros(n_selected, n_cars, 3),
-        "car_angular_velocity": zeros(n_selected, n_cars, 3),
+        "car_velocity": empty(n_selected, n_cars, 3),
+        "car_angular_velocity": empty(n_selected, n_cars, 3),
         "car_demoed": demoed,
-        "car_boost": zeros(n_selected, n_cars).fill_(61),
+        "car_boost": empty(n_selected, n_cars).fill_(61),
     }
 
     if internal:
-        values = zeros(n_selected, n_cars, carl.CAR_INTERNAL_SIZE)
+        values = empty(n_selected, n_cars, carl.CAR_INTERNAL_SIZE)
 
         # CAR_INT_HAS_JUMPED, CAR_INT_LAST_JUMP: a held jump must not retrigger.
         values[..., 3] = 1
@@ -65,9 +69,9 @@ def reset_inputs(n_selected, n_cars, *, match=True, internal=True):
 
     if match:
         result.update(
-            blue_score=torch.full((n_selected,), 2, device="cuda", dtype=torch.int32),
-            orange_score=torch.full((n_selected,), 1, device="cuda", dtype=torch.int32),
-            episode_ticks=torch.full((n_selected,), 23, device="cuda", dtype=torch.int32),
+            blue_score=torch.full((n_selected,), 2, device=device, dtype=torch.int32),
+            orange_score=torch.full((n_selected,), 1, device=device, dtype=torch.int32),
+            episode_ticks=torch.full((n_selected,), 23, device=device, dtype=torch.int32),
         )
 
     return result
@@ -103,20 +107,28 @@ def sequential_reset(env, values, indices):
         )
 
 
-def reset_provider(mask, *, typed):
-    indices = mask.nonzero().flatten()
-    values = reset_inputs(len(indices), 2)
+def reset_provider(mask, *, typed, masked=False):
+    indices = None if masked else mask.nonzero().flatten()
+    count = len(mask) if masked else len(indices)
+    values = reset_inputs(count, 2, device=mask.device)
+    selection = {"reset_mask": mask} if masked else {"simulation_indices": indices}
 
     if not typed:
-        return values | {"simulation_indices": indices}
+        return values | selection
 
+    return typed_reset_state(values, indices, reset_mask=mask if masked else None)
+
+
+def typed_reset_state(values, indices=None, *, reset_mask=None):
     ball = CARLBall.from_tensor(torch.cat((
         values["ball_position"],
         values["ball_velocity"],
         values["ball_angular_velocity"],
     ), dim=-1))
 
-    cars = CARLCars.from_tensor(zeros(len(indices), 2, carl.OBS_PER_CAR), 2)
+    count, n_cars = values["car_position"].shape[:2]
+    device = values["car_position"].device
+    cars = CARLCars.from_tensor(zeros(count, n_cars, carl.OBS_PER_CAR, device=device), n_cars)
     cars.position.copy_(values["car_position"])
     cars.forward[..., 0] = 1
     cars.up[..., 2] = 1
@@ -129,6 +141,7 @@ def reset_provider(mask, *, typed):
 
     return CARLResetState(
         indices, ball, cars, values["car_internal_state"], match,
+        reset_mask=reset_mask,
     )
 
 
@@ -145,13 +158,17 @@ def snapshot(env, names):
     return result
 
 
-def reset_on_alternate_stream(*, capsules):
+def reset_on_alternate_stream(*, capsules, masked=False):
     env = carl.Env(3, 1, 1, 7)
     stream = torch.cuda.Stream()
 
     with torch.cuda.stream(stream):
-        values = reset_inputs(2, 2)
-        values["simulation_indices"] = torch.tensor([2, 0], device="cuda")
+        values = reset_inputs(3 if masked else 2, 2)
+
+        if masked:
+            values["reset_mask"] = torch.tensor([True, False, True], device="cuda")
+        else:
+            values["simulation_indices"] = torch.tensor([2, 0], device="cuda")
 
         for i in range(4):
             # Delay producers; temporary owners must survive native reads.
@@ -182,13 +199,14 @@ def reset_on_alternate_stream(*, capsules):
 
 class ResetTests(unittest.TestCase):
 
-    def make_env(self):
+    def make_env(self, **kwargs):
         env = CARLTorchVectorEnv(
             n_sim=2,
             n_blue=1,
             n_orange=1,
             frameskip=1,
             no_touch_timeout_ticks=1,
+            **kwargs,
         )
         self.addCleanup(env.close)
         return env
@@ -269,8 +287,16 @@ class ResetTests(unittest.TestCase):
             )
 
     def test_contacts_use_complete_scene_without_physics(self):
+        for masked in (False, True):
+            with self.subTest(masked=masked):
+                self.check_restored_contacts(masked)
+
+    def check_restored_contacts(self, masked):
         env = carl.Env(1, 1, 1, 7, previous_controls=True)
         values = reset_inputs(1, 2)
+
+        if masked:
+            values["reset_mask"] = torch.ones(1, device="cuda", dtype=torch.bool)
 
         # Top car's wheels rest on the bottom car, above all arena geometry.
         values["car_position"][0] = torch.tensor(
@@ -307,6 +333,12 @@ class ResetTests(unittest.TestCase):
             {"car_internal_state": torch.zeros((2, 2, 1), device="cuda")},
             {"car_position": values["car_position"].transpose(0, 1)},
             {"ball_velocity": torch.utils.dlpack.to_dlpack(values["ball_velocity"].cpu())},
+            {"reset_mask": torch.ones(2, device="cuda")},
+            {"reset_mask": torch.ones(3, device="cuda", dtype=torch.bool)},
+            {"reset_mask": torch.ones(2, device="cuda", dtype=torch.bool),
+             "simulation_indices": torch.arange(2, device="cuda")},
+            {"reset_mask": torch.ones(2, device="cuda", dtype=torch.bool),
+             "ball_position": values["ball_position"][:1]},
         )
 
         for bad in bad_inputs:
@@ -347,19 +379,81 @@ class ResetTests(unittest.TestCase):
         self.assertFalse(outputs["overtime"].any().item())
 
     def test_alternate_stream_temporary_inputs_and_capsules(self):
-        self.assert_equal(
-            reset_on_alternate_stream(capsules=True),
-            reset_on_alternate_stream(capsules=False),
+        expected = reset_on_alternate_stream(capsules=False)
+
+        for capsules, masked in product((False, True), repeat=2):
+            with self.subTest(capsules=capsules, masked=masked):
+                self.assert_equal(
+                    reset_on_alternate_stream(capsules=capsules, masked=masked),
+                    expected,
+                )
+
+    def test_masked_reset_matches_indexed_reset(self):
+        masks = ([False, False, False], [True, False, True], [True, True, True])
+
+        for team_size, mask in product((1, 2, 3), masks):
+            with self.subTest(team_size=team_size, mask=mask):
+                self.check_masked_reset(team_size, mask)
+
+    def check_masked_reset(self, team_size, mask):
+        reference = carl.Env(3, team_size, team_size, 7, previous_controls=True)
+        env = carl.Env(3, team_size, team_size, 7, previous_controls=True)
+        actions = zeros(3, 2 * team_size, 7)
+        values = reset_inputs(3, 2 * team_size)
+        mask = torch.tensor(mask, device="cuda")
+
+        reference.no_touch_timeout_ticks = env.no_touch_timeout_ticks = 1
+        reference.step_continuous(actions)
+        env.step_continuous(actions)
+        before = snapshot(env, TRANSITION)
+        reference.no_touch_timeout_ticks = env.no_touch_timeout_ticks = 0
+
+        for repeat in range(3):
+            mask = mask.roll(1)
+            indices = mask.nonzero().flatten()
+            values["ball_position"][:, 0] = torch.arange(3, device="cuda") * 100 + repeat
+            compact = {name: value[indices].contiguous() for name, value in values.items()}
+
+            reference.apply_reset_state(**compact, simulation_indices=indices)
+            env.apply_reset_state(**values, reset_mask=mask)
+
+            self.assert_equal(snapshot(env, CURRENT), snapshot(reference, CURRENT))
+            self.assert_equal(snapshot(env, TRANSITION), before)
+
+        for _ in range(8):
+            reference.step_continuous(actions)
+            env.step_continuous(actions)
+
+            self.assert_equal(
+                snapshot(env, CURRENT + TRANSITION),
+                snapshot(reference, CURRENT + TRANSITION),
+            )
+
+    def test_close_waits_for_pending_masked_inputs(self):
+        env = carl.Env(3, 1, 1, 7)
+        stream = torch.cuda.ExternalStream(env.stream)
+        complete = torch.cuda.Event()
+
+        with torch.cuda.stream(stream):
+            torch.cuda._sleep(1_000_000)
+
+        env.apply_reset_state(
+            **reset_inputs(3, 2),
+            reset_mask=torch.ones(3, device="cuda", dtype=torch.bool),
         )
+        complete.record(stream)
+        del env
+
+        self.assertTrue(complete.query())
 
     def test_wrapper_preserves_terminal_successors(self):
-        for typed, goal in product((False, True), repeat=2):
-            with self.subTest(typed=typed, goal=goal):
-                self.check_wrapper_terminal_successors(typed, goal)
+        for typed, goal, masked in product((False, True), repeat=3):
+            with self.subTest(typed=typed, goal=goal, masked=masked):
+                self.check_wrapper_terminal_successors(typed, goal, masked)
 
-    def check_wrapper_terminal_successors(self, typed, goal):
+    def check_wrapper_terminal_successors(self, typed, goal, masked):
         control = self.make_env()
-        candidate = self.make_env()
+        candidate = self.make_env(masked_resets=masked)
         control.reset()
         candidate.reset()
 
@@ -372,7 +466,7 @@ class ResetTests(unittest.TestCase):
             control.set_ball(position, velocity, velocity)
             candidate.set_ball(position, velocity, velocity)
 
-        provider = partial(reset_provider, typed=typed)
+        provider = partial(reset_provider, typed=typed, masked=masked)
         candidate.reset_state_provider = provider
         actions = zeros(*control.action_space.shape)
 
@@ -401,6 +495,150 @@ class ResetTests(unittest.TestCase):
 
         candidate.close()
         control.close()
+
+
+class FixedShapeOnly(TorchDispatchMode):
+    """Fail on scalar readback or dynamic compaction in the masked wrapper path."""
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        forbidden = (
+            torch.ops.aten._local_scalar_dense.default,
+            torch.ops.aten.nonzero.default,
+            torch.ops.aten.masked_select.default,
+            torch.ops.aten._unique2.default,
+        )
+
+        if func in forbidden:
+            raise AssertionError(f"host-dependent reset operation: {func}")
+
+        if func == torch.ops.aten.index.Tensor:
+            boolean_indices = (
+                index is not None and index.dtype in (torch.bool, torch.uint8)
+                for index in args[1]
+            )
+            if any(boolean_indices):
+                raise AssertionError("boolean reset compaction")
+
+        return func(*args, **(kwargs or {}))
+
+
+class ResetValidationTests(unittest.TestCase):
+    """CPU checks for fixed-shape provider dispatch and metadata validation."""
+
+    def make_env(self, provider):
+        env = CARLTorchVectorEnv.__new__(CARLTorchVectorEnv)
+        env.n_sim = 3
+        env.n_cars = 2
+        env.masked_resets = True
+        env.reset_state_provider = provider
+        env._env = mock.Mock()
+        return env
+
+    def test_masked_provider_never_compacts_or_reads_scalars(self):
+        masks = ([False, False, False], [True, False, True], [True, True, True])
+
+        for typed, eligible in product((False, True), masks):
+            with self.subTest(typed=typed, eligible=eligible):
+                self.check_fixed_shape_provider(typed, eligible)
+
+    def check_fixed_shape_provider(self, typed, eligible):
+        values = reset_inputs(3, 2, device="cpu")
+        mask = torch.tensor([True, True, False])
+        eligible = torch.tensor(eligible)
+        state = values | {"reset_mask": mask}
+
+        if typed:
+            state = typed_reset_state(values, reset_mask=mask)
+
+        provider = mock.Mock(return_value=state)
+        env = self.make_env(provider)
+
+        with FixedShapeOnly():
+            env._apply_reset_state(eligible)
+
+        provider.assert_called_once_with(eligible)
+        env._env.apply_reset_state.assert_called_once()
+        args, kwargs = env._env.apply_reset_state.call_args
+
+        self.assertIsNone(kwargs["simulation_indices"])
+        self.assertEqual(args[0].shape, (3, 3))
+        self.assertEqual(args[3].shape, (3, 2, 3))
+        torch.testing.assert_close(kwargs["reset_mask"], mask & eligible)
+        torch.testing.assert_close(args[4], values["car_rotation"])
+
+    def test_masked_provider_validates_selection_metadata(self):
+        invalid = (
+            {"reset_mask": torch.ones(3)},
+            {"reset_mask": torch.ones(2, dtype=torch.bool)},
+            {"reset_mask": torch.ones(3, dtype=torch.bool),
+             "simulation_indices": torch.arange(3)},
+            {"simulation_indices": torch.arange(3)},
+        )
+
+        for typed, selection in product((False, True), invalid):
+            with self.subTest(typed=typed, selection=list(selection)):
+                self.check_invalid_selection(typed, selection)
+
+    def check_invalid_selection(self, typed, selection):
+        values = reset_inputs(3, 2, device="cpu")
+        state = values | selection
+
+        if typed:
+            state = typed_reset_state(
+                values, selection.get("simulation_indices"),
+                reset_mask=selection.get("reset_mask"),
+            )
+
+        env = self.make_env(mock.Mock(return_value=state))
+        eligible = torch.ones(3, dtype=torch.bool)
+
+        with FixedShapeOnly(), self.assertRaises(ValueError):
+            env._apply_reset_state(eligible)
+
+        env._env.apply_reset_state.assert_not_called()
+
+    def test_normalized_masked_inputs_remain_fixed_shape(self):
+        values = reset_inputs(3, 2, device="cpu")
+        mask = torch.tensor([True, False, True])
+        state = typed_reset_state(values, reset_mask=mask)
+        state = replace(state, normalized=True)
+        position_scale = torch.tensor(carl.OBS_POSITION_SCALE)
+
+        state.ball.position.div_(position_scale)
+        state.ball.velocity.div_(carl.BALL_MAX_SPEED)
+        state.ball.angular_velocity.div_(carl.BALL_MAX_ANG_SPEED)
+        state.cars.position.div_(position_scale)
+        state.cars.velocity.div_(carl.CAR_MAX_SPEED)
+        state.cars.angular_velocity.div_(carl.CAR_MAX_ANG_SPEED)
+        state.cars.boost.div_(carl.BOOST_MAX)
+
+        env = self.make_env(mock.Mock(return_value=state))
+
+        with FixedShapeOnly():
+            env._apply_reset_state(mask)
+
+        args, kwargs = env._env.apply_reset_state.call_args
+        torch.testing.assert_close(args[0], values["ball_position"])
+        torch.testing.assert_close(args[1], values["ball_velocity"])
+        torch.testing.assert_close(args[3], values["car_position"])
+        torch.testing.assert_close(kwargs["car_boost"], values["car_boost"])
+
+    def test_indexed_providers_remain_supported(self):
+        for typed in (False, True):
+            with self.subTest(typed=typed):
+                self.check_indexed_provider(typed)
+
+    def check_indexed_provider(self, typed):
+        env = self.make_env(partial(reset_provider, typed=typed))
+        env.masked_resets = False
+        eligible = torch.tensor([True, False, True])
+
+        env._apply_reset_state(eligible)
+        args, kwargs = env._env.apply_reset_state.call_args
+
+        self.assertEqual(args[0].shape, (2, 3))
+        self.assertIsNone(kwargs["reset_mask"])
+        torch.testing.assert_close(kwargs["simulation_indices"], torch.tensor([0, 2]))
 
 
 if __name__ == "__main__":

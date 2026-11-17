@@ -28,15 +28,19 @@ ResetState = CARLResetState | Mapping[str, th.Tensor]
 ResetStateProvider = Callable[[th.Tensor], ResetState | None]
 
 
-def _forward_up_to_quat(forward: th.Tensor, up: th.Tensor) -> th.Tensor:
+def _forward_up_to_quat(
+    forward: th.Tensor, up: th.Tensor, *, validate: bool = True,
+) -> th.Tensor:
     """Convert car axes to [x, y, z, w] quaternions."""
-    if not th.isfinite(forward).all() or not th.isfinite(up).all():
-        raise ValueError("car forward and up directions must be finite")
-
     right = th.linalg.cross(up, forward, dim=-1)
-    for axis in (forward, right):
-        if (axis.square().sum(dim=-1) < 1e-8).any():
-            raise ValueError("car forward and up directions must define a rotation")
+
+    if validate:
+        if not th.isfinite(forward).all() or not th.isfinite(up).all():
+            raise ValueError("car forward and up directions must be finite")
+
+        for axis in (forward, right):
+            if (axis.square().sum(dim=-1) < 1e-8).any():
+                raise ValueError("car forward and up directions must define a rotation")
 
     forward = F.normalize(forward, dim=-1)
     right = F.normalize(right, dim=-1)
@@ -73,6 +77,14 @@ def _ticks(ticks: int | None, seconds: float | None, default: int | None) -> int
 
 
 class CARLTorchVectorEnv(VectorEnv):
+    """Torch vector environment with optional fixed-shape reset providers.
+
+    ``masked_resets=True`` calls the provider on every step, including when no
+    arena is done. Return full-size tensors and ``reset_mask`` in a CARLResetState
+    or mapping. Selection stays on the GPU; providers may also return None.
+    Input storage must not be modified until CARL's stream has finished reading it.
+    """
+
     metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
     render_mode = spec = None
 
@@ -97,6 +109,7 @@ class CARLTorchVectorEnv(VectorEnv):
         reward_funcs:             Iterable[RewardFunction] | None = None,
         reward_scale:             float = 1.0,
         reset_state_provider:     ResetStateProvider | None = None,
+        masked_resets:            bool = False,
         discrete_actions:         bool = False,
     ) -> None:
         super().__init__()
@@ -113,6 +126,7 @@ class CARLTorchVectorEnv(VectorEnv):
         self.reward_funcs = list(reward_funcs or ())
         self.reward_scale = reward_scale
         self.reset_state_provider = reset_state_provider
+        self.masked_resets = masked_resets
         self.discrete_actions = discrete_actions
         self._state: CarlState | None = None
         self._observation: CARLObservation | None = None
@@ -207,19 +221,52 @@ class CARLTorchVectorEnv(VectorEnv):
         return observation
 
     def _apply_reset_state(self, reset_mask: th.Tensor) -> None:
-        if self.reset_state_provider is None or not reset_mask.any():
+        if self.reset_state_provider is None:
+            return
+
+        if not self.masked_resets and not reset_mask.any():
             return
 
         state = self.reset_state_provider(reset_mask)
         if state is None:
             return
+
         if isinstance(state, CARLResetState):
             self._apply_typed_reset_state(state, reset_mask)
             return
 
-        indices = state.get("simulation_indices", reset_mask.nonzero(as_tuple=True)[0])
-        if not indices.numel():
-            return
+        self._apply_mapping_reset_state(state, reset_mask)
+
+    def _reset_selection(self, mask: th.Tensor, eligible: th.Tensor) -> th.Tensor:
+        if (mask.shape != (self.n_sim,) or mask.dtype != th.bool
+                or mask.device != eligible.device):
+            raise ValueError("reset_mask must be bool [n_sim] on the environment device")
+
+        return (mask & eligible).contiguous()
+
+    def _apply_mapping_reset_state(
+        self, state: Mapping[str, th.Tensor], reset_mask: th.Tensor,
+    ) -> None:
+        indices = None
+        mask = None
+
+        if "reset_mask" in state:
+            if "simulation_indices" in state:
+                raise ValueError("specify reset_mask or simulation_indices, not both")
+
+            mask = self._reset_selection(state["reset_mask"], reset_mask)
+        else:
+            if self.masked_resets:
+                raise ValueError("masked reset providers must supply reset_mask")
+
+            indices = state.get("simulation_indices")
+            if indices is None:
+                indices = reset_mask.nonzero(as_tuple=True)[0]
+
+            if not indices.numel():
+                return
+
+            indices = indices.contiguous()
 
         self._env.apply_reset_state(
             state["ball_position"].contiguous(),
@@ -247,19 +294,29 @@ class CARLTorchVectorEnv(VectorEnv):
             episode_ticks=(
                 state["episode_ticks"].contiguous() if "episode_ticks" in state else None
             ),
-            simulation_indices=indices.contiguous(),
+            simulation_indices=indices,
+            reset_mask=mask,
         )
 
     def _apply_typed_reset_state(
         self, state: CARLResetState, reset_mask: th.Tensor,
     ) -> None:
+        masked = state.reset_mask is not None
+        if self.masked_resets and not masked:
+            raise ValueError("masked reset providers must supply reset_mask")
+
         state.validate(reset_mask, self.n_cars)
-        if not state.simulation_indices.numel():
+        if not masked and not state.simulation_indices.numel():
             return
 
         ball, cars = state.physical()
-        rotation = _forward_up_to_quat(cars.forward, cars.up).contiguous()
-        indices = state.simulation_indices.contiguous()
+        rotation = _forward_up_to_quat(
+            cars.forward, cars.up, validate=not masked,
+        ).contiguous()
+
+        indices = None if masked else state.simulation_indices.contiguous()
+        mask = self._reset_selection(state.reset_mask, reset_mask) if masked else None
+
         self._env.apply_reset_state(
             ball.position.contiguous(), ball.velocity.contiguous(),
             ball.angular_velocity.contiguous(),
@@ -280,6 +337,7 @@ class CARLTorchVectorEnv(VectorEnv):
                 state.match.episode_ticks.contiguous() if state.match is not None else None
             ),
             simulation_indices=indices,
+            reset_mask=mask,
         )
 
     def _clear_sim_stats(self, mask: th.Tensor | None = None) -> None:
@@ -290,9 +348,9 @@ class CARLTorchVectorEnv(VectorEnv):
             self._episode_ticks.zero_()
             self._overtime.zero_()
         else:
-            self._score_difference[mask] = 0
-            self._episode_ticks[mask] = 0
-            self._overtime[mask] = False
+            self._score_difference.masked_fill_(mask, 0)
+            self._episode_ticks.masked_fill_(mask, 0)
+            self._overtime.masked_fill_(mask, False)
 
     def _per_car(self, x: th.Tensor) -> th.Tensor:
         return x[:, None].expand(-1, self.n_cars).reshape(self.n_envs)

@@ -318,27 +318,54 @@ class CARLMatchReset:
 
 @dataclass(frozen=True)
 class CARLResetState:
-    """Ball and cars use physics units unless ``normalized`` is true."""
+    """Ball and cars use physics units unless ``normalized`` is true.
 
-    simulation_indices: th.Tensor
+    For fixed-shape resets, supply ``simulation_indices=None`` and a boolean
+    ``reset_mask`` of shape ``[n_sim]``. Every state tensor then has one row per
+    arena. The wrapper intersects this mask with arenas eligible for reset.
+    Masked inputs require valid rotations; only metadata is validated on the host.
+    """
+
+    simulation_indices: th.Tensor | None
     ball:               CARLBall
     cars:               CARLCars
     car_internal_state: th.Tensor | None = None
     match:              CARLMatchReset | None = None
     normalized:         bool = False
+    reset_mask:         th.Tensor | None = None
 
     def validate(self, reset_mask: th.Tensor, n_cars: int) -> None:
         indices = self.simulation_indices
-        if (indices.ndim != 1 or indices.dtype != th.int64
+        count = len(reset_mask)
+
+        if self.reset_mask is not None:
+            if indices is not None:
+                raise ValueError("specify reset_mask or simulation_indices, not both")
+
+            mask = self.reset_mask
+            if (mask.shape != reset_mask.shape or mask.dtype != th.bool
+                    or mask.device != reset_mask.device):
+                raise ValueError("reset_mask must be bool [n_sim] on the environment device")
+        else:
+            self._validate_indices(reset_mask)
+            count = len(indices)
+
+        if (self.ball.shape != (count, carl.OBS_BALL)
+                or self.cars.shape != (count, n_cars, carl.OBS_PER_CAR)):
+            raise ValueError("ball or cars have the wrong shape")
+
+    def _validate_indices(self, reset_mask: th.Tensor) -> None:
+        indices = self.simulation_indices
+
+        if (indices is None or indices.ndim != 1 or indices.dtype != th.int64
                 or indices.device != reset_mask.device):
             raise ValueError("simulation_indices must be int64 on the environment device")
+
         if ((indices < 0) | (indices >= len(reset_mask))).any():
             raise ValueError("simulation_indices are out of range")
+
         if not reset_mask[indices].all() or th.unique(indices).numel() != len(indices):
             raise ValueError("simulation_indices must be unique and selected for reset")
-        if (self.ball.shape != (len(indices), carl.OBS_BALL)
-                or self.cars.shape != (len(indices), n_cars, carl.OBS_PER_CAR)):
-            raise ValueError("ball or cars have the wrong shape")
 
     def physical(self) -> tuple[CARLBall, CARLCars]:
         if not self.normalized:

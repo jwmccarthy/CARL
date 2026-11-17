@@ -84,10 +84,12 @@ __global__ void packStateKernel(
     float* __restrict__ output,
     int nSim,
     int nCars,
-    int touchWindow)
+    int touchWindow,
+    const bool* __restrict__ resetMask)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= nSim) return;
+    if (resetMask && !resetMask[simIdx]) return;
 
     const int stateDim = packedStateDim(nCars);
     packState(state, simIdx, nCars, touchWindow, output + simIdx * stateDim);
@@ -111,19 +113,24 @@ __global__ void packRewardsDonesKernel(
         noTouchTimeoutTicks, dones);
 }
 
-__global__ void packRawMatchStateKernel(GameState* state, int* score, int* ticks)
+__global__ void packRawMatchStateKernel(
+    GameState* state, int* score, int* ticks, const bool* resetMask)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim) return;
+    if (resetMask && !resetMask[simIdx]) return;
+
     const GoalState goal = state->goals[simIdx];
     score[simIdx] = goal.blueScore - goal.orangeScore;
     ticks[simIdx] = state->episodeTicks[simIdx];
 }
 
-__global__ void packOvertimeKernel(GameState* state, bool* overtime)
+__global__ void packOvertimeKernel(GameState* state, bool* overtime, const bool* resetMask)
 {
     const int simIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (simIdx >= state->nSim) return;
+    if (resetMask && !resetMask[simIdx]) return;
+
     packOvertime(state, simIdx, overtime);
 }
 
@@ -134,10 +141,12 @@ __global__ void setBallKernel(
     const float* __restrict__ ang,
     const int64_t* __restrict__ simulationIndices,
     int nSelected,
-    int nSim)
+    int nSim,
+    const bool* __restrict__ resetMask)
 {
     const int sourceSimIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (sourceSimIdx >= nSelected) return;
+    if (resetMask && !resetMask[sourceSimIdx]) return;
 
     const int64_t targetSimIdx64 = simulationIndices
         ? simulationIndices[sourceSimIdx] : sourceSimIdx;
@@ -165,12 +174,15 @@ __global__ void setCarKernel(
     const int64_t* __restrict__ simulationIndices,
     int nSelected,
     int nCars,
-    int nSim)
+    int nSim,
+    const bool* __restrict__ resetMask)
 {
     const int sourceCarIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (sourceCarIdx >= nSelected * nCars) return;
 
     const int sourceSimIdx = sourceCarIdx / nCars;
+    if (resetMask && !resetMask[sourceSimIdx]) return;
+
     const int localCarIdx = sourceCarIdx % nCars;
     const int64_t targetSimIdx64 = simulationIndices
         ? simulationIndices[sourceSimIdx] : sourceSimIdx;
@@ -307,10 +319,11 @@ __global__ void setCarKernel(
 
 __global__ void setMatchStateKernel(GameState* state, const int32_t* blue,
     const int32_t* orange, const int32_t* ticks, const int64_t* indices,
-    int nSelected)
+    int nSelected, const bool* resetMask)
 {
     const int source = blockIdx.x * blockDim.x + threadIdx.x;
     if (source >= nSelected) return;
+    if (resetMask && !resetMask[source]) return;
 
     const int64_t target = indices ? indices[source] : source;
     if (target < 0 || target >= state->nSim) return;
@@ -326,10 +339,12 @@ __global__ void resetBoostPadsKernel(
     GameState* __restrict__ state,
     const int64_t* __restrict__ simulationIndices,
     int nSelected,
-    int nSim)
+    int nSim,
+    const bool* __restrict__ resetMask)
 {
     const int source = blockIdx.x * blockDim.x + threadIdx.x;
     if (source >= nSelected) return;
+    if (resetMask && !resetMask[source]) return;
 
     const int64_t target = simulationIndices ? simulationIndices[source] : source;
     if (target < 0 || target >= nSim) return;
@@ -416,11 +431,11 @@ EnvIO::~EnvIO()
     CUDA_CHECK(cudaFree(d_transitionOvertime));
 }
 
-void EnvIO::packState(GameState* d_gameState)
+void EnvIO::packState(GameState* d_gameState, const bool* resetMask)
 {
     packStateKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
-        d_gameState, d_state, nSim, nCars, 1);
+        d_gameState, d_state, nSim, nCars, 1, resetMask);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -428,15 +443,15 @@ void EnvIO::packTransitionState(GameState* d_gameState, int touchWindow)
 {
     packStateKernel<<<perSimConfig.gridDim,
         perSimConfig.blockDim, 0, stream>>>(
-        d_gameState, d_transitionState, nSim, nCars, touchWindow);
+        d_gameState, d_transitionState, nSim, nCars, touchWindow, nullptr);
     CUDA_CHECK(cudaGetLastError());
 }
 
-void EnvIO::packObs(GameState* d_state)
+void EnvIO::packObs(GameState* d_state, const bool* resetMask)
 {
     packObsKernel<<<perAgentConfig.gridDim,
         perAgentConfig.blockDim, 0, stream>>>(
-        d_state, d_obs, nullptr, nSim, nCars, invertOrange, normalize, previousControls);
+        d_state, d_obs, resetMask, nSim, nCars, invertOrange, normalize, previousControls);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -458,25 +473,25 @@ void EnvIO::packRewardsDones(GameState* d_state)
     CUDA_CHECK(cudaGetLastError());
 
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_transitionScoreDifference, d_transitionEpisodeTicks);
+        d_state, d_transitionScoreDifference, d_transitionEpisodeTicks, nullptr);
 
     CUDA_CHECK(cudaGetLastError());
 
     packOvertimeKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_transitionOvertime);
+        d_state, d_transitionOvertime, nullptr);
 
     CUDA_CHECK(cudaGetLastError());
 }
 
-void EnvIO::packRawMatchState(GameState* d_state)
+void EnvIO::packRawMatchState(GameState* d_state, const bool* resetMask)
 {
     packRawMatchStateKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_scoreDifference, d_episodeTicks);
+        d_state, d_scoreDifference, d_episodeTicks, resetMask);
 
     CUDA_CHECK(cudaGetLastError());
 
     packOvertimeKernel<<<perSimConfig.gridDim, perSimConfig.blockDim, 0, stream>>>(
-        d_state, d_overtime);
+        d_state, d_overtime, resetMask);
 
     CUDA_CHECK(cudaGetLastError());
 }
@@ -567,7 +582,8 @@ void EnvIO::setBall(
     const float* vel,
     const float* ang,
     const int64_t* simulationIndices,
-    int nSelected)
+    int nSelected,
+    const bool* resetMask)
 {
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
@@ -578,7 +594,7 @@ void EnvIO::setBall(
         .setStream(stream);
 
     setBallKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
-        d_state, pos, vel, ang, simulationIndices, nSelected, nSim);
+        d_state, pos, vel, ang, simulationIndices, nSelected, nSim, resetMask);
 
     CUDA_CHECK(cudaGetLastError());
 }
@@ -589,13 +605,16 @@ __global__ void refreshRestoredCarContactsKernel(
     Workspace* __restrict__ space,
     ArenaMesh* __restrict__ arena,
     const int64_t* __restrict__ indices,
-    int nSelected)
+    int nSelected,
+    const bool* __restrict__ resetMask)
 {
     const int source = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (source >= nSelected * state->nCars) return;
 
     const int sim = source / state->nCars;
+    if (resetMask && !resetMask[sim]) return;
+
     const int64_t target = indices ? indices[sim] : sim;
 
     if (target < 0 || target >= state->nSim) return;
@@ -636,7 +655,8 @@ void EnvIO::setCar(
     const float* boost,
     const float* internalState,
     const int64_t* simulationIndices,
-    int nSelected)
+    int nSelected,
+    const bool* resetMask)
 {
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
@@ -649,20 +669,20 @@ void EnvIO::setCar(
     setCarKernel<<<perCarConfig.gridDim,
         perCarConfig.blockDim, 0, stream>>>(
         d_state, d_space, pos, rot, vel, ang, demoed, byteDemoed,
-        boost, internalState, simulationIndices, nSelected, nCars, nSim);
+        boost, internalState, simulationIndices, nSelected, nCars, nSim, resetMask);
         
     CUDA_CHECK(cudaGetLastError());
 
     refreshRestoredCarContactsKernel<<<perCarConfig.gridDim,
         perCarConfig.blockDim, 0, stream>>>(
-        d_state, d_space, d_arena, simulationIndices, nSelected);
+        d_state, d_space, d_arena, simulationIndices, nSelected, resetMask);
     CUDA_CHECK(cudaGetLastError());
 }
 
 void EnvIO::setMatchState(
     GameState* d_state, const int32_t* blueScore,
     const int32_t* orangeScore, const int32_t* episodeTicks,
-    const int64_t* simulationIndices, int nSelected)
+    const int64_t* simulationIndices, int nSelected, const bool* resetMask)
 {
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
@@ -672,7 +692,7 @@ void EnvIO::setMatchState(
 
     setMatchStateKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
         d_state, blueScore, orangeScore, episodeTicks,
-        simulationIndices, nSelected);
+        simulationIndices, nSelected, resetMask);
         
     CUDA_CHECK(cudaGetLastError());
 }
@@ -680,7 +700,8 @@ void EnvIO::setMatchState(
 void EnvIO::resetBoostPads(
     GameState* d_state,
     const int64_t* simulationIndices,
-    int nSelected)
+    int nSelected,
+    const bool* resetMask)
 {
     if (nSelected < 0) nSelected = nSim;
     if (nSelected == 0) return;
@@ -691,7 +712,7 @@ void EnvIO::resetBoostPads(
         .setStream(stream);
 
     resetBoostPadsKernel<<<config.gridDim, config.blockDim, 0, stream>>>(
-        d_state, simulationIndices, nSelected, nSim);
+        d_state, simulationIndices, nSelected, nSim, resetMask);
 
     CUDA_CHECK(cudaGetLastError());
 }
